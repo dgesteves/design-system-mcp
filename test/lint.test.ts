@@ -73,6 +73,16 @@ describe('no-hardcoded-color', () => {
     expect(diagnostics[2]?.fix).toBeUndefined();
   });
 
+  it('reports and fixes the right span in style strings with escapes', () => {
+    const code = `<div style={{ background: "url(\\"x.png\\") #ff0000" }} />`;
+    expect(code).toContain('\\"');
+    const diagnostics = check(code, rule);
+    expect(diagnostics.map((d) => d.source)).toEqual(['#ff0000']);
+    expect(applyFixes(code, diagnostics)).toBe(
+      `<div style={{ background: "url(\\"x.png\\") var(--destructive)" }} />`,
+    );
+  });
+
   it('declines to auto-fix when no token is close, and points at variants', () => {
     const [d] = check(`<div className="bg-[#2563eb]" />`, rule);
     expect(d?.message).toContain('No close token');
