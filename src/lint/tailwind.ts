@@ -22,7 +22,8 @@ export function splitClasses(text: string, offset: number): ClassToken[] {
 export interface Utility {
   /** `hover`, `md`, `dark`... */
   variants: string[];
-  important: boolean;
+  /** Where the `!` important modifier sits: `!p-4` (Tailwind v3 style) or `p-4!` (v4). */
+  important: 'leading' | 'trailing' | undefined;
   negative: boolean;
   /** Utility without variants, `!`, `-` and `/modifier`: `bg-[#fff]`, `p-4`. */
   base: string;
@@ -39,12 +40,12 @@ export function parseUtility(cls: string): Utility {
   const parts = splitTopLevel(cls, ':');
   let base = parts.pop() ?? '';
   const variants = parts;
-  let important = false;
+  let important: Utility['important'];
   if (base.startsWith('!')) {
-    important = true;
+    important = 'leading';
     base = base.slice(1);
   } else if (base.endsWith('!')) {
-    important = true;
+    important = 'trailing';
     base = base.slice(0, -1);
   }
   let negative = false;
@@ -67,10 +68,12 @@ export function parseUtility(cls: string): Utility {
   return utility;
 }
 
-/** Rebuilds a class from a parsed utility with a new base: keeps variants, `!`, `-` and modifier. */
+/** Rebuilds a class from a parsed utility with a new base: keeps variants, `!` (where it was), `-` and modifier. */
 export function withBase(utility: Utility, base: string): string {
   const variants = utility.variants.length ? `${utility.variants.join(':')}:` : '';
-  return `${variants}${utility.important ? '!' : ''}${utility.negative ? '-' : ''}${base}${utility.modifier}`;
+  const leading = utility.important === 'leading' ? '!' : '';
+  const trailing = utility.important === 'trailing' ? '!' : '';
+  return `${variants}${leading}${utility.negative ? '-' : ''}${base}${utility.modifier}${trailing}`;
 }
 
 function splitTopLevel(text: string, separator: string): string[] {
