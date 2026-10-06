@@ -399,6 +399,13 @@ describe('the engine', () => {
     expect(result).toMatchObject({ errorCount: 0, warningCount: 1 });
   });
 
+  it('parses .ts files as TypeScript, not TSX', () => {
+    expect(
+      ds.check('export const id = <T,>(x: T) => x;\nconst y = <T>(x: T) => x;', 'util.ts')
+        .diagnostics,
+    ).toEqual([]);
+  });
+
   it('reports syntax errors and parses .jsx as JSX', () => {
     const [d] = ds.check('<div className="x"', 'broken.tsx').diagnostics;
     expect(d?.ruleId).toBe('syntax');
