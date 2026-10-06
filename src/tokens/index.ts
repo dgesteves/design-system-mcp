@@ -1,0 +1,185 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import type { Token, TokenCategory } from '../types.js';
+import { relativePath } from '../util/paths.js';
+import { colorDistance, parseColor, type Oklch } from './color.js';
+import { parseCssTokens } from './css.js';
+import { parseDtcgTokens, type DtcgOptions } from './dtcg.js';
+import { evaluateLength, lengthToPx } from './units.js';
+
+export { parseCssTokens } from './css.js';
+export { parseDtcgTokens } from './dtcg.js';
+
+export interface TokenSource {
+  file: string;
+  /** DTCG only: prefix for generated custom property names. */
+  prefix?: string | undefined;
+}
+
+export async function loadTokens(
+  root: string,
+  sources: TokenSource[],
+): Promise<{ tokens: Token[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const all: Token[] = [];
+  for (const source of sources) {
+    const rel = relativePath(root, source.file);
+    let text: string;
+    try {
+      text = await fs.readFile(source.file, 'utf8');
+    } catch {
+      warnings.push(`${rel}: token file not found`);
+      continue;
+    }
+    const ext = path.extname(source.file).toLowerCase();
+    try {
+      const options: DtcgOptions = source.prefix ? { prefix: source.prefix } : {};
+      const result =
+        ext === '.json' ? parseDtcgTokens(text, rel, options) : parseCssTokens(text, rel);
+      all.push(...result.tokens);
+      warnings.push(...result.warnings);
+    } catch (error) {
+      warnings.push(`${rel}: could not parse tokens (${(error as Error).message})`);
+    }
+  }
+  return { tokens: mergeTokens(all), warnings };
+}
+
+/**
+ * DTCG files and the CSS generated from them often describe the same tokens.
+ * Merge entries that share a custom property: keep the DTCG name and
+ * description, and add the Tailwind mapping from CSS.
+ */
+export function mergeTokens(tokens: Token[]): Token[] {
+  const byVar = new Map<string, Token>();
+  const out: Token[] = [];
+  for (const token of tokens) {
+    const existing = token.cssVar ? byVar.get(token.cssVar) : undefined;
+    if (!existing) {
+      if (token.cssVar) byVar.set(token.cssVar, token);
+      out.push(token);
+      continue;
+    }
+    if (existing.tailwind === undefined && token.tailwind !== undefined) {
+      existing.tailwind = token.tailwind;
+    }
+    existing.usage = [...new Set([...token.usage, ...existing.usage])];
+    existing.description ??= token.description;
+    if (token.modes) existing.modes = { ...token.modes, ...existing.modes };
+  }
+  return out;
+}
+
+export interface ColorCandidate {
+  token: Token;
+  color: Oklch;
+}
+
+export interface LengthCandidate {
+  token: Token;
+  px: number;
+  /** Tailwind key for the step (`3` for `p-3`, `md` for `rounded-md`), if any. */
+  key?: string;
+}
+
+export interface Nearest<T> {
+  candidate: T;
+  distance: number;
+}
+
+/** Tailwind's conventional spacing steps, as multiples of `--spacing`. */
+const SPACING_STEPS = [
+  0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24, 28, 32, 36, 40, 44, 48,
+  52, 56, 60, 64, 72, 80, 96,
+];
+
+/** Query helpers over the token list: lookups and nearest-token search. */
+export class TokenIndex {
+  readonly colors: ColorCandidate[] = [];
+  readonly spacing: LengthCandidate[] = [];
+  readonly radius: LengthCandidate[] = [];
+  /** Tailwind color keys the design system defines (`primary`, `muted-foreground`). */
+  readonly colorKeys = new Set<string>();
+  /** Base unit when spacing follows Tailwind's multiplier model. */
+  readonly spacingUnitPx: number | undefined;
+  private readonly byVar = new Map<string, Token>();
+
+  constructor(readonly tokens: Token[]) {
+    for (const token of tokens) if (token.cssVar) this.byVar.set(token.cssVar, token);
+    const resolve = (name: string) => this.byVar.get(name)?.value;
+
+    let unit: number | undefined;
+    for (const token of tokens) {
+      if (token.category === 'color') {
+        const color = parseColor(token.value);
+        if (color) this.colors.push({ token, color });
+        if (token.tailwind) this.colorKeys.add(token.tailwind);
+      } else if (token.category === 'spacing' || token.category === 'radius') {
+        const px = evaluateLength(token.value, resolve);
+        if (px === undefined) continue;
+        if (token.category === 'spacing' && token.tailwind === '') {
+          unit = px;
+          continue;
+        }
+        const list = token.category === 'spacing' ? this.spacing : this.radius;
+        const candidate: LengthCandidate = { token, px };
+        if (token.tailwind) candidate.key = token.tailwind;
+        list.push(candidate);
+      }
+    }
+    this.spacingUnitPx = unit;
+    const spacingToken = tokens.find((t) => t.category === 'spacing' && t.tailwind === '');
+    if (unit !== undefined && spacingToken) {
+      for (const step of SPACING_STEPS) {
+        this.spacing.push({ token: spacingToken, px: step * unit, key: String(step) });
+      }
+    }
+  }
+
+  has(category: TokenCategory): boolean {
+    if (category === 'color') return this.colors.length > 0;
+    if (category === 'spacing') return this.spacing.length > 0;
+    if (category === 'radius') return this.radius.length > 0;
+    return this.tokens.some((t) => t.category === category);
+  }
+
+  byCssVar(name: string): Token | undefined {
+    return this.byVar.get(name);
+  }
+
+  nearestColor(color: Oklch, limit = 3): Nearest<ColorCandidate>[] {
+    return this.colors
+      .map((candidate) => ({ candidate, distance: colorDistance(color, candidate.color) }))
+      .sort(
+        (a, b) => a.distance - b.distance || preferTailwind(a.candidate.token, b.candidate.token),
+      )
+      .slice(0, limit);
+  }
+
+  nearestLength(category: 'spacing' | 'radius', px: number): Nearest<LengthCandidate> | undefined {
+    const list = category === 'spacing' ? this.spacing : this.radius;
+    let best: Nearest<LengthCandidate> | undefined;
+    for (const candidate of list) {
+      const distance = Math.abs(candidate.px - Math.abs(px));
+      if (
+        !best ||
+        distance < best.distance - 1e-9 ||
+        (Math.abs(distance - best.distance) < 1e-9 &&
+          preferTailwind(candidate.token, best.candidate.token) < 0)
+      ) {
+        best = { candidate, distance };
+      }
+    }
+    return best;
+  }
+
+  /** px value of a token-like length string, resolving `var()` against the token set. */
+  toPx(value: string): number | undefined {
+    return lengthToPx(value) ?? evaluateLength(value, (name) => this.byVar.get(name)?.value);
+  }
+}
+
+function preferTailwind(a: Token, b: Token): number {
+  return Number(b.tailwind !== undefined) - Number(a.tailwind !== undefined);
+}
