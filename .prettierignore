@@ -1,0 +1,7 @@
+dist
+coverage
+pnpm-lock.yaml
+CHANGELOG.md
+.github/assets/*.svg
+schema.json
+test/fixtures

@@ -1,0 +1,11 @@
+{
+  "singleQuote": true,
+  "printWidth": 100,
+  "trailingComma": "all",
+  "overrides": [
+    {
+      "files": "examples/**",
+      "options": { "singleQuote": false, "semi": false, "printWidth": 80, "trailingComma": "es5" }
+    }
+  ]
+}
