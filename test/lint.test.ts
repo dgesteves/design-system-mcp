@@ -53,6 +53,21 @@ describe('no-hardcoded-color', () => {
     );
   });
 
+  it('flags colors in arbitrary properties and replaces them with the property’s utility', () => {
+    const code = `<div className="[color:red] hover:[background-color:#ef4444] [border-top-color:rgb(239_68_68)] [box-shadow:0_0_0_1px_#e5e5e5] [stop-color:#ef4444] [--brand:#ef4444] [mask-type:luminance] [color:var(--x)] [color:currentColor]" />`;
+    const diagnostics = check(code, rule);
+    expect(diagnostics.map((d) => [d.source, d.suggestion])).toEqual([
+      ['[color:red]', 'text-destructive'],
+      ['hover:[background-color:#ef4444]', 'bg-destructive'],
+      ['[border-top-color:rgb(239_68_68)]', 'border-t-destructive'],
+      ['[box-shadow:0_0_0_1px_#e5e5e5]', 'var(--border)'],
+      ['[stop-color:#ef4444]', 'var(--destructive)'],
+    ]);
+    expect(applyFixes(code, diagnostics)).toBe(
+      `<div className="text-destructive hover:bg-destructive border-t-destructive [box-shadow:0_0_0_1px_#e5e5e5] [stop-color:#ef4444] [--brand:#ef4444] [mask-type:luminance] [color:var(--x)] [color:currentColor]" />`,
+    );
+  });
+
   it('keeps the important modifier where it was written', () => {
     const code = `<div className="bg-red-600! !text-red-600 hover:bg-red-600/50! md:-mt-[13px]! !p-[13px]" />`;
     expect(applyFixes(code, check(code))).toBe(

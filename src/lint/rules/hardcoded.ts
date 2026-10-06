@@ -20,6 +20,7 @@ import {
   STYLE_COLOR_PROPERTIES,
   STYLE_RADIUS_PROPERTIES,
   STYLE_SPACING_PROPERTIES,
+  cssColorProperty,
   isColorAttribute,
   paletteColor,
   parseUtility,
@@ -66,6 +67,26 @@ export const noHardcodedColor: Rule = {
             what: `Hardcoded color \`${token.value}\``,
             color: literal.color,
             prefix: whole ? utility.prefix : undefined,
+            place: 'class',
+            utility,
+            element,
+          });
+          continue;
+        }
+
+        const property = utility.property ? cssColorProperty(utility.property) : undefined;
+        if (property && utility.arbitrary !== undefined) {
+          // `[background-color:#f00]`: the property's own utility replaces the whole class.
+          const value = utility.arbitrary.trim();
+          const whole = parseColor(value);
+          const literal = whole ? { text: value, color: whole } : findColorLiterals(value)[0];
+          if (!literal || allow.has(literal.text.toLowerCase())) continue;
+          reportColor(context, {
+            start: token.start,
+            end: token.end,
+            what: `Hardcoded color \`${token.value}\``,
+            color: literal.color,
+            prefix: whole ? property.prefix : undefined,
             place: 'class',
             utility,
             element,
