@@ -72,10 +72,14 @@ describe('no-hardcoded-color', () => {
     expect(diagnostics[2]?.fix).toBeUndefined();
   });
 
-  it('declines to auto-fix when no token is close', () => {
+  it('declines to auto-fix when no token is close, and points at variants', () => {
     const [d] = check(`<div className="bg-[#2563eb]" />`, rule);
     expect(d?.message).toContain('No close token');
     expect(d?.fix).toBeUndefined();
+    const [onButton] = check(`${IMPORTS}<Button className="bg-blue-600">Save</Button>`, rule);
+    expect(onButton?.message).toContain(
+      '<Button> already sets bg-* through `variant`; prefer a variant over overriding it.',
+    );
   });
 
   it('ignores tokens, keywords, black/white and allowed values', () => {
