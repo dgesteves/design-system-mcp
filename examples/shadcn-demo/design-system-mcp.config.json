@@ -1,0 +1,6 @@
+{
+  "$schema": "../../schema.json",
+  "components": ["components/ui/**/*.tsx"],
+  "tokens": ["app/globals.css"],
+  "docs": ["docs/**/*.md"]
+}
