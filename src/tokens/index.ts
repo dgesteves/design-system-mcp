@@ -52,9 +52,15 @@ export async function loadTokens(
  * description, and add the Tailwind mapping from CSS.
  */
 export function mergeTokens(tokens: Token[]): Token[] {
+  // Tailwind's built-in defaults (`--spacing`) only stand in until the project
+  // sets its own value, in whichever file that is.
+  const overridden = new Set(
+    tokens.filter((t) => t.origin !== 'tailwind-default').map((t) => themeKey(t)),
+  );
   const byVar = new Map<string, Token>();
   const out: Token[] = [];
   for (const token of tokens) {
+    if (token.origin === 'tailwind-default' && overridden.has(themeKey(token))) continue;
     const existing = token.cssVar ? byVar.get(token.cssVar) : undefined;
     if (!existing) {
       if (token.cssVar) byVar.set(token.cssVar, token);
@@ -69,6 +75,11 @@ export function mergeTokens(tokens: Token[]): Token[] {
     if (token.modes) existing.modes = { ...token.modes, ...existing.modes };
   }
   return out;
+}
+
+/** `spacing:` for `--spacing`, `radius:md` for `--radius-md`: what a Tailwind class resolves to. */
+function themeKey(token: Token): string {
+  return token.tailwind === undefined ? '' : `${token.category}:${token.tailwind}`;
 }
 
 export interface ColorCandidate {
