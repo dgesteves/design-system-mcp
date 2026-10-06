@@ -226,6 +226,21 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
       ['-mx-[8px]', '-mx-2'],
       ['"-8px"', '-m-2'],
     ]);
+    const numbers = check(
+      `<div style={{ marginTop: -8, marginLeft: +6, padding: -4, borderRadius: -2 }} />`,
+    );
+    expect(numbers.map((d) => [d.source, d.suggestion, d.message])).toEqual([
+      [
+        '-8',
+        '-mt-2',
+        'Hardcoded spacing `marginTop: -8` in style. Use `-mt-2` (8px) in className instead of an inline style.',
+      ],
+      [
+        '+6',
+        'ml-1.5',
+        'Hardcoded spacing `marginLeft: 6` in style. Use `ml-1.5` (6px) in className instead of an inline style.',
+      ],
+    ]);
     expect(applyFixes(code, diagnostics)).toBe(
       `<div className="-mt-0.5 -mx-2 p-[-4px]" style={{ margin: "-8px" }} />`,
     );

@@ -288,6 +288,19 @@ interface LengthRuleSpec {
   styleProperties: Record<string, string>;
 }
 
+/** The source text of a number in a style object, sign included: `6`, `-8`. */
+function numberValue(init: ts.Expression): string | undefined {
+  if (ts.isNumericLiteral(init)) return init.text;
+  if (
+    ts.isPrefixUnaryExpression(init) &&
+    ts.isNumericLiteral(init.operand) &&
+    (init.operator === ts.SyntaxKind.MinusToken || init.operator === ts.SyntaxKind.PlusToken)
+  ) {
+    return `${init.operator === ts.SyntaxKind.MinusToken ? '-' : ''}${init.operand.text}`;
+  }
+  return undefined;
+}
+
 function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): Rule {
   return {
     id,
@@ -338,16 +351,11 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           const prefix = name === undefined ? undefined : spec.styleProperties[name];
           if (!prefix) continue;
           const init = prop.initializer;
-          const raw = ts.isNumericLiteral(init)
-            ? init.text
-            : ts.isStringLiteralLike(init)
-              ? init.text
-              : undefined;
+          const number = numberValue(init);
+          const raw = number ?? (ts.isStringLiteralLike(init) ? init.text : undefined);
           if (raw === undefined || allow.has(raw)) continue;
           const values = raw.trim().split(/\s+/);
-          const lengths = values.map((v) =>
-            ts.isNumericLiteral(init) ? Number(v) : lengthToPx(v),
-          );
+          const lengths = values.map((v) => (number !== undefined ? Number(v) : lengthToPx(v)));
           if (lengths.some((px) => px === undefined) || lengths.every((px) => px === 0)) continue;
           const px = lengths.find((v) => v !== 0) ?? 0;
           const negative = px < 0;
@@ -358,7 +366,7 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           const cssVar =
             replacement?.cssVar &&
             (negative ? `calc(${replacement.cssVar} * -1)` : replacement.cssVar);
-          const shown = ts.isNumericLiteral(init) ? `${name}: ${raw}` : `${name}: "${raw}"`;
+          const shown = number !== undefined ? `${name}: ${raw}` : `${name}: "${raw}"`;
           const size = replacement?.pill ? 'fully rounded' : formatPx(replacement?.px ?? 0);
           const advice = replacement
             ? replacement.tailwind
