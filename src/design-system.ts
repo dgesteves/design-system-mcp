@@ -150,14 +150,36 @@ interface ResolvedFiles {
   docs: string[];
 }
 
+/**
+ * Absolute paths matching `patterns` under the root. `node_modules` is skipped
+ * even when `exclude` replaces the defaults, except by patterns that name it
+ * (tokens published as a package).
+ */
+async function find(config: ResolvedConfig, patterns: string[]): Promise<string[]> {
+  const options = { cwd: config.root, absolute: true, dot: false };
+  const named = patterns.filter((p) => p.includes('node_modules'));
+  const rest = patterns.filter((p) => !p.includes('node_modules'));
+  const found = await Promise.all([
+    rest.length
+      ? glob(rest, { ...options, ignore: unique(['**/node_modules/**', ...config.exclude]) })
+      : [],
+    named.length
+      ? glob(named, {
+          ...options,
+          ignore: config.exclude.filter((e) => !e.includes('node_modules')),
+        })
+      : [],
+  ]);
+  return unique(found.flat()).sort();
+}
+
 async function resolveFiles(config: ResolvedConfig): Promise<ResolvedFiles> {
-  const options = { cwd: config.root, absolute: true, ignore: config.exclude, dot: false };
-  const components = (await glob(config.components, options)).sort();
-  const docs = (await glob(config.docs, options)).sort();
+  const components = await find(config, config.components);
+  const docs = await find(config, config.docs);
   const tokens: ResolvedFiles['tokens'] = [];
   const seen = new Set<string>();
   for (const source of config.tokens) {
-    for (const file of (await glob(source.path, options)).sort()) {
+    for (const file of await find(config, [source.path])) {
       if (seen.has(file)) continue;
       seen.add(file);
       tokens.push({ file, prefix: source.prefix });

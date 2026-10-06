@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { buildModel, DesignSystemHost, type DesignSystem } from '../src/design-system.js';
 import type { DesignSystemModel } from '../src/types.js';
-import { ACME_ROOT } from './helpers.js';
+import { ACME_ROOT, fixture, load } from './helpers.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-host-'));
 afterAll(() => {
@@ -81,6 +81,23 @@ describe('extraction cache', () => {
     const third = await buildModel(config);
     expect(third.model.stats.fromCache).toBe(false);
     expect(third.model.components.find((c) => c.name === 'Tag')?.importPath).toBe('~/tag');
+  });
+
+  it('skips node_modules even with a custom exclude, unless a pattern names it', async () => {
+    const files = {
+      'components/ui/chip.tsx': 'export function Chip() { return <span /> }\n',
+      'tokens/brand.tokens.json': '{ "brand": { "$type": "color", "$value": "#3366ff" } }',
+      'node_modules/kit/theme.tokens.json': '{ "kit": { "$type": "color", "$value": "#ff0000" } }',
+    };
+    const names = async (config: object) => {
+      const root = fixture({ ...files, 'design-system-mcp.config.json': JSON.stringify(config) });
+      return (await load(root)).tokens.map((t) => t.name);
+    };
+    expect(await names({ exclude: ['**/*.stories.tsx'] })).toEqual(['brand']);
+    // Tokens published as a package.
+    const kit = { tokens: ['node_modules/kit/theme.tokens.json'] };
+    expect(await names(kit)).toEqual(['kit']);
+    expect(await names({ ...kit, exclude: ['**/*.stories.tsx'] })).toEqual(['kit']);
   });
 
   it('can be disabled', async () => {
