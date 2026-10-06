@@ -119,7 +119,7 @@ describe('MCP server over the in-memory transport', () => {
       '- destructive: oklch(0.577 0.245 27.325) (dark: oklch(0.704 0.191 22.216)) → bg-destructive',
     );
     const { tokens } = all.structuredContent as { tokens: unknown[] };
-    expect(tokens).toHaveLength(27);
+    expect(tokens).toHaveLength(31);
   });
 
   it('check_ui on code and on a project file', async () => {
@@ -178,7 +178,7 @@ describe('MCP server over the in-memory transport', () => {
     expect((component.contents[0] as { text: string }).text).toContain('# Dialog');
 
     const tokens = await client.readResource({ uri: 'ds://tokens' });
-    expect(JSON.parse((tokens.contents[0] as { text: string }).text)).toHaveLength(27);
+    expect(JSON.parse((tokens.contents[0] as { text: string }).text)).toHaveLength(31);
 
     const completion = await client.complete({
       ref: { type: 'ref/resource', uri: 'ds://components/{name}' },

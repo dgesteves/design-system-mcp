@@ -291,7 +291,30 @@ describe('nearest-token search', () => {
     expect(index.spacingUnitPx).toBe(4);
     expect(index.nearestLength('spacing', 13)?.candidate).toMatchObject({ key: '3', px: 12 });
     expect(index.nearestLength('spacing', 6)?.candidate).toMatchObject({ key: '1.5', px: 6 });
+    expect(index.nearestLength('spacing', 400)?.candidate).toMatchObject({ key: '100', px: 400 });
+    expect(index.nearestLength('spacing', 1)?.candidate).toMatchObject({ key: 'px', px: 1 });
     expect(index.nearestLength('radius', 9)?.candidate.key).toBe('md');
     expect(index.nearestLength('radius', 10)?.candidate.key).toBe('lg');
+    expect(index.nearestLength('radius', 24)?.candidate.key).toBe('3xl');
+  });
+
+  it("adds Tailwind's default radius keys the theme does not redefine, unless it resets them", () => {
+    const radius = (css: string) =>
+      parseCssTokens(css, 'a.css')
+        .tokens.filter((t) => t.category === 'radius')
+        .map((t) => [t.tailwind, t.value, t.origin]);
+    expect(radius('@import "tailwindcss";\n@theme { --radius-sm: 3px; }')).toEqual([
+      ['sm', '3px', undefined],
+      ['xs', '0.125rem', 'tailwind-default'],
+      ['md', '0.375rem', 'tailwind-default'],
+      ['lg', '0.5rem', 'tailwind-default'],
+      ['xl', '0.75rem', 'tailwind-default'],
+      ['2xl', '1rem', 'tailwind-default'],
+      ['3xl', '1.5rem', 'tailwind-default'],
+      ['4xl', '2rem', 'tailwind-default'],
+    ]);
+    expect(
+      radius('@import "tailwindcss";\n@theme { --radius-*: initial; --radius-sm: 3px; }'),
+    ).toEqual([['sm', '3px', undefined]]);
   });
 });

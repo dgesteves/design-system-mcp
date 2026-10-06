@@ -99,11 +99,19 @@ export interface Nearest<T> {
   distance: number;
 }
 
-/** Tailwind's conventional spacing steps, as multiples of `--spacing`. */
-const SPACING_STEPS = [
-  0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24, 28, 32, 36, 40, 44, 48,
-  52, 56, 60, 64, 72, 80, 96,
-];
+/**
+ * `rounded-full` is a static utility rather than a theme variable. 9999px is
+ * the conventional way to write it by hand (and its Tailwind v3 value).
+ */
+const ROUNDED_FULL: Token = {
+  name: 'radius-full',
+  category: 'radius',
+  value: 'calc(infinity * 1px)',
+  tailwind: 'full',
+  usage: ['rounded-full'],
+  origin: 'tailwind-default',
+  source: { file: '', line: 0 },
+};
 
 /** Query helpers over the token list: lookups and nearest-token search. */
 export class TokenIndex {
@@ -114,6 +122,7 @@ export class TokenIndex {
   readonly colorKeys = new Set<string>();
   /** Base unit when spacing follows Tailwind's multiplier model. */
   readonly spacingUnitPx: number | undefined;
+  private readonly spacingUnit: Token | undefined;
   private readonly byVar = new Map<string, Token>();
 
   constructor(readonly tokens: Token[]) {
@@ -140,17 +149,17 @@ export class TokenIndex {
       }
     }
     this.spacingUnitPx = unit;
-    const spacingToken = tokens.find((t) => t.category === 'spacing' && t.tailwind === '');
-    if (unit !== undefined && spacingToken) {
-      for (const step of SPACING_STEPS) {
-        this.spacing.push({ token: spacingToken, px: step * unit, key: String(step) });
-      }
+    if (unit !== undefined) {
+      this.spacingUnit = tokens.find((t) => t.category === 'spacing' && t.tailwind === '');
+    }
+    if (this.radius.some((c) => c.key !== undefined)) {
+      this.radius.push({ token: ROUNDED_FULL, px: 9999, key: 'full' });
     }
   }
 
   has(category: TokenCategory): boolean {
     if (category === 'color') return this.colors.length > 0;
-    if (category === 'spacing') return this.spacing.length > 0;
+    if (category === 'spacing') return this.spacing.length > 0 || this.spacingUnit !== undefined;
     if (category === 'radius') return this.radius.length > 0;
     return this.tokens.some((t) => t.category === category);
   }
@@ -168,11 +177,14 @@ export class TokenIndex {
       .slice(0, limit);
   }
 
+  /** The step closest to the magnitude of `px`; callers keep the sign. */
   nearestLength(category: 'spacing' | 'radius', px: number): Nearest<LengthCandidate> | undefined {
-    const list = category === 'spacing' ? this.spacing : this.radius;
+    const target = Math.abs(px);
+    const list =
+      category === 'spacing' ? [...this.spacing, ...this.spacingSteps(target)] : this.radius;
     let best: Nearest<LengthCandidate> | undefined;
     for (const candidate of list) {
-      const distance = Math.abs(candidate.px - Math.abs(px));
+      const distance = Math.abs(candidate.px - target);
       if (
         !best ||
         distance < best.distance - 1e-9 ||
@@ -183,6 +195,23 @@ export class TokenIndex {
       }
     }
     return best;
+  }
+
+  /**
+   * Tailwind v4 derives `p-<n>` from `--spacing` for any n. Whole and half
+   * steps (`p-13`, `p-4.5`) count as the scale, plus the static `p-px`;
+   * quarter steps are valid but off-grid, like the arbitrary values they replace.
+   */
+  private spacingSteps(px: number): LengthCandidate[] {
+    const unit = this.spacingUnitPx;
+    const token = this.spacingUnit;
+    if (!unit || !token) return [];
+    const lower = Math.floor((px / unit) * 2) / 2;
+    const upper = Math.ceil((px / unit) * 2) / 2;
+    return [
+      { token, px: 1, key: 'px' },
+      ...[...new Set([lower, upper])].map((n) => ({ token, px: n * unit, key: String(n) })),
+    ];
   }
 
   /** px value of a token-like length string, resolving `var()` against the token set. */
