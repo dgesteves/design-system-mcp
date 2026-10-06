@@ -1,0 +1,195 @@
+{
+  "$id": "https://unpkg.com/@dgesteves/design-system-mcp/schema.json",
+  "title": "design-system-mcp config",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "components": {
+      "description": "Globs for component source files, relative to the root.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "exclude": {
+      "description": "Globs to ignore (stories, tests). Replaces the defaults.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tokens": {
+      "description": "Token files: W3C DTCG JSON (*.json) or CSS custom properties (*.css).",
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "File or glob."
+                },
+                "prefix": {
+                  "description": "DTCG only: custom property prefix, e.g. \"acme\" for --acme-color-primary.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "File or glob."
+                  },
+                  "prefix": {
+                    "description": "DTCG only: custom property prefix, e.g. \"acme\" for --acme-color-primary.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "docs": {
+      "description": "Globs for per-component Markdown/MDX docs.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "tsconfig": {
+      "description": "tsconfig used to resolve types and path aliases.",
+      "type": "string"
+    },
+    "importPath": {
+      "description": "Package name components are imported from, e.g. \"@acme/ui\". Default: inferred from tsconfig paths.",
+      "type": "string"
+    },
+    "elements": {
+      "description": "Extra native element → component mappings, e.g. { \"a\": \"Link\" }.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "rules": {
+      "description": "Rule severities and options: \"off\" | \"warn\" | \"error\" | [severity, { allow }].",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "no-hardcoded-color",
+          "no-hardcoded-spacing",
+          "no-hardcoded-radius",
+          "prefer-design-system-component",
+          "no-unknown-component",
+          "no-unknown-prop",
+          "no-unknown-variant",
+          "icon-button-accessible-name"
+        ]
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "off",
+              "warn",
+              "error"
+            ]
+          },
+          {
+            "type": "array",
+            "items": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "warn",
+                  "error"
+                ]
+              }
+            ],
+            "additionalItems": false,
+            "minItems": 1,
+            "maxItems": 1
+          },
+          {
+            "type": "array",
+            "items": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "warn",
+                  "error"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "allow": {
+                    "description": "Values the rule accepts anyway: colors, lengths, element or component names.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}
