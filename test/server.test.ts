@@ -165,6 +165,20 @@ describe('MCP server over the in-memory transport', () => {
     expect(empty.isError).toBe(true);
   });
 
+  it('rejects oversized input before doing any work', async () => {
+    for (const [name, args] of [
+      ['check_ui', { code: 'x'.repeat(1_000_001) }],
+      ['check_ui', { path: 'a/'.repeat(3000) }],
+      ['get_component', { name: 'X'.repeat(257) }],
+      ['search_components', { query: 'button '.repeat(200) }],
+      ['get_tokens', { query: 'x'.repeat(1001) }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toMatch(/Input validation error.*Too big/);
+    }
+  });
+
   it('serves component and token resources, with completion', async () => {
     const { resources } = await client.listResources();
     expect(resources.map((r) => r.uri)).toEqual(

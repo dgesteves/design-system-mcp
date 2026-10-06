@@ -27,6 +27,13 @@ When writing or changing UI in this project:
 
 const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
 
+/** Input limits, so one oversized request cannot stall the server. */
+const MAX_NAME = 256;
+const MAX_QUERY = 1000;
+const MAX_PATH = 4096;
+/** Larger than any hand-written source file; generated bundles are not UI to check. */
+const MAX_CODE = 1_000_000;
+
 const diagnosticSchema = z.object({
   ruleId: z.string(),
   severity: z.enum(['error', 'warning']),
@@ -110,7 +117,11 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       description:
         'Get the full contract of one component: import, props with types and defaults, cva variants and the classes each applies, parts (sub-components), design tokens it uses, usage guidelines and examples from its docs. Call it before using a component. Accepts "Button", "CardHeader" or "Card.Header".',
       inputSchema: {
-        name: z.string().min(1).describe('Component name, e.g. "Button" or "CardHeader".'),
+        name: z
+          .string()
+          .min(1)
+          .max(MAX_NAME)
+          .describe('Component name, e.g. "Button" or "CardHeader".'),
       },
       annotations: READ_ONLY,
     },
@@ -153,7 +164,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       description:
         'Find components by what you want to build, e.g. "confirm a destructive action", "status label", "text field with validation". Ranks names, descriptions, docs, props and variant values with BM25 (local, no API key). Use it when you do not know which component fits.',
       inputSchema: {
-        query: z.string().min(1).describe('What the UI should do, in plain words.'),
+        query: z.string().min(1).max(MAX_QUERY).describe('What the UI should do, in plain words.'),
         limit: z.number().int().min(1).max(20).default(5).describe('Maximum results.'),
       },
       outputSchema: {
@@ -199,6 +210,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         category: z.enum(TOKEN_CATEGORIES).optional().describe('Only tokens of this category.'),
         query: z
           .string()
+          .max(MAX_QUERY)
           .optional()
           .describe('Substring to match in names, usages or descriptions.'),
       },
@@ -233,13 +245,19 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       description:
         'Lint TSX/JSX against the design system. Reports hardcoded colors, spacing and radius (with the nearest token), native elements that have a design-system component, unknown components, props and variant values, and icon-only buttons without an accessible name. Each diagnostic has line/column, a rule id, a message and a suggested fix. Run it on every snippet or file you write and fix all errors. Pass `code` for unsaved code, or `path` for a file in the project.',
       inputSchema: {
-        code: z.string().optional().describe('TSX/JSX source to check.'),
+        code: z
+          .string()
+          .max(MAX_CODE)
+          .optional()
+          .describe(`TSX/JSX source to check (up to ${MAX_CODE.toLocaleString('en')} characters).`),
         path: z
           .string()
+          .max(MAX_PATH)
           .optional()
           .describe('Path of a file to check, relative to the project root.'),
         filename: z
           .string()
+          .max(MAX_PATH)
           .optional()
           .describe('Name to report `code` under; a .jsx extension parses it as JSX.'),
       },
@@ -275,6 +293,12 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
           // A symlink inside the root can point anywhere: compare where both really are.
           const [root, real] = await Promise.all([fs.realpath(ds.root), fs.realpath(absolute)]);
           if (!isInside(root, real)) return outside;
+          if ((await fs.stat(real)).size > MAX_CODE) {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: `${filePath} is too large to check.` }],
+            };
+          }
           source = await fs.readFile(real, 'utf8');
         } catch {
           return { isError: true, content: [{ type: 'text', text: `Cannot read ${filePath}.` }] };
@@ -356,6 +380,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       argsSchema: {
         task: z
           .string()
+          .max(MAX_QUERY * 4)
           .describe('What to build, e.g. "a settings card that lets owners delete the workspace".'),
       },
     },

@@ -53,16 +53,20 @@ export function closest(
   maxRatio = 1 / 3,
 ): string | undefined {
   const needle = input.toLowerCase();
+  const limit = Math.max(1, Math.floor(needle.length * maxRatio));
   let best: string | undefined;
   let bestScore = Infinity;
   for (const candidate of candidates) {
+    // The distance is at least the difference in length, so most candidates for
+    // a long input are ruled out without the quadratic comparison.
+    const gap = Math.abs(candidate.length - needle.length);
+    if (gap > limit || gap >= bestScore) continue;
     const score = editDistance(needle, candidate.toLowerCase());
     if (score < bestScore) {
       best = candidate;
       bestScore = score;
     }
   }
-  const limit = Math.max(1, Math.floor(needle.length * maxRatio));
   return bestScore <= limit ? best : undefined;
 }
 
