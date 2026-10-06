@@ -129,7 +129,8 @@ function reportLiteralColors(
   allow: Set<string>,
 ): void {
   const start = literal.getStart(context.sourceFile) + 1;
-  const text = literal.text;
+  // Match the source as written: offsets into `literal.text` drift after an escape such as `\"`.
+  const text = context.text.slice(start, literal.end - 1);
   const matches = findColorLiterals(text);
   const trimmed = text.trim();
   if (!matches.length && isNamedColor(trimmed)) {
