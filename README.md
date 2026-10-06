@@ -193,7 +193,7 @@ Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offer
 | `importPath` | Inferred from `tsconfig` `paths` (`@/components/ui/button`)                                                                                  |
 | `tsconfig`   | `tsconfig.json` in the root                                                                                                                  |
 
-Tokens can be [W3C DTCG](https://www.designtokens.org/) JSON (`$type` inheritance, aliases, object color and dimension values, `$deprecated`, modes under `$extensions.modes`) or CSS custom properties: `:root` values, `.dark` / `[data-theme]` / `prefers-color-scheme` modes, and Tailwind v4 `@theme` mappings, with `calc()` evaluated. A DTCG file and the CSS generated from it are merged by custom property.
+Tokens can be [W3C DTCG](https://www.designtokens.org/) JSON (`$type` inheritance, aliases, object color and dimension values, `$deprecated`, modes under `$extensions.modes`) or CSS custom properties: `:root` values, `.dark` / `[data-theme]` / `prefers-color-scheme` / `@variant dark` modes, and Tailwind v4 `@theme` mappings, with `calc()` evaluated. A DTCG file and the CSS generated from it are merged by custom property.
 
 Docs are Markdown or MDX, one file per component, matched by `component:` frontmatter, the first heading or the file name. Fenced `tsx`/`jsx` blocks become examples (`title="..."` in the fence names them); JSDoc `@example` tags work too.
 

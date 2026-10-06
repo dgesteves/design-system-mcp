@@ -121,6 +121,95 @@ describe('CSS custom-property tokens', () => {
     expect(themed.find((t) => t.name === 'local')).toBeUndefined();
   });
 
+  it('takes the base theme from any selector list with :root, or from the light mode', () => {
+    const shadcn = parseCssTokens(
+      `:root, .light { --background: oklch(1 0 0); }
+       .dark { --background: oklch(0.1 0 0); }
+       @theme inline { --color-background: var(--background); }`,
+      'a.css',
+    ).tokens;
+    expect(byName(shadcn, 'background')).toMatchObject({
+      category: 'color',
+      value: 'oklch(1 0 0)',
+      modes: { dark: 'oklch(0.1 0 0)' },
+      tailwind: 'background',
+    });
+    expect(new TokenIndex(shadcn).has('color')).toBe(true);
+
+    const attributes = parseCssTokens(
+      `[data-theme="dark"] { --brand: #60a5fa; }
+       [data-theme="light"] { --brand: #3b82f6; }`,
+      'b.css',
+    ).tokens;
+    expect(byName(attributes, 'brand')).toMatchObject({
+      value: '#3b82f6',
+      modes: { dark: '#60a5fa' },
+    });
+
+    const other = parseCssTokens(
+      `html, body { --gap: 12px; }
+       :root:not(.dark) { --ink: #111; }
+       .dark { --ink: #eee; }`,
+      'c.css',
+    ).tokens;
+    expect(byName(other, 'gap').value).toBe('12px');
+    expect(byName(other, 'ink')).toMatchObject({ value: '#111', modes: { dark: '#eee' } });
+  });
+
+  it('ignores responsive and other conditional overrides, and reads @variant dark', () => {
+    const { tokens: themed } = parseCssTokens(
+      `:root {
+         --radius: 0.5rem;
+         --background: oklch(1 0 0);
+         @variant dark { --background: oklch(0.1 0 0); }
+       }
+       @media (min-width: 768px) { :root { --radius: 1rem; } }
+       @supports (color: lab(0% 0 0)) { :root { --background: lab(100% 0 0); } }
+       @layer base { :root { --gap: 4px; } }`,
+      'theme.css',
+    );
+    expect(byName(themed, 'radius')).toMatchObject({ value: '0.5rem' });
+    expect(byName(themed, 'radius').modes).toBeUndefined();
+    expect(byName(themed, 'background')).toMatchObject({
+      value: 'oklch(1 0 0)',
+      modes: { dark: 'oklch(0.1 0 0)' },
+    });
+    expect(byName(themed, 'gap').value).toBe('4px');
+  });
+
+  it('skips theme sub-properties and categorises text shadows as shadows', () => {
+    const { tokens: theme } = parseCssTokens(
+      `@theme {
+         --text-sm: 0.875rem;
+         --text-sm--line-height: 1.25rem;
+         --font-sans--font-feature-settings: "cv11";
+         --text-shadow-sm: 0 1px 2px #0003;
+       }`,
+      't.css',
+    );
+    expect(theme.map((t) => t.name)).toEqual(['text-sm', 'text-shadow-sm']);
+    expect(byName(theme, 'text-shadow-sm')).toMatchObject({
+      category: 'shadow',
+      usage: ['text-shadow-sm', 'var(--text-shadow-sm)'],
+    });
+  });
+
+  it("lets a project's own --spacing win over Tailwind's default from another file", () => {
+    const tailwind = parseCssTokens('@import "tailwindcss";', 'globals.css').tokens;
+    const own = parseCssTokens('@theme { --spacing: 0.5rem; }', 'theme.css').tokens;
+    for (const order of [
+      [...tailwind, ...own],
+      [...own, ...tailwind],
+    ]) {
+      const merged = mergeTokens(order);
+      const spacing = merged.filter((t) => t.name === 'spacing');
+      expect(spacing).toHaveLength(1);
+      expect(spacing[0]?.value).toBe('0.5rem');
+      expect(spacing[0]?.origin).toBeUndefined();
+      expect(new TokenIndex(merged).spacingUnitPx).toBe(8);
+    }
+  });
+
   it('merges a DTCG token and the CSS generated from it', () => {
     const fromJson = parseDtcgTokens(
       '{"color":{"primary":{"$type":"color","$value":"#000","$description":"Ink."}}}',

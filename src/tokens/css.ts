@@ -17,18 +17,18 @@ interface ThemeVar extends RawVar {
 
 /** Tailwind v4 theme namespaces → token category. Longest prefixes first. */
 const NAMESPACES: [prefix: string, category: TokenCategory][] = [
-  ['--color-', 'color'],
-  ['--spacing-', 'spacing'],
-  ['--radius-', 'radius'],
-  ['--font-weight-', 'typography'],
-  ['--font-', 'typography'],
-  ['--text-', 'typography'],
-  ['--tracking-', 'typography'],
-  ['--leading-', 'typography'],
   ['--inset-shadow-', 'shadow'],
+  ['--font-weight-', 'typography'],
   ['--drop-shadow-', 'shadow'],
   ['--text-shadow-', 'shadow'],
+  ['--tracking-', 'typography'],
+  ['--leading-', 'typography'],
+  ['--spacing-', 'spacing'],
+  ['--radius-', 'radius'],
   ['--shadow-', 'shadow'],
+  ['--color-', 'color'],
+  ['--font-', 'typography'],
+  ['--text-', 'typography'],
 ];
 
 const TAILWIND_DEFAULT_SPACING = '0.25rem';
@@ -77,6 +77,21 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
     }
   });
 
+  // Without a plain base theme (`[data-theme="light"]` and `[data-theme="dark"]`
+  // only), the light mode is the base, or the first mode when nothing else is.
+  const fallback = modes.has('light')
+    ? 'light'
+    : base.size === 0
+      ? modes.keys().next().value
+      : undefined;
+  const fallbackVars = fallback === undefined ? undefined : modes.get(fallback);
+  for (const [name, variable] of fallbackVars ?? []) {
+    if (base.has(name)) continue;
+    base.set(name, variable);
+    fallbackVars?.delete(name);
+  }
+  if (fallback !== undefined && !fallbackVars?.size) modes.delete(fallback);
+
   const lookup = (name: string): string | undefined =>
     base.get(name)?.value ?? theme.get(name)?.value;
 
@@ -88,7 +103,7 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
     const isSpacingBase = variable.name === '--spacing';
     if (!namespace && !isSpacingBase) continue;
     // `--text-sm--line-height` and friends are sub-properties of another token.
-    if (/--[a-z-]+--/.test(variable.name.slice(2))) continue;
+    if (/[a-z0-9]--[a-z]/.test(variable.name.slice(2))) continue;
     const category = isSpacingBase ? 'spacing' : (namespace?.[1] ?? 'other');
     const tailwind = isSpacingBase ? '' : variable.name.slice(namespace?.[0].length ?? 0);
     const tailwindNamespace = isSpacingBase ? '--spacing' : (namespace?.[0].slice(0, -1) ?? '');
@@ -241,24 +256,37 @@ function closestAtRule(node: Declaration, name: string): AtRule | undefined {
 
 /**
  * The theme mode a declaration belongs to: `''` for the base theme, `"dark"`
- * for `.dark`, `[data-theme="dark"]` or `prefers-color-scheme: dark`, and
- * undefined for selectors that are not theme scopes (component-level vars).
+ * for `.dark`, `[data-theme="dark"]`, `prefers-color-scheme: dark` or
+ * `@variant dark`, and undefined for selectors that are not theme scopes
+ * (component-level vars) or conditional overrides (`@media (min-width)`,
+ * `@supports`).
  */
 function modeOf(decl: Declaration): string | undefined {
-  let media: string | undefined;
+  let scheme: string | undefined;
   let selector: string | undefined;
   let parent: Container | undefined = decl.parent;
   while (parent) {
-    if (parent.type === 'rule' && selector === undefined) selector = (parent as Rule).selector;
-    if (parent.type === 'atrule' && (parent as AtRule).name === 'media') {
-      media = /prefers-color-scheme:\s*(\w+)/.exec((parent as AtRule).params)?.[1];
+    if (parent.type === 'rule') selector ??= (parent as Rule).selector;
+    else if (parent.type === 'atrule') {
+      const { name, params } = parent as AtRule;
+      if (name === 'media') {
+        const media = /prefers-color-scheme:\s*(\w+)/.exec(params)?.[1];
+        if (!media) return undefined;
+        scheme ??= media;
+      } else if (name === 'variant') {
+        if (params.trim() !== 'dark') return undefined;
+        scheme ??= 'dark';
+      } else if (name !== 'layer') {
+        return undefined;
+      }
     }
     parent = parent.parent as Container | undefined;
   }
   if (selector === undefined) return undefined;
   const parts = selector.split(',').map((s) => s.trim());
-  if (parts.every((s) => s === ':root' || s === 'html' || s === ':host')) {
-    return media === 'dark' ? 'dark' : '';
+  // `:root, .light`, `html, body` and `:root:not(.dark)` all hold the base theme.
+  if (parts.some((s) => /^(?::root|html|:host)(?::not\([^()]*\))?$/.test(s))) {
+    return scheme === 'dark' ? 'dark' : '';
   }
   for (const part of parts) {
     const attr = /\[data-(?:theme|mode|color-scheme)\s*=\s*["']?([\w-]+)["']?\]/.exec(part)?.[1];
