@@ -47,9 +47,16 @@ function expandVars(value: string, resolve: Resolve, depth: number): string | un
   return out + value.slice(last);
 }
 
-/** Tiny recursive-descent evaluator for `+ - * /` over px/rem/em/unitless numbers. */
+const CALC_TOKEN = /-?(?:\d+\.?\d*|\.\d+)(?:px|rem|em)?|[()+\-*/]|calc/gi;
+
+/**
+ * Tiny recursive-descent evaluator for `+ - * /` over px/rem/em/unitless
+ * numbers. Anything else (`%`, `vw`, `ch`, functions) has no fixed px value,
+ * so the whole expression is undefined.
+ */
 function evaluateCalc(expression: string): number | undefined {
-  const tokens = expression.match(/-?(?:\d+\.?\d*|\.\d+)(?:px|rem|em)?|[()+\-*/]|calc/gi);
+  if (expression.replace(CALC_TOKEN, '').trim()) return undefined;
+  const tokens = expression.match(CALC_TOKEN);
   if (!tokens) return undefined;
   let i = 0;
   type Value = { n: number; length: boolean };

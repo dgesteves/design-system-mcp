@@ -53,6 +53,22 @@ describe('W3C DTCG tokens', () => {
     expect(byName(tokens, 'color.legacy-red').deprecated).toBe('Use color.danger.');
   });
 
+  it('takes $type from the end of an alias chain', () => {
+    const { tokens: chain } = parseDtcgTokens(
+      JSON.stringify({
+        base: { blue: { $type: 'color', $value: '#0000ff' } },
+        semantic: { primary: { $value: '{base.blue}' } },
+        button: { bg: { $value: '{semantic.primary}' } },
+      }),
+      'chain.json',
+    );
+    expect(byName(chain, 'button.bg')).toMatchObject({
+      category: 'color',
+      value: '#0000ff',
+      aliasOf: 'semantic.primary',
+    });
+  });
+
   it('reports broken aliases and invalid files without throwing', () => {
     expect(warnings).toEqual(['acme.tokens.json: unresolved alias {color.missing}']);
     const cyclic = parseDtcgTokens(
@@ -247,6 +263,10 @@ describe('units and colors', () => {
     expect(evaluateLength('calc(var(--radius) + (2px * 3))', resolve)).toBe(16);
     expect(evaluateLength('var(--double)', resolve)).toBe(20);
     expect(evaluateLength('var(--missing)', resolve)).toBeUndefined();
+    // Units without a fixed px value make the result unknown, not partial.
+    expect(evaluateLength('calc(1rem + 2vw)', resolve)).toBeUndefined();
+    expect(evaluateLength('calc(100% - 2rem)', resolve)).toBeUndefined();
+    expect(evaluateLength('calc(var(--radius) * 2 + 1ch)', resolve)).toBeUndefined();
   });
 
   it('parses CSS colors into OKLCH and measures perceptual distance', () => {
