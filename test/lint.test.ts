@@ -688,6 +688,23 @@ describe('the engine', () => {
     ).toEqual([]);
   });
 
+  it('stays linear on huge names: typo suggestions skip candidates by length', () => {
+    const name = 'v'.repeat(1_000_000);
+    const started = performance.now();
+    const diagnostics = check(
+      `${IMPORTS}<><Button ${name}="x" variant="${name}" /><${name.replace(/^v/, 'B')} /></>`,
+    );
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(diagnostics.map((d) => [d.ruleId, d.suggestion])).toEqual([
+      ['no-unknown-prop', undefined],
+      ['no-unknown-variant', undefined],
+      ['no-unknown-component', undefined],
+    ]);
+    expect(
+      check(`${IMPORTS}<Button variant="destructiv" sise="sm" />`).map((d) => d.suggestion),
+    ).toEqual(['variant="destructive"', 'size']);
+  });
+
   it('reports syntax errors and parses .jsx as JSX', () => {
     const [d] = ds.check('<div className="x"', 'broken.tsx').diagnostics;
     expect(d?.ruleId).toBe('syntax');

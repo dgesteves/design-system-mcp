@@ -99,7 +99,7 @@ The server sends usage instructions during the MCP handshake. Clients that ignor
 
 ## Tools
 
-All tools are read-only, have zod-validated input schemas, and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
+All tools are read-only, have zod-validated input schemas with size limits (up to 1,000,000 characters of code for `check_ui`), and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
 
 | Tool                | Input                                           | Returns                                                                                                                  |
 | ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
