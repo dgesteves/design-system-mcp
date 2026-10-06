@@ -58,7 +58,9 @@ export const configSchema = z
     exclude: z
       .array(z.string())
       .optional()
-      .describe('Globs to ignore (stories, tests). Replaces the defaults.'),
+      .describe(
+        'Globs to ignore (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.',
+      ),
     tokens: z
       .union([tokenSourceSchema, z.array(tokenSourceSchema)])
       .optional()
