@@ -4,10 +4,16 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { colorDistance, findColorLiterals, parseColor } from '../src/tokens/color.js';
-import { mergeTokens, parseCssTokens, parseDtcgTokens, TokenIndex } from '../src/tokens/index.js';
+import {
+  loadTokens,
+  mergeTokens,
+  parseCssTokens,
+  parseDtcgTokens,
+  TokenIndex,
+} from '../src/tokens/index.js';
 import { evaluateLength, lengthToPx } from '../src/tokens/units.js';
 import type { Token } from '../src/types.js';
-import { ACME_ROOT, DEMO_ROOT } from './helpers.js';
+import { ACME_ROOT, DEMO_ROOT, fixture } from './helpers.js';
 
 const byName = (tokens: Token[], name: string): Token => {
   const token = tokens.find((t) => t.name === name);
@@ -224,6 +230,56 @@ describe('CSS custom-property tokens', () => {
       expect(spacing[0]?.origin).toBeUndefined();
       expect(new TokenIndex(merged).spacingUnitPx).toBe(8);
     }
+  });
+
+  it('reads stylesheets as one theme: a dark-only file is a mode of the base in another', async () => {
+    const root = fixture({
+      'styles/dark.css': `.dark { --background: oklch(0.145 0 0); --primary: oklch(0.922 0 0); }`,
+      'styles/light.css': `@theme inline { --color-background: var(--background); --color-primary: var(--primary); }
+:root { --background: oklch(1 0 0); --primary: oklch(0.205 0 0); }`,
+    });
+    for (const order of [
+      ['dark.css', 'light.css'],
+      ['light.css', 'dark.css'],
+    ]) {
+      const { tokens, warnings } = await loadTokens(
+        root,
+        order.map((f) => ({ file: path.join(root, 'styles', f) })),
+      );
+      expect(warnings).toEqual([]);
+      expect(tokens.map((t) => t.name)).toEqual(['background', 'primary']);
+      expect(byName(tokens, 'background')).toMatchObject({
+        value: 'oklch(1 0 0)',
+        modes: { dark: 'oklch(0.145 0 0)' },
+        tailwind: 'background',
+        source: { file: 'styles/light.css', line: 2 },
+      });
+      expect(byName(tokens, 'primary')).toMatchObject({
+        value: 'oklch(0.205 0 0)',
+        modes: { dark: 'oklch(0.922 0 0)' },
+      });
+    }
+  });
+
+  it('never promotes a dark or component-scoped block to the base theme', () => {
+    const dark = parseCssTokens(
+      `.dark { --background: oklch(0.145 0 0); }
+       @theme { --color-brand: #3366ff; }
+       .dark { --color-brand: #6688ff; }`,
+      'dark.css',
+    );
+    expect(dark.tokens.map((t) => [t.name, t.value, t.modes])).toEqual([
+      ['color-brand', '#3366ff', { dark: '#6688ff' }],
+    ]);
+    expect(dark.warnings).toEqual([
+      'dark.css: found dark-mode variables but no base theme (:root or light), so they are not used as tokens',
+    ]);
+    expect(
+      parseCssTokens(
+        `[data-theme="dim"] { --ink: #222; } .sidebar { --sidebar-width: 16rem; }`,
+        's.css',
+      ),
+    ).toEqual({ tokens: [], warnings: [] });
   });
 
   it('merges a DTCG token and the CSS generated from it', () => {

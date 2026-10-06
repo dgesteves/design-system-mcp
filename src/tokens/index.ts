@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Token, TokenCategory } from '../types.js';
 import { relativePath } from '../util/paths.js';
 import { colorDistance, parseColor, type Oklch } from './color.js';
-import { parseCssTokens } from './css.js';
+import { cssSheetTokens, readCssSheet, type CssSheet } from './css.js';
 import { parseDtcgTokens, type DtcgOptions } from './dtcg.js';
 import { evaluateLength, lengthToPx } from './units.js';
 
@@ -23,6 +23,10 @@ export async function loadTokens(
 ): Promise<{ tokens: Token[]; warnings: string[] }> {
   const warnings: string[] = [];
   const all: Token[] = [];
+  // Stylesheets form one theme (`.dark` in one file, `:root` in another), so
+  // they become tokens together, where the first of them was listed.
+  const sheets: CssSheet[] = [];
+  let sheetsAt: number | undefined;
   for (const source of sources) {
     const rel = relativePath(root, source.file);
     let text: string;
@@ -34,14 +38,23 @@ export async function loadTokens(
     }
     const ext = path.extname(source.file).toLowerCase();
     try {
-      const options: DtcgOptions = source.prefix ? { prefix: source.prefix } : {};
-      const result =
-        ext === '.json' ? parseDtcgTokens(text, rel, options) : parseCssTokens(text, rel);
-      all.push(...result.tokens);
-      warnings.push(...result.warnings);
+      if (ext === '.json') {
+        const options: DtcgOptions = source.prefix ? { prefix: source.prefix } : {};
+        const result = parseDtcgTokens(text, rel, options);
+        all.push(...result.tokens);
+        warnings.push(...result.warnings);
+      } else {
+        sheets.push(readCssSheet(text, rel));
+        sheetsAt ??= all.length;
+      }
     } catch (error) {
       warnings.push(`${rel}: could not parse tokens (${(error as Error).message})`);
     }
+  }
+  if (sheets.length) {
+    const result = cssSheetTokens(sheets);
+    all.splice(sheetsAt ?? all.length, 0, ...result.tokens);
+    warnings.push(...result.warnings);
   }
   return { tokens: mergeTokens(all), warnings };
 }

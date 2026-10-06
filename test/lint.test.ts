@@ -83,6 +83,21 @@ describe('no-hardcoded-color', () => {
     );
   });
 
+  it('takes the base theme from whichever stylesheet holds it, never the dark one', async () => {
+    const system = await load(
+      fixture({
+        'design-system-mcp.config.json': '{ "tokens": ["styles/*.css"] }',
+        'styles/dark.css': `.dark { --background: oklch(0.145 0 0); --primary: oklch(0.922 0 0); }`,
+        'styles/light.css': `@theme inline { --color-background: var(--background); --color-primary: var(--primary); }
+:root { --background: oklch(1 0 0); --primary: oklch(0.205 0 0); }`,
+      }),
+    );
+    const code = `<div className="bg-[#ffffff] text-[#0a0a0a]" />`;
+    const diagnostics = check(code, rule, system);
+    expect(diagnostics.map((d) => d.suggestion)).toEqual(['bg-background', 'text-primary']);
+    expect(applyFixes(code, diagnostics)).toBe(`<div className="bg-background text-primary" />`);
+  });
+
   it('declines to auto-fix when no token is close, and points at variants', () => {
     const [d] = check(`<div className="bg-[#2563eb]" />`, rule);
     expect(d?.message).toContain('No close token');
