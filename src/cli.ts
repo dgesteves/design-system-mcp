@@ -199,7 +199,7 @@ async function inspect(
   }
   const lines: string[] = [
     `root     ${model.root}`,
-    `config   ${config.configFile ? path.relative(io.cwd, config.configFile) || config.configFile : '(defaults)'}`,
+    `config   ${config.configFile ? displayPath(io.cwd, config.configFile) : '(defaults)'}`,
     `files    ${plural(model.stats.files.components, 'component file')}, ${plural(model.stats.files.tokens, 'token file')}, ${plural(model.stats.files.docs, 'doc')}`,
     `time     ${model.stats.durationMs}ms${model.stats.fromCache ? ' (cache)' : ''}`,
     '',
@@ -227,4 +227,10 @@ async function inspect(
   }
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+/** Relative to cwd when the file is below it, absolute otherwise. */
+function displayPath(cwd: string, file: string): string {
+  const rel = path.relative(cwd, file);
+  return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : file;
 }

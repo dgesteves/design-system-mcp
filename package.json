@@ -61,7 +61,7 @@
     "smoke": "node scripts/smoke.mjs",
     "assets": "node scripts/build-assets.mjs",
     "palette": "node scripts/build-palette.mjs",
-    "demo:check": "node dist/cli.js check --root examples/shadcn-demo \"app/**/*.tsx\"",
+    "demo:check": "cd examples/shadcn-demo && node ../../dist/cli.js check \"app/**/*.tsx\"",
     "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
     "changeset": "changeset",
     "release": "pnpm build && changeset publish"

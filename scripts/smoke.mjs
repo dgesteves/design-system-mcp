@@ -11,7 +11,13 @@ const root = path.resolve(import.meta.dirname, '..');
 const verbose = process.argv.includes('--verbose');
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(root, 'dist/cli.js'), '--root', path.join(root, 'examples/shadcn-demo'), '--no-watch', '--no-cache'],
+  args: [
+    path.join(root, 'dist/cli.js'),
+    '--root',
+    path.join(root, 'examples/shadcn-demo'),
+    '--no-watch',
+    '--no-cache',
+  ],
   stderr: verbose ? 'inherit' : 'pipe',
 });
 const client = new Client({ name: 'smoke', version: '1.0.0' });
@@ -28,10 +34,16 @@ const call = async (name, args = {}) => {
   return result;
 };
 
-const { serverInfo } = { serverInfo: client.getServerVersion() };
+const serverInfo = client.getServerVersion();
 console.log(`connected to ${serverInfo.name}@${serverInfo.version}`);
 const { tools } = await client.listTools();
-assert.deepEqual(tools.map((t) => t.name).sort(), ['check_ui', 'get_component', 'get_tokens', 'list_components', 'search_components']);
+assert.deepEqual(tools.map((t) => t.name).sort(), [
+  'check_ui',
+  'get_component',
+  'get_tokens',
+  'list_components',
+  'search_components',
+]);
 
 const list = await call('list_components');
 assert.equal(list.structuredContent.components.length, 5);
@@ -56,7 +68,10 @@ assert.equal(snippet.structuredContent.ok, true);
 
 const resource = await client.readResource({ uri: 'ds://components/Badge' });
 assert.match(resource.contents[0].text, /^# Badge/);
-const prompt = await client.getPrompt({ name: 'build-with-design-system', arguments: { task: 'a settings card' } });
+const prompt = await client.getPrompt({
+  name: 'build-with-design-system',
+  arguments: { task: 'a settings card' },
+});
 assert.match(prompt.messages[0].content.text, /check_ui/);
 
 await client.close();
