@@ -48,11 +48,15 @@ export type Resolution =
   /** Imported from elsewhere or declared locally: not our business. */
   | { kind: 'external' };
 
-/** Resolves a JSX tag to a design-system component, following imports and aliases. */
+/**
+ * Resolves a JSX tag to a design-system component, following imports and
+ * aliases. `file` is the checked file relative to the root, for relative imports.
+ */
 export function resolveElement(
   element: JsxNode,
   analysis: Analysis,
   target: LintTarget,
+  file: string,
 ): Resolution {
   const tag = element.tag;
   if (/^[a-z]/.test(tag) && !tag.includes('.')) return { kind: 'intrinsic', tag };
@@ -61,7 +65,7 @@ export function resolveElement(
 
   // `UI.Button` with `import * as UI from "@/components/ui"`.
   if (binding?.imported === '*' && rest.length) {
-    if (!target.isDesignSystemImport(binding.source)) return { kind: 'external' };
+    if (!target.isDesignSystemImport(binding.source, file)) return { kind: 'external' };
     const name = rest.join('.');
     const component = target.components.get(name);
     return component
@@ -71,8 +75,11 @@ export function resolveElement(
 
   let owner: ComponentInfo | undefined;
   if (binding) {
-    if (!target.isDesignSystemImport(binding.source)) return { kind: 'external' };
-    const imported = binding.imported === 'default' ? head : binding.imported;
+    if (!target.isDesignSystemImport(binding.source, file)) return { kind: 'external' };
+    const imported =
+      binding.imported === 'default'
+        ? (target.defaultExport(binding.source, file)?.name ?? head)
+        : binding.imported;
     owner = target.components.get(imported);
     if (!owner) return { kind: 'missing-export', name: imported, source: binding.source };
   } else if (analysis.declared.has(head)) {

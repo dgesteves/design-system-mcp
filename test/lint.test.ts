@@ -3,7 +3,8 @@ import path from 'node:path';
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { DesignSystem } from '../src/design-system.js';
+import { loadConfig } from '../src/config.js';
+import { loadDesignSystem, type DesignSystem } from '../src/design-system.js';
 import { applyFixes } from '../src/lint/index.js';
 import type { Diagnostic } from '../src/types.js';
 import { ACME_ROOT, DEMO_ROOT, loadOnce, withRules } from './helpers.js';
@@ -249,6 +250,48 @@ export default () => <Link href="/"><Trash2 /><Local /></Link>`;
       check(`import * as UI from "@/components/ui/card"\n<UI.Card><UI.Cardd /></UI.Card>`, rule)[0]
         ?.message,
     ).toContain('"Cardd" is not a design-system component');
+  });
+});
+
+describe('design-system imports', () => {
+  const rule = 'no-unknown-component';
+
+  it('resolves relative imports against the checked file', () => {
+    const code = `import AcmeLogo from "./ui/acme-logo"
+import { LatestInvoices } from "../lib/ui/invoices"
+import { Button } from "../components/ui/button"
+import { Stack } from "../components/ui/stack"
+export default () => <main><AcmeLogo /><LatestInvoices /><Button variant="danger" /><Stack /></main>`;
+    const diagnostics = ds.check(code, 'app/page.tsx').diagnostics;
+    expect(diagnostics.map((d) => [d.ruleId, d.source])).toEqual([
+      ['no-unknown-variant', '"danger"'],
+      [rule, 'Stack'],
+    ]);
+    expect(
+      check(`import { Button } from "./components/ui/button"\n<Button size="xl" />`),
+    ).toHaveLength(1);
+  });
+
+  it('treats a configured package name as one module, not a scope', async () => {
+    const config = await loadConfig({ root: ACME_ROOT });
+    const acme = await loadDesignSystem({ ...config, importPath: '@acme/ui' }, { cache: false });
+    const code = `import { Button } from "@acme/ui"
+import { Card } from "@acme/ui/card"
+import { TrashIcon } from "@acme/icons"
+import { Buton } from "@acme/ui"
+export default () => <Card><Button aria-label="Delete"><TrashIcon /></Button><Buton /></Card>`;
+    expect(acme.check(code).diagnostics.map((d) => [d.ruleId, d.suggestion])).toEqual([
+      [rule, '<Button>'],
+    ]);
+  });
+
+  it('resolves a default import under any local name', async () => {
+    const acme = await loadOnce(ACME_ROOT);
+    const code = `import Field from "@acme/text-field"\n<Field label="Name" />`;
+    expect(acme.check(code).diagnostics).toEqual([]);
+    expect(
+      acme.check(`import Field from "@acme/text-field"\n<Field labl="Name" />`).diagnostics[0],
+    ).toMatchObject({ ruleId: 'no-unknown-prop', suggestion: 'label' });
   });
 });
 
