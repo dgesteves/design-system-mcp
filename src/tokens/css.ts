@@ -7,12 +7,24 @@ import { usageFor } from './usage.js';
 interface RawVar {
   name: string;
   value: string;
+  file: string;
   line: number;
   comment?: string;
 }
 
 interface ThemeVar extends RawVar {
   inline: boolean;
+}
+
+/** What one or more stylesheets declare, before it becomes tokens. */
+export interface CssSheet {
+  base: Map<string, RawVar>;
+  modes: Map<string, Map<string, RawVar>>;
+  theme: Map<string, ThemeVar>;
+  /** Namespaces cleared with `--radius-*: initial`; `*` for `--*: initial`. */
+  resets: Set<string>;
+  /** The first file that imports Tailwind, and so brings its default theme. */
+  tailwind?: string | undefined;
 }
 
 /** Tailwind v4 theme namespaces → token category. Longest prefixes first. */
@@ -53,23 +65,31 @@ const TAILWIND_DEFAULT_RADIUS: Record<string, string> = {
  * - `@theme inline { --color-primary: var(--primary) }` exposes them to Tailwind.
  */
 export function parseCssTokens(css: string, file: string): { tokens: Token[]; warnings: string[] } {
+  return cssSheetTokens([readCssSheet(css, file)]);
+}
+
+/** Collects the custom properties of one stylesheet. Throws on invalid CSS. */
+export function readCssSheet(css: string, file: string): CssSheet {
   const root = postcss.parse(css, { from: file });
-  const base = new Map<string, RawVar>();
-  const modes = new Map<string, Map<string, RawVar>>();
-  const theme = new Map<string, ThemeVar>();
-  /** Namespaces cleared with `--radius-*: initial`; `*` for `--*: initial`. */
-  const resets = new Set<string>();
+  const sheet: CssSheet = {
+    base: new Map(),
+    modes: new Map(),
+    theme: new Map(),
+    resets: new Set(),
+  };
   const importsTailwind = root.nodes.some(
     (node) =>
       node.type === 'atrule' &&
       node.name === 'import' &&
       /["']tailwindcss(?:\/theme(?:\.css)?)?["']/.test(node.params),
   );
+  if (importsTailwind) sheet.tailwind = file;
 
   root.walkDecls(/^--/, (decl) => {
     const raw: RawVar = {
       name: decl.prop,
       value: decl.value.trim(),
+      file,
       line: decl.source?.start?.line ?? 1,
       ...withComment(decl),
     };
@@ -78,36 +98,56 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
       // `--color-*: initial` style resets clear Tailwind's defaults; they are not tokens.
       if (raw.value === 'initial' || raw.name.includes('*')) {
         const reset = /^--(?:([\w-]+)-)?\*$/.exec(raw.name);
-        if (reset) resets.add(reset[1] ?? '*');
+        if (reset) sheet.resets.add(reset[1] ?? '*');
         return;
       }
-      theme.set(raw.name, { ...raw, inline: /\binline\b/.test(themeRule.params) });
+      sheet.theme.set(raw.name, { ...raw, inline: /\binline\b/.test(themeRule.params) });
       return;
     }
     const mode = modeOf(decl);
     if (mode === undefined) return;
-    if (mode === '') base.set(raw.name, raw);
+    if (mode === '') sheet.base.set(raw.name, raw);
     else {
-      const map = modes.get(mode) ?? new Map<string, RawVar>();
+      const map = sheet.modes.get(mode) ?? new Map<string, RawVar>();
       map.set(raw.name, raw);
-      modes.set(mode, map);
+      sheet.modes.set(mode, map);
     }
   });
+  return sheet;
+}
+
+/**
+ * Turns stylesheets into tokens, reading them as one theme: a `.dark` block
+ * in one file is a mode of the `:root` values in another, and a namespace
+ * reset applies to Tailwind's defaults whichever file imports them. When two
+ * files declare the same variable, the first one wins.
+ */
+export function cssSheetTokens(sheets: readonly CssSheet[]): {
+  tokens: Token[];
+  warnings: string[];
+} {
+  const { base, modes, theme, resets, tailwind } = combine(sheets);
+  const warnings: string[] = [];
 
   // Without a plain base theme (`[data-theme="light"]` and `[data-theme="dark"]`
-  // only), the light mode is the base, or the first mode when nothing else is.
-  const fallback = modes.has('light')
-    ? 'light'
-    : base.size === 0
-      ? modes.keys().next().value
-      : undefined;
-  const fallbackVars = fallback === undefined ? undefined : modes.get(fallback);
-  for (const [name, variable] of fallbackVars ?? []) {
+  // only), the light mode is the base. No other mode stands in for it: a
+  // `.dark` block whose light values are missing would invert every fix, and
+  // `.sidebar { --sidebar-width: ... }` is a component scope, not a theme.
+  const light = modes.get('light');
+  for (const [name, variable] of light ?? []) {
     if (base.has(name)) continue;
     base.set(name, variable);
-    fallbackVars?.delete(name);
+    light?.delete(name);
   }
-  if (fallback !== undefined && !fallbackVars?.size) modes.delete(fallback);
+  if (light && !light.size) modes.delete('light');
+  // Dark values of `@theme` variables are modes of those; the rest have nothing to be a mode of.
+  const orphans = [...(modes.get('dark')?.values() ?? [])].filter((v) => !theme.has(v.name));
+  if (base.size === 0 && orphans.length) {
+    const files = [...new Set(orphans.map((v) => v.file))].join(', ');
+    warnings.push(
+      `${files}: found dark-mode variables but no base theme (:root or light), so they are not used as tokens`,
+    );
+  }
 
   const lookup = (name: string): string | undefined =>
     base.get(name)?.value ?? theme.get(name)?.value;
@@ -122,7 +162,7 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
     // `--text-sm--line-height` and friends are sub-properties of another token.
     if (/[a-z0-9]--[a-z]/.test(variable.name.slice(2))) continue;
     const category = isSpacingBase ? 'spacing' : (namespace?.[1] ?? 'other');
-    const tailwind = isSpacingBase ? '' : variable.name.slice(namespace?.[0].length ?? 0);
+    const tailwindKey = isSpacingBase ? '' : variable.name.slice(namespace?.[0].length ?? 0);
     const tailwindNamespace = isSpacingBase ? '--spacing' : (namespace?.[0].slice(0, -1) ?? '');
 
     const alias = /^var\(\s*(--[\w-]+)\s*\)$/.exec(variable.value)?.[1];
@@ -136,11 +176,11 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
           value: resolveValue(target.value, lookup),
           modes: modeValues(alias, modes, lookup),
           cssVar: alias,
-          tailwind,
+          tailwind: tailwindKey,
           tailwindNamespace,
           description: target.comment ?? variable.comment,
           line: target.line,
-          file,
+          file: target.file,
         }),
       );
       continue;
@@ -153,11 +193,11 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
         modes: modeValues(variable.name, modes, lookup),
         // Inline theme variables are compiled into utilities and never emitted as custom properties.
         cssVar: variable.inline ? undefined : variable.name,
-        tailwind,
+        tailwind: tailwindKey,
         tailwindNamespace,
         description: variable.comment,
         line: variable.line,
-        file,
+        file: variable.file,
       }),
     );
   }
@@ -173,12 +213,13 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
         cssVar: variable.name,
         description: variable.comment,
         line: variable.line,
-        file,
+        file: variable.file,
       }),
     );
   }
 
-  if (importsTailwind && !resets.has('*') && !theme.has('--spacing') && !base.has('--spacing')) {
+  const cleared = (namespace: string) => resets.has('*') || resets.has(namespace);
+  if (tailwind && !resets.has('*') && !theme.has('--spacing') && !base.has('--spacing')) {
     tokens.push({
       ...finalize({
         name: 'spacing',
@@ -189,12 +230,12 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
         tailwindNamespace: '--spacing',
         description: 'Tailwind spacing unit: p-4 = 4 × 0.25rem = 1rem.',
         line: 1,
-        file,
+        file: tailwind,
       }),
       origin: 'tailwind-default',
     });
   }
-  if (importsTailwind && !resets.has('*') && !resets.has('radius')) {
+  if (tailwind && !cleared('radius')) {
     for (const [key, value] of Object.entries(TAILWIND_DEFAULT_RADIUS)) {
       if (theme.has(`--radius-${key}`)) continue;
       tokens.push({
@@ -207,14 +248,34 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
           tailwindNamespace: '--radius',
           description: "Tailwind's default radius scale.",
           line: 1,
-          file,
+          file: tailwind,
         }),
         origin: 'tailwind-default',
       });
     }
   }
 
-  return { tokens, warnings: [] };
+  return { tokens, warnings };
+}
+
+/** One sheet from many (a copy: promoting the light mode edits it); the first declaration of a variable wins. */
+function combine(sheets: readonly CssSheet[]): CssSheet {
+  const out: CssSheet = { base: new Map(), modes: new Map(), theme: new Map(), resets: new Set() };
+  const add = <V>(into: Map<string, V>, from: Map<string, V>) => {
+    for (const [name, value] of from) if (!into.has(name)) into.set(name, value);
+  };
+  for (const sheet of sheets) {
+    add(out.base, sheet.base);
+    add(out.theme, sheet.theme);
+    for (const [mode, vars] of sheet.modes) {
+      const map = out.modes.get(mode) ?? new Map<string, RawVar>();
+      add(map, vars);
+      out.modes.set(mode, map);
+    }
+    for (const reset of sheet.resets) out.resets.add(reset);
+    out.tailwind ??= sheet.tailwind;
+  }
+  return out;
 }
 
 function finalize(input: {
