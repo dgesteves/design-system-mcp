@@ -296,13 +296,16 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           const fixed = withBase({ ...utility, negative }, replacement.cls);
           const message = replacement.exact
             ? `\`${token.value}\` is ${formatPx(px)}, which is on the ${spec.category} scale: use \`${fixed}\`.`
-            : `Hardcoded ${spec.category} \`${token.value}\` (${formatPx(px)}) is off the scale. Nearest: \`${fixed}\` (${formatPx(replacement.px)}).`;
+            : replacement.pill
+              ? `\`${token.value}\` (${formatPx(px)}) is far above the radius scale, so it reads as fully rounded: use \`${fixed}\`.`
+              : `Hardcoded ${spec.category} \`${token.value}\` (${formatPx(px)}) is off the scale. Nearest: \`${fixed}\` (${formatPx(replacement.px)})` +
+                (replacement.far ? ', too far off to replace automatically.' : '.');
           context.report({
             start: token.start,
             end: token.end,
             message,
             suggestion: fixed,
-            fix: [{ range: [token.start, token.end], text: fixed }],
+            fix: replacement.far ? undefined : [{ range: [token.start, token.end], text: fixed }],
           });
         }
       }
@@ -335,10 +338,11 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
             replacement?.cssVar &&
             (negative ? `calc(${replacement.cssVar} * -1)` : replacement.cssVar);
           const shown = ts.isNumericLiteral(init) ? `${name}: ${raw}` : `${name}: "${raw}"`;
+          const size = replacement?.pill ? 'fully rounded' : formatPx(replacement?.px ?? 0);
           const advice = replacement
             ? replacement.tailwind
-              ? `Use \`${cls}\` (${formatPx(replacement.px)}) in className instead of an inline style.`
-              : `Use \`${cssVar ?? cls}\` (${formatPx(replacement.px)}).`
+              ? `Use \`${cls}\` (${size}) in className instead of an inline style.`
+              : `Use \`${cssVar ?? cls}\` (${size}).`
             : `Use ${spec.category} tokens instead.`;
           context.report({
             start: init.getStart(context.sourceFile),
@@ -356,6 +360,10 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
   };
 }
 
+/** The nearest step is "far" when it is off by more than half the value and more than 4px. */
+const FAR_RATIO = 0.5;
+const FAR_PX = 4;
+
 function lengthReplacement(
   context: RuleContext,
   category: 'spacing' | 'radius',
@@ -366,6 +374,10 @@ function lengthReplacement(
       cls: string;
       px: number;
       exact: boolean;
+      /** A fully rounded radius (`rounded-full`) for a value far above the scale. */
+      pill: boolean;
+      /** The nearest step is too far off to swap in without changing the design. */
+      far: boolean;
       tailwind: boolean;
       cssVar?: string | undefined;
       token: Token;
@@ -375,25 +387,18 @@ function lengthReplacement(
   if (!nearest) return undefined;
   const { candidate } = nearest;
   const exact = nearest.distance < 0.01;
+  const pill = nearest.pill === true;
+  const far = !exact && !pill && nearest.distance > Math.max(FAR_PX, Math.abs(px) * FAR_RATIO);
   const cssVar = candidate.token.cssVar ? `var(${candidate.token.cssVar})` : undefined;
+  const common = { px: candidate.px, exact, pill, far, cssVar, token: candidate.token };
   if (candidate.key !== undefined) {
     const key = candidate.key === 'DEFAULT' ? '' : `-${candidate.key}`;
-    return {
-      cls: `${prefix}${key}`,
-      px: candidate.px,
-      exact,
-      tailwind: true,
-      cssVar,
-      token: candidate.token,
-    };
+    return { ...common, cls: `${prefix}${key}`, tailwind: true };
   }
   return {
+    ...common,
     cls: cssVar ? `${prefix}-[${cssVar}]` : `${prefix}-[${formatPx(candidate.px)}]`,
-    px: candidate.px,
-    exact,
     tailwind: false,
-    cssVar,
-    token: candidate.token,
   };
 }
 
