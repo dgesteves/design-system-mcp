@@ -507,6 +507,23 @@ describe('no-unknown-component', () => {
     expect(unknown).toMatchObject({ severity: 'warning', source: 'Stack' });
   });
 
+  it('only auto-renames a close name to a component that is in scope', () => {
+    // Without imports, <Cards> may be an app component, not a typo of <Card>.
+    const [fragment] = check(`<Cards items={items} />`, rule);
+    expect(fragment).toMatchObject({ severity: 'error', suggestion: '<Card>' });
+    expect(fragment?.message).toBe(
+      'Unknown component <Cards>. Did you mean <Card> (import { Card } from "@/components/ui/card")?',
+    );
+    expect(fragment?.fix).toBeUndefined();
+    const code = `${IMPORTS}<Cards><Buton>x</Buton></Cards>`;
+    const diagnostics = check(code, rule);
+    expect(diagnostics.map((d) => [d.message, Boolean(d.fix)])).toEqual([
+      ['Unknown component <Cards>. Did you mean <Card>?', true],
+      ['Unknown component <Buton>. Did you mean <Button>?', true],
+    ]);
+    expect(applyFixes(code, diagnostics)).toBe(`${IMPORTS}<Card><Button>x</Button></Card>`);
+  });
+
   it('ignores components from other packages and local declarations', () => {
     const code = `import { Trash2 } from "lucide-react"
 import Link from "next/link"

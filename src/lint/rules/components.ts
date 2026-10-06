@@ -125,12 +125,21 @@ export const noUnknownComponent: Rule = {
 
       if (resolution.kind === 'unresolved') {
         const guess = closest(resolution.name, target.names());
-        if (guess) {
+        const component = guess ? target.components.get(guess) : undefined;
+        if (guess && component) {
+          // A close name is only a safe rename when it is in scope: `<Cards>` in a
+          // fragment without imports may be an app component the agent has not
+          // imported yet, not a typo of `<Card>`.
+          const binding = context.analysis.imports.get(guess.split('.')[0] ?? guess);
+          const inScope =
+            binding !== undefined && target.isDesignSystemImport(binding.source, context.file);
           context.report({
             ...range,
-            message: `Unknown component <${resolution.name}>. Did you mean <${guess}>?`,
+            message: inScope
+              ? `Unknown component <${resolution.name}>. Did you mean <${guess}>?`
+              : `Unknown component <${resolution.name}>. Did you mean <${guess}> (${importLine(component)})?`,
             suggestion: `<${guess}>`,
-            fix: renameTag(context, element, guess),
+            fix: inScope ? renameTag(context, element, guess) : undefined,
           });
         } else if (context.analysis.imports.size > 0) {
           // Only for whole modules: fragments without imports routinely use
