@@ -33,6 +33,35 @@ describe('component docs', () => {
     expect(doc.sections[1]?.body).toContain('npm install @acme/ui');
   });
 
+  it('closes a fence only on a bare fence line, and keeps nested fences intact', () => {
+    const doc = parseDoc(
+      [
+        '# Button',
+        '',
+        '## Usage',
+        '',
+        '```md',
+        'Wrap it:',
+        '```tsx',
+        '<Button />',
+        '```',
+        '',
+        'After.',
+        '',
+        '````md',
+        '```tsx',
+        '<Card />',
+        '```',
+        '````',
+      ].join('\n'),
+      'button.md',
+    );
+    expect(doc.examples).toEqual([]);
+    expect(doc.sections[0]?.body).toBe(
+      '```md\nWrap it:\n```tsx\n<Button />\n```\n\nAfter.\n\n````md\n```tsx\n<Card />\n```\n````',
+    );
+  });
+
   it('drops MDX imports and exports and skips JSX when picking the description', () => {
     const doc = parseDoc(read('docs/alert.mdx'), 'docs/alert.mdx');
     expect(doc.description).toBe('Shows a short, important message, such as a failed save.');
