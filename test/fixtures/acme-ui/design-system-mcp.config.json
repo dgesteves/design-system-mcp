@@ -1,0 +1,9 @@
+{
+  "components": ["components/**/*.tsx"],
+  "tokens": [{ "path": "tokens/*.tokens.json", "prefix": "acme" }],
+  "docs": ["docs/**/*.{md,mdx}"],
+  "rules": {
+    "no-hardcoded-spacing": "error",
+    "no-hardcoded-radius": ["warn", { "allow": ["9999px"] }]
+  }
+}
