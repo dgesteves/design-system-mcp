@@ -40,9 +40,9 @@ export function isNamedColor(value: string): boolean {
   return Object.hasOwn(colorsNamed, value.toLowerCase());
 }
 
-/** Color literals inside arbitrary CSS text: hex and color functions. */
+/** Color literals inside arbitrary CSS text: hex (not `url(#id)` references) and color functions. */
 const COLOR_LITERAL =
-  /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9a-zA-Z_-])|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*(?:\([^()]*\)[^()]*)*\)/g;
+  /(?<!url\(\s*["']?)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9a-zA-Z_-])|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*(?:\([^()]*\)[^()]*)*\)/g;
 
 export interface ColorMatch {
   text: string;

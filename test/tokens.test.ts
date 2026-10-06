@@ -265,6 +265,9 @@ describe('units and colors', () => {
       findColorLiterals('1px solid #ccc, 0 0 0 2px rgb(0 0 0 / 0.5)').map((m) => m.text),
     ).toEqual(['#ccc', 'rgb(0 0 0 / 0.5)']);
     expect(findColorLiterals('#section and #add-item').map((m) => m.text)).toEqual([]);
+    expect(
+      findColorLiterals(`url(#bad) url( "#fade" ) url('#c0ffee') #ccc`).map((m) => m.text),
+    ).toEqual(['#ccc']);
   });
 });
 
