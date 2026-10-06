@@ -41,7 +41,12 @@ export interface CheckOptions {
  */
 export function checkSource(code: string, target: LintTarget, options: CheckOptions): CheckResult {
   const file = options.filename ?? 'snippet.tsx';
-  const kind = /\.jsx?$/.test(file) ? ts.ScriptKind.JSX : ts.ScriptKind.TSX;
+  // `.ts` files must not be parsed as TSX: `<T>(x: T) => x` would read as a JSX tag.
+  const kind = /\.[cm]?jsx?$/.test(file)
+    ? ts.ScriptKind.JSX
+    : /\.[cm]?ts$/.test(file)
+      ? ts.ScriptKind.TS
+      : ts.ScriptKind.TSX;
   const sourceFile = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, kind);
   const analysis = analyze(sourceFile);
   const diagnostics: Diagnostic[] = [];
