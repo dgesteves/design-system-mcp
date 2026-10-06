@@ -53,18 +53,21 @@ export const preferDesignSystemComponent: Rule = {
       }
       const component = context.target.elements.get(key);
       if (!component) continue;
-      // Renaming the tag is only safe when the component renders that element
-      // and so takes its attributes; a match by name (Radix `Dialog` for
-      // `<dialog>`, `Select` for `<select>`) needs a rewrite.
-      const dropIn = component.element === resolution.tag;
+      // Renaming the tag is only safe when the component takes the element's
+      // attributes; a match by name (Radix `Dialog` for `<dialog>`, `Select`
+      // for `<select>`) needs a rewrite.
+      const dropIn = context.target.isDropIn(component, key);
       const styled = Boolean(findAttribute(element, 'className'));
+      const rendered = component.element;
       context.report({
         ...tagRange(context, element),
         message:
           `Native <${resolution.tag}> where the design system has <${component.name}>. ` +
           `Use <${component.name}> (${importLine(component)})` +
           (!dropIn
-            ? `; it does not render a <${resolution.tag}>, so check its props and parts with get_component.`
+            ? rendered && rendered !== resolution.tag
+              ? `; it renders a <${rendered}>, not a <${resolution.tag}>, so check its props and parts with get_component.`
+              : `; it may not take the attributes of a <${resolution.tag}>, so check its props and parts with get_component.`
             : styled
               ? '; its variants replace the custom classes.'
               : '.'),

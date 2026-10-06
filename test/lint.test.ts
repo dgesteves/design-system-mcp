@@ -7,7 +7,7 @@ import { loadConfig } from '../src/config.js';
 import { loadDesignSystem, type DesignSystem } from '../src/design-system.js';
 import { applyFixes } from '../src/lint/index.js';
 import type { Diagnostic } from '../src/types.js';
-import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, withRules } from './helpers.js';
+import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, TSCONFIG, withRules } from './helpers.js';
 
 let ds: DesignSystem;
 beforeAll(async () => {
@@ -289,13 +289,84 @@ describe('prefer-design-system-component', () => {
     );
   });
 
-  it('maps by element name too, without a fix when the component does not render it', () => {
+  it('maps by element name too, without a fix when the component may not take its attributes', () => {
     // The demo's Dialog wraps the Radix root, not a <dialog>: renaming the tag would break the code.
     const [dialog] = check(`<dialog open><p>Hi</p></dialog>`, rule);
     expect(dialog?.suggestion).toBe('<Dialog>');
-    expect(dialog?.message).toContain('it does not render a <dialog>');
+    expect(dialog?.message).toContain(
+      'it may not take the attributes of a <dialog>, so check its props and parts with get_component.',
+    );
     expect(dialog?.fix).toBeUndefined();
     expect(check(`<input type="email" />`, rule)[0]?.fix).toHaveLength(1);
+  });
+
+  it('renames to components that take the element’s attributes, whatever they render', async () => {
+    const system = await load(
+      fixture(
+        {
+          'tsconfig.json': TSCONFIG,
+          'node_modules/label-primitive/package.json':
+            '{ "name": "label-primitive", "types": "index.d.ts" }',
+          'node_modules/label-primitive/index.d.ts': `import * as React from "react";
+export declare const Root: React.ForwardRefExoticComponent<React.LabelHTMLAttributes<HTMLLabelElement> & React.RefAttributes<HTMLLabelElement>>;`,
+          'components/ui/label.tsx': `import * as React from "react"
+import * as LabelPrimitive from "label-primitive"
+export function Label(props: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  return <LabelPrimitive.Root data-slot="label" {...props} />
+}`,
+          'components/ui/table.tsx': `import * as React from "react"
+function BaseTable(props: React.ComponentProps<"table">) {
+  return <table {...props} />
+}
+export function Table(props: React.ComponentProps<typeof BaseTable>) {
+  return <div className="overflow-x-auto"><BaseTable {...props} /></div>
+}`,
+          'components/ui/select.tsx': `import * as React from "react"
+export function Select(props: React.ComponentProps<"button">) {
+  return <button {...props} />
+}`,
+        },
+        { nodeModules: true },
+      ),
+    );
+    expect(system.getComponent('Label')?.element).toBeUndefined();
+    expect(system.getComponent('Table')?.element).toBe('div');
+    const code = `<form><label htmlFor="email">Email</label><table><tbody /></table></form>`;
+    const diagnostics = check(code, rule, system);
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'Native <label> where the design system has <Label>. Use <Label> (import { Label } from "@/components/ui/label").',
+      'Native <table> where the design system has <Table>. Use <Table> (import { Table } from "@/components/ui/table").',
+    ]);
+    expect(applyFixes(code, diagnostics)).toBe(
+      `<form><Label htmlFor="email">Email</Label><Table><tbody /></Table></form>`,
+    );
+    const [select] = check(`<select name="x" />`, rule, system);
+    expect(select?.message).toContain(
+      'it renders a <button>, not a <select>, so check its props and parts with get_component.',
+    );
+    expect(select?.fix).toBeUndefined();
+  });
+
+  it('treats an element the config maps as a drop-in replacement', async () => {
+    const system = await load(
+      fixture(
+        {
+          'tsconfig.json': TSCONFIG,
+          'design-system-mcp.config.json': '{ "elements": { "a": "TextLink" }, "tokens": [] }',
+          'components/ui/link.tsx': `import * as React from "react"
+export function TextLink(props: { href: string; children?: React.ReactNode }) {
+  return <span data-href={props.href}>{props.children}</span>
+}`,
+        },
+        { nodeModules: true },
+      ),
+    );
+    const code = `<a href="/docs">Docs</a>`;
+    const diagnostics = check(code, rule, system);
+    expect(diagnostics[0]?.message).toBe(
+      'Native <a> where the design system has <TextLink>. Use <TextLink> (import { TextLink } from "@/components/ui/link").',
+    );
+    expect(applyFixes(code, diagnostics)).toBe(`<TextLink href="/docs">Docs</TextLink>`);
   });
 
   it('never suggests a part of another component', async () => {

@@ -41,12 +41,30 @@ export const NON_TEXT_INPUT_TYPES = new Set([
   'image',
 ]);
 
+/**
+ * Attributes only some replaceable elements take. A component that accepts
+ * all of an element's (Radix `Label` takes `htmlFor`) takes that element's
+ * attributes, whatever it renders at the top.
+ */
+const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
+  a: ['href', 'target', 'download'],
+  button: ['formAction', 'formNoValidate'],
+  img: ['src', 'srcSet', 'alt'],
+  input: ['accept', 'checked', 'step'],
+  label: ['htmlFor'],
+  select: ['multiple', 'size'],
+  table: ['cellPadding', 'cellSpacing'],
+  textarea: ['rows', 'cols'],
+};
+
 /** What the lint rules need to know about the design system. */
 export class LintTarget {
   readonly components = new Map<string, ComponentInfo>();
   readonly tokens: TokenIndex;
   /** Native element → the component that replaces it. */
   readonly elements = new Map<string, ComponentInfo>();
+  /** The `elements` entries the config sets explicitly. */
+  private readonly configured = new Map<string, ComponentInfo>();
   readonly componentFiles: Set<string>;
   private readonly importPaths: Set<string>;
   private readonly importPrefixes: string[];
@@ -85,7 +103,9 @@ export class LintTarget {
     }
     for (const [element, name] of Object.entries(config.elements)) {
       const component = this.components.get(name);
-      if (component) this.elements.set(element, component);
+      if (!component) continue;
+      this.elements.set(element, component);
+      this.configured.set(element, component);
     }
 
     this.importPaths = new Set(model.components.map((c) => c.importPath));
@@ -118,6 +138,22 @@ export class LintTarget {
     }
     if (this.importPaths.has(specifier) || specifier === this.config.importPath) return true;
     return this.importPrefixes.some((prefix) => specifier.startsWith(prefix));
+  }
+
+  /**
+   * Whether `<Component>` can replace the native element `key` (`a`,
+   * `input[type=checkbox]`) by renaming the tag: the config maps it, it
+   * renders that element, or it takes the element's own attributes.
+   */
+  isDropIn(component: ComponentInfo, key: string): boolean {
+    if (this.configured.get(key) === component || component.element === key) return true;
+    const needed = ELEMENT_ATTRIBUTES[key];
+    if (!needed || component.openProps) return false;
+    const accepted = new Set(component.props.map((p) => p.name));
+    for (const inherited of component.inherits) {
+      for (const name of this.model.propSets[inherited.set] ?? []) accepted.add(name);
+    }
+    return needed.every((name) => accepted.has(name));
   }
 
   /** The component a module exports as `default`, for `import Anything from "..."`. */
