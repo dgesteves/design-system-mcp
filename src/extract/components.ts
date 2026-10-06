@@ -103,6 +103,8 @@ interface Candidate {
   propsTypeNode?: ts.TypeNode | undefined;
   /** First type argument of `forwardRef<El, Props>`. */
   refTypeNode?: ts.TypeNode | undefined;
+  /** Props from the call signature, for aliases such as `const Dialog = DialogPrimitive.Root`. */
+  propsType?: ts.Type | undefined;
   /** Symbol to read JSDoc from. */
   symbol?: ts.Symbol | undefined;
   /** Static members: `Card.Header = CardHeader` or `Object.assign(Root, { Header })`. */
@@ -195,6 +197,7 @@ interface Analysis {
   fn?: ts.SignatureDeclaration | undefined;
   propsTypeNode?: ts.TypeNode | undefined;
   refTypeNode?: ts.TypeNode | undefined;
+  propsType?: ts.Type | undefined;
   members: Map<string, ts.Expression>;
 }
 
@@ -234,8 +237,12 @@ function analyzeExpression(
   }
   if (ts.isIdentifier(expr)) {
     const resolved = resolveExpression(expr, checker);
-    return resolved ? analyze(resolved.declaration, checker, depth + 1) : undefined;
+    return resolved
+      ? analyze(resolved.declaration, checker, depth + 1)
+      : analyzeLibraryComponent(expr, checker);
   }
+  // `const Dialog = DialogPrimitive.Root`
+  if (ts.isPropertyAccessExpression(expr)) return analyzeLibraryComponent(expr, checker);
   if (!ts.isCallExpression(expr)) return undefined;
 
   const callee = expr.expression.getText();
@@ -264,6 +271,33 @@ function analyzeExpression(
     return inner;
   }
   return undefined;
+}
+
+/**
+ * A component re-exported from a library (`const Dialog = DialogPrimitive.Root`,
+ * `const Form = FormProvider`), whose declaration lives in a `.d.ts` file: its
+ * type is callable or constructible, and its props are the first parameter.
+ */
+function analyzeLibraryComponent(
+  expr: ts.Identifier | ts.PropertyAccessExpression,
+  checker: ts.TypeChecker,
+): Analysis | undefined {
+  const type = checker.getTypeAtLocation(expr);
+  if (isAny(type)) {
+    // The library's types are not installed. An import is still most likely a
+    // component here; keep it with open props rather than report it missing.
+    let root: ts.Expression = expr;
+    while (ts.isPropertyAccessExpression(root)) root = root.expression;
+    const symbol = ts.isIdentifier(root) ? checker.getSymbolAtLocation(root) : undefined;
+    return symbol && symbol.flags & ts.SymbolFlags.Alias ? { members: new Map() } : undefined;
+  }
+  const signature = type.getCallSignatures()[0] ?? type.getConstructSignatures()[0];
+  if (!signature) return undefined;
+  const param = signature.getParameters()[0];
+  return {
+    propsType: param ? checker.getTypeOfSymbolAtLocation(param, expr) : undefined,
+    members: new Map(),
+  };
 }
 
 function resolveExpression(
@@ -434,6 +468,7 @@ function extractProps(
   let type: ts.Type | undefined;
   if (typeNode) type = checker.getTypeFromTypeNode(typeNode);
   else if (param) type = checker.getTypeAtLocation(param);
+  else type = candidate.propsType;
   if (!type) return { props: [], inherits: [], openProps: !candidate.fn && !typeNode };
 
   let openProps = false;
