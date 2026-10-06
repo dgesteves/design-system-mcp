@@ -101,6 +101,7 @@ describe('no-hardcoded-color', () => {
       ),
     ).toEqual([]);
     expect(check(`<a href="#add">x</a>`, rule)).toEqual([]);
+    expect(check(`<svg><path fill="url(#bad)" stroke="url('#fade')" /></svg>`, rule)).toEqual([]);
     const allowing = withRules(ds, { [rule]: ['error', { allow: ['#ef4444'] }] });
     expect(check(`<div className="bg-[#ef4444]" />`, rule, allowing)).toEqual([]);
   });
