@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 
 import * as z from 'zod';
 
+import { slashGlob } from './util/paths.js';
+
 export const RULE_IDS = [
   'no-hardcoded-color',
   'no-hardcoded-spacing',
@@ -213,22 +215,33 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
       ? DEFAULT_TOKENS.map((p) => ({ path: p }))
       : toArray(config.tokens).map((t) => (typeof t === 'string' ? { path: t } : t));
 
+  // Paths may be written Windows-style; globs and POSIX need forward slashes.
+  const tsconfig = config.tsconfig?.replaceAll('\\', '/');
+  if (tsconfig !== undefined && !fs.existsSync(path.resolve(root, tsconfig))) {
+    // Without it, path aliases do not resolve and most checks go quiet.
+    throw new ConfigError(
+      `tsconfig not found: ${path.resolve(root, tsconfig)} (from "tsconfig" in ${configFile ?? 'the config'})`,
+    );
+  }
+
   return {
     root,
     configFile,
-    components: options.components?.length
+    components: (options.components?.length
       ? options.components
       : config.components === undefined
         ? DEFAULT_COMPONENTS
-        : toArray(config.components),
-    exclude: config.exclude ?? DEFAULT_EXCLUDE,
-    tokens: tokenSources,
-    docs: options.docs?.length
+        : toArray(config.components)
+    ).map(slashGlob),
+    exclude: (config.exclude ?? DEFAULT_EXCLUDE).map(slashGlob),
+    tokens: tokenSources.map((t) => ({ ...t, path: slashGlob(t.path) })),
+    docs: (options.docs?.length
       ? options.docs
       : config.docs === undefined
         ? DEFAULT_DOCS
-        : toArray(config.docs),
-    tsconfig: config.tsconfig,
+        : toArray(config.docs)
+    ).map(slashGlob),
+    tsconfig,
     importPath: config.importPath,
     elements: config.elements ?? {},
     rules,
