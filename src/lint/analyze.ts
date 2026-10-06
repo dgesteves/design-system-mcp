@@ -1,5 +1,7 @@
 import ts from 'typescript';
 
+import { propertyName } from '../extract/cva.js';
+
 export interface ImportBinding {
   source: string;
   /** Imported name, `default`, or `*` for namespace imports. */
@@ -40,6 +42,7 @@ export interface Analysis {
 }
 
 const CLASS_FUNCTIONS = /^(cn|clsx|cx|twMerge|twJoin|classNames|classnames|cva|tv)$/;
+const VARIANT_FUNCTIONS = /^(cva|tv)$/;
 
 export function analyze(sourceFile: ts.SourceFile): Analysis {
   const analysis: Analysis = {
@@ -87,6 +90,50 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
       ts.forEachChild(n, visit);
     };
     visit(node);
+  };
+
+  /** A class value, or an object of them: tv slots, and variant options that style slots. */
+  const collectClassValues = (node: ts.Expression): void => {
+    if (!ts.isObjectLiteralExpression(node)) {
+      collectStrings(node);
+      return;
+    }
+    for (const prop of node.properties) {
+      if (ts.isPropertyAssignment(prop)) collectClassValues(prop.initializer);
+    }
+  };
+
+  /**
+   * The classes in a cva()/tv() config: `base`, `slots`, every variant option
+   * and compound `class`/`className`. Variant names, conditions and
+   * `defaultVariants` are not classes.
+   */
+  const collectVariantConfig = (config: ts.ObjectLiteralExpression): void => {
+    for (const prop of config.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const key = propertyName(prop.name);
+      const value = prop.initializer;
+      if (key === 'base' || key === 'slots') {
+        collectClassValues(value);
+      } else if (key === 'variants' && ts.isObjectLiteralExpression(value)) {
+        for (const variant of value.properties) {
+          if (ts.isPropertyAssignment(variant)) collectClassValues(variant.initializer);
+        }
+      } else if (
+        (key === 'compoundVariants' || key === 'compoundSlots') &&
+        ts.isArrayLiteralExpression(value)
+      ) {
+        for (const entry of value.elements) {
+          if (!ts.isObjectLiteralExpression(entry)) continue;
+          for (const option of entry.properties) {
+            const name = ts.isPropertyAssignment(option) ? propertyName(option.name) : undefined;
+            if (ts.isPropertyAssignment(option) && (name === 'class' || name === 'className')) {
+              collectClassValues(option.initializer);
+            }
+          }
+        }
+      }
+    }
   };
 
   const visit = (node: ts.Node): void => {
@@ -153,8 +200,10 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
     }
 
     if (ts.isCallExpression(node) && CLASS_FUNCTIONS.test(node.expression.getText(sourceFile))) {
+      const variants = VARIANT_FUNCTIONS.test(node.expression.getText(sourceFile));
       node.arguments.forEach((arg) => {
-        collectStrings(arg);
+        if (variants && ts.isObjectLiteralExpression(arg)) collectVariantConfig(arg);
+        else collectStrings(arg);
       });
     }
     ts.forEachChild(node, visit);
