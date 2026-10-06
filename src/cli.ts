@@ -1,4 +1,5 @@
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -153,8 +154,15 @@ async function check(
 
   const config = await loadConfig(configOptions);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
+  // A directory means every TSX/JSX file under it.
+  const globs = patterns.map((pattern) => {
+    const isDir = fs
+      .statSync(path.resolve(io.cwd, pattern), { throwIfNoEntry: false })
+      ?.isDirectory();
+    return toPosix(isDir ? path.join(pattern, '**/*.{tsx,jsx}') : pattern);
+  });
   const files = (
-    await glob(patterns.map(toPosix), {
+    await glob(globs, {
       cwd: io.cwd,
       absolute: true,
       ignore: ['**/node_modules/**'],
@@ -168,7 +176,7 @@ async function check(
 
   const results: CheckResult[] = [];
   for (const file of files) {
-    const code = await fs.readFile(file, 'utf8');
+    const code = await fsp.readFile(file, 'utf8');
     const result = ds.check(code, relativePath(ds.root, file));
     results.push({ ...result, file: relativePath(io.cwd, file) });
   }
