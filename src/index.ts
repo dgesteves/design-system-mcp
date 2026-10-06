@@ -12,6 +12,7 @@ export {
   buildModel,
   DesignSystem,
   DesignSystemHost,
+  fingerprint,
   loadDesignSystem,
   type HostOptions,
   type LoadOptions,
