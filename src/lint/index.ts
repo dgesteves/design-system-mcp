@@ -67,7 +67,7 @@ export function checkSource(code: string, target: LintTarget, options: CheckOpti
       resolve(element) {
         let resolution = cache.get(element.node);
         if (!resolution) {
-          resolution = resolveElement(element, analysis, target);
+          resolution = resolveElement(element, analysis, target, file);
           cache.set(element.node, resolution);
         }
         return resolution;
