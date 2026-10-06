@@ -205,6 +205,13 @@ function cacheFile(root: string): string {
 export interface BuildResult {
   model: DesignSystemModel;
   program?: ts.Program | undefined;
+  /** Fingerprint of every input file; unchanged fingerprint means nothing to rebuild. */
+  key?: string;
+}
+
+/** Fingerprint of the files a config tracks (paths, sizes, mtimes), without extracting anything. */
+export async function fingerprint(config: ResolvedConfig): Promise<string> {
+  return cacheKey(config, await resolveFiles(config));
 }
 
 export async function buildModel(
@@ -227,7 +234,7 @@ export async function buildModel(
       if (cached.key === key && cached.model?.version === 1) {
         cached.model.stats.fromCache = true;
         cached.model.stats.durationMs = Math.round(performance.now() - started);
-        return { model: cached.model };
+        return { model: cached.model, key };
       }
     } catch {
       // No cache yet, or unreadable: extract.
@@ -287,7 +294,7 @@ export async function buildModel(
       logger.warn(`could not write cache ${cachePath}: ${(error as Error).message}`);
     }
   }
-  return { model, program: extracted.program };
+  return { model, program: extracted.program, key };
 }
 
 export async function loadDesignSystem(
@@ -313,6 +320,7 @@ export interface HostOptions extends LoadOptions {
 export class DesignSystemHost {
   private current?: Promise<DesignSystem>;
   private program?: ts.Program | undefined;
+  private key?: string | undefined;
   private watchers: fs.FSWatcher[] = [];
   private timer?: NodeJS.Timeout;
   private readonly listeners = new Set<(ds: DesignSystem) => void>();
@@ -361,15 +369,23 @@ export class DesignSystemHost {
       this.config.configFile,
       path.join(root, this.config.tsconfig ?? 'tsconfig.json'),
     ].filter((f): f is string => Boolean(f && fs.existsSync(f)));
+    // Watched directories can hold unrelated files (a token file in app/ puts
+    // every page under watch), so only rebuild when a tracked file changed.
     const schedule = () => {
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => void this.reload(), 150);
+      this.timer = setTimeout(() => {
+        void fingerprint(this.config).then(
+          (key) => (key === this.key ? undefined : this.reload()),
+          () => this.reload(),
+        );
+      }, 150);
     };
     // Skip dirs nested inside another watched dir.
     const roots = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && isInside(o, d)));
     for (const dir of roots) {
       try {
-        const watcher = fs.watch(dir, { recursive: true }, (_event, file) => {
+        // Non-persistent: the process lives as long as stdin, not as long as the watchers.
+        const watcher = fs.watch(dir, { recursive: true, persistent: false }, (_event, file) => {
           if (file && /node_modules|\.git[\\/]/.test(file)) return;
           schedule();
         });
@@ -381,7 +397,7 @@ export class DesignSystemHost {
     }
     for (const file of files) {
       try {
-        const watcher = fs.watch(file, schedule);
+        const watcher = fs.watch(file, { persistent: false }, schedule);
         watcher.on('error', () => undefined);
         this.watchers.push(watcher);
       } catch {
@@ -399,11 +415,12 @@ export class DesignSystemHost {
   private async build(incremental: boolean): Promise<DesignSystem> {
     const logger = this.options.logger ?? silentLogger;
     const build = this.options.build ?? buildModel;
-    const { model, program } = await build(this.config, {
+    const { model, program, key } = await build(this.config, {
       ...this.options,
       oldProgram: incremental ? this.program : undefined,
     });
     if (program) this.program = program;
+    this.key = key;
     const ds = new DesignSystem(model, this.config);
     const { stats } = model;
     logger.info(

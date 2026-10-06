@@ -94,6 +94,22 @@ describe('DesignSystemHost', () => {
     host.close();
   }, 15_000);
 
+  it('ignores changes to files it does not track', async () => {
+    const root = copyFixture();
+    const host = new DesignSystemHost(await loadConfig({ root }), { cache: false });
+    await host.get();
+    let reloads = 0;
+    host.onChange(() => {
+      reloads++;
+    });
+    host.watch();
+    await new Promise((r) => setTimeout(r, 100));
+    fs.writeFileSync(path.join(root, 'components/notes.txt'), 'not a component');
+    await new Promise((r) => setTimeout(r, 600));
+    expect(reloads).toBe(0);
+    host.close();
+  });
+
   it('keeps serving the previous model when a reload fails', async () => {
     const root = copyFixture();
     const config = await loadConfig({ root });

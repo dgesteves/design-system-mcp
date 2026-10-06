@@ -77,6 +77,8 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   }
 
   await server.connect(options.transport ?? new StdioServerTransport());
+  // The SDK's stdio transport does not watch for the client going away.
+  if (!options.transport) process.stdin.once('end', () => void server.close());
   logger.info(options.transport ? 'ready' : 'ready on stdio');
   return server;
 }
