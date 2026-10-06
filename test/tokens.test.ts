@@ -282,6 +282,35 @@ describe('CSS custom-property tokens', () => {
     ).toEqual({ tokens: [], warnings: [] });
   });
 
+  it("drops Tailwind's --spacing unit when the spacing namespace is reset, in any file", async () => {
+    const reset = parseCssTokens(
+      `@import "tailwindcss";
+       @theme { --spacing-*: initial; --spacing-sm: 0.5rem; --spacing-md: 1rem; }`,
+      'globals.css',
+    ).tokens;
+    expect(reset.filter((t) => t.category === 'spacing').map((t) => t.tailwind)).toEqual([
+      'sm',
+      'md',
+    ]);
+    const index = new TokenIndex(reset);
+    expect(index.spacingUnitPx).toBeUndefined();
+    expect(index.nearestLength('spacing', 18)?.candidate.key).toBe('md');
+    expect(index.nearestLength('spacing', 13)?.candidate.key).toBe('md');
+
+    const root = fixture({
+      'a.css': '@import "tailwindcss";',
+      'b.css': `@theme {
+        --radius-*: initial; --radius-card: 0.75rem; --radius-pill: 9999px;
+        --spacing-*: initial; --spacing-md: 1rem;
+      }`,
+    });
+    const { tokens } = await loadTokens(root, [
+      { file: path.join(root, 'a.css') },
+      { file: path.join(root, 'b.css') },
+    ]);
+    expect(tokens.map((t) => t.name)).toEqual(['radius-card', 'radius-pill', 'spacing-md']);
+  });
+
   it('merges a DTCG token and the CSS generated from it', () => {
     const fromJson = parseDtcgTokens(
       '{"color":{"primary":{"$type":"color","$value":"#000","$description":"Ink."}}}',
