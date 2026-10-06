@@ -7,7 +7,7 @@ import { loadConfig } from '../src/config.js';
 import { loadDesignSystem, type DesignSystem } from '../src/design-system.js';
 import { applyFixes } from '../src/lint/index.js';
 import type { Diagnostic } from '../src/types.js';
-import { ACME_ROOT, DEMO_ROOT, loadOnce, withRules } from './helpers.js';
+import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, withRules } from './helpers.js';
 
 let ds: DesignSystem;
 beforeAll(async () => {
@@ -176,9 +176,32 @@ describe('prefer-design-system-component', () => {
     );
   });
 
-  it('maps by element name too (Dialog wraps Radix, not <dialog>)', () => {
-    expect(check(`<dialog open />`, rule)[0]?.suggestion).toBe('<Dialog>');
-    expect(check(`<input type="email" />`, rule)[0]?.suggestion).toBe('<Input>');
+  it('maps by element name too, without a fix when the component does not render it', () => {
+    // The demo's Dialog wraps the Radix root, not a <dialog>: renaming the tag would break the code.
+    const [dialog] = check(`<dialog open><p>Hi</p></dialog>`, rule);
+    expect(dialog?.suggestion).toBe('<Dialog>');
+    expect(dialog?.message).toContain('it does not render a <dialog>');
+    expect(dialog?.fix).toBeUndefined();
+    expect(check(`<input type="email" />`, rule)[0]?.fix).toHaveLength(1);
+  });
+
+  it('never suggests a part of another component', async () => {
+    const system = await load(
+      fixture({
+        'components/ui/breadcrumb.tsx': `import * as React from "react"
+export function Breadcrumb(props: React.ComponentProps<"nav">) {
+  return <nav aria-label="breadcrumb" {...props} />
+}
+export function BreadcrumbLink(props: React.ComponentProps<"a">) {
+  return <a {...props} />
+}`,
+      }),
+    );
+    expect(system.getComponent('BreadcrumbLink')).toMatchObject({
+      element: 'a',
+      parent: 'Breadcrumb',
+    });
+    expect(check(`<a href="/docs">Docs</a>`, rule, system)).toEqual([]);
   });
 
   it('leaves containers, non-text inputs and allowed elements alone', () => {

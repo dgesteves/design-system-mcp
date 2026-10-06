@@ -65,9 +65,9 @@ export class LintTarget {
     this.tokens = new TokenIndex(model.tokens);
     this.componentFiles = new Set(model.components.map((c) => c.source.file));
 
-    // Root components only: `CardHeader` is a `div` but `<div>` should not become `<CardHeader>`.
+    // Root components only: `BreadcrumbLink` is an `a`, but `<a>` should not become a breadcrumb part.
     for (const component of model.components) {
-      if (component.name.includes('.')) continue;
+      if (component.parent) continue;
       const fromElement =
         component.element && REPLACEABLE_ELEMENTS.has(component.element)
           ? component.element
