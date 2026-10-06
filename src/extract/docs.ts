@@ -35,7 +35,10 @@ export function parseDoc(text: string, file: string): ParsedDoc {
 
   for (const line of body.split('\n')) {
     if (fence) {
-      if (line.trimStart().startsWith(fence.marker)) {
+      // Only a bare fence of the same character, at least as long, closes it:
+      // a "```tsx" line inside a "```md" block is content.
+      const close = /^\s*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+      if (close && close[0] === fence.marker[0] && close.length >= fence.marker.length) {
         if (EXAMPLE_LANGS.has(fence.lang)) {
           const example: ExampleInfo = {
             code: dedent(fence.lines.join('\n')),
@@ -46,7 +49,7 @@ export function parseDoc(text: string, file: string): ParsedDoc {
           if (title) example.title = title;
           doc.examples.push(example);
         } else {
-          buffer.push(`\`\`\`${fence.lang}`, ...fence.lines, '```');
+          buffer.push(`${fence.marker}${fence.lang}`, ...fence.lines, fence.marker);
         }
         fence = undefined;
       } else {
