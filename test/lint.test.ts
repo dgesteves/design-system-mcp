@@ -105,6 +105,32 @@ describe('no-hardcoded-color', () => {
     expect(check(`<div className="bg-[#ef4444]" />`, rule, allowing)).toEqual([]);
   });
 
+  it('checks the classes in cva() and tv() configs, not their keys or conditions', () => {
+    const code = `const button = cva("inline-flex bg-red-500", {
+  variants: {
+    tone: { danger: "bg-red-600", ok: ["px-2", "text-[#ef4444]"] },
+    size: { sm: "h-8" },
+  },
+  compoundVariants: [{ tone: "danger", size: "sm", class: "border-gray-100" }],
+  defaultVariants: { tone: "danger" },
+})
+const card = tv({
+  base: "bg-blue-500",
+  slots: { title: "text-gray-500" },
+  variants: { elevated: { true: { base: "shadow-[0_1px_2px_#ef4444]" } } },
+})
+const plain = clsx({ "p-4": "bg-red-500" })`;
+    expect(check(code, rule).map((d) => d.source)).toEqual([
+      'bg-red-500',
+      'bg-red-600',
+      'text-[#ef4444]',
+      'border-gray-100',
+      'bg-blue-500',
+      'text-gray-500',
+      'shadow-[0_1px_2px_#ef4444]',
+    ]);
+  });
+
   it('checks class strings in cn(), clsx() and template literals', () => {
     const code =
       'const c = cn("bg-[#ef4444]", active && `text-gray-500 ${x}`, { "bg-blue-500": on })';
