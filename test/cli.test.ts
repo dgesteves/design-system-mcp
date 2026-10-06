@@ -24,6 +24,12 @@ describe('design-system-mcp check', () => {
     expect(stdout).not.toContain('members.tsx');
   });
 
+  it('expands directories to the TSX/JSX files under them', async () => {
+    const { code, stdout } = await run(['check', 'app', '--no-cache']);
+    expect(code).toBe(1);
+    expect(stdout).toContain('in 2 files');
+  });
+
   it('exits 0 on clean files', async () => {
     const { code, stdout } = await run(['check', 'app/settings/members.tsx', '--no-cache']);
     expect(code).toBe(0);
