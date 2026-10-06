@@ -264,16 +264,18 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
           };
         }
         const absolute = path.resolve(ds.root, filePath);
-        if (!isInside(ds.root, absolute)) {
-          return {
-            isError: true,
-            content: [
-              { type: 'text', text: `${filePath} is outside the project root (${ds.root}).` },
-            ],
-          };
-        }
+        const outside: CallToolResult = {
+          isError: true,
+          content: [
+            { type: 'text', text: `${filePath} is outside the project root (${ds.root}).` },
+          ],
+        };
+        if (!isInside(ds.root, absolute)) return outside;
         try {
-          source = await fs.readFile(absolute, 'utf8');
+          // A symlink inside the root can point anywhere: compare where both really are.
+          const [root, real] = await Promise.all([fs.realpath(ds.root), fs.realpath(absolute)]);
+          if (!isInside(root, real)) return outside;
+          source = await fs.readFile(real, 'utf8');
         } catch {
           return { isError: true, content: [{ type: 'text', text: `Cannot read ${filePath}.` }] };
         }

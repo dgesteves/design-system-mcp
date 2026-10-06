@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createServer } from '../src/server/index.js';
 import { serveStdio } from '../src/server/stdio.js';
 import { silentLogger } from '../src/util/log.js';
-import { DEMO_ROOT, fixture, loadOnce } from './helpers.js';
+import { DEMO_ROOT, fixture, load, loadOnce } from './helpers.js';
 
 function text(result: unknown): string {
   const content = (result as CallToolResult).content[0];
@@ -200,6 +200,37 @@ describe('MCP server over the in-memory transport', () => {
     expect(body).toContain('a delete-account card');
     expect(body).toContain('Button (variant, size)');
     expect(body).toContain('20 color');
+  });
+});
+
+describe('check_ui on project files', () => {
+  it('refuses a path that leaves the root through a symlink', async () => {
+    const outside = fixture({ 'secret.tsx': 'SECRET=1 <div className="bg-red-500" />' });
+    const root = fixture({
+      'design-system-mcp.config.json': '{ "tokens": [] }',
+      'app/page.tsx': 'export default () => <div />',
+    });
+    fs.symlinkSync(outside, path.join(root, 'linked'), 'junction');
+    fs.symlinkSync(path.join(outside, 'secret.tsx'), path.join(root, 'app/secret.tsx'));
+    fs.symlinkSync(path.join(root, 'app/page.tsx'), path.join(root, 'app/alias.tsx'));
+    const ds = await load(root);
+    const server = createServer({ getDesignSystem: () => Promise.resolve(ds) });
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      for (const target of ['linked/secret.tsx', 'app/secret.tsx']) {
+        const result = await client.callTool({ name: 'check_ui', arguments: { path: target } });
+        expect(result.isError).toBe(true);
+        expect(text(result)).toBe(`${target} is outside the project root (${root}).`);
+      }
+      for (const target of ['app/page.tsx', 'app/alias.tsx']) {
+        const result = await client.callTool({ name: 'check_ui', arguments: { path: target } });
+        expect(result.structuredContent).toMatchObject({ file: target, ok: true });
+      }
+    } finally {
+      await client.close();
+    }
   });
 });
 
