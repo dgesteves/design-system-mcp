@@ -53,6 +53,13 @@ describe('no-hardcoded-color', () => {
     );
   });
 
+  it('keeps the important modifier where it was written', () => {
+    const code = `<div className="bg-red-600! !text-red-600 hover:bg-red-600/50! md:-mt-[13px]! !p-[13px]" />`;
+    expect(applyFixes(code, check(code))).toBe(
+      `<div className="bg-destructive! !text-destructive hover:bg-destructive/50! md:-mt-3! !p-3" />`,
+    );
+  });
+
   it('suggests a variant when the component already has one for the token', () => {
     const [d] = check(`${IMPORTS}<Button className="bg-red-600">Delete</Button>`, rule);
     expect(d?.suggestion).toBe('variant="destructive"');
