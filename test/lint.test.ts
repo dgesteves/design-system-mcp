@@ -558,6 +558,13 @@ describe('the engine', () => {
     );
   });
 
+  it('does not count a byte-order mark as a column, and keeps fix offsets on the text', () => {
+    const code = '\uFEFF<button>x</button>';
+    const [d] = ds.check(code).diagnostics;
+    expect(d).toMatchObject({ line: 1, column: 2, endColumn: 8, source: 'button' });
+    expect(applyFixes(code, d ? [d] : [])).toBe('\uFEFF<Button>x</Button>');
+  });
+
   it('sorts diagnostics by position and reports 1-based ranges', () => {
     const result = ds.check(`<div>\n  <button className="bg-[#fff]"><svg /></button>\n</div>`);
     expect(result.diagnostics.map((d) => [d.line, d.column, d.ruleId])).toEqual([

@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { glob } from 'tinyglobby';
+import { escapePath, glob } from 'tinyglobby';
 
 import { ConfigError, loadConfig } from './config.js';
 import { loadDesignSystem } from './design-system.js';
@@ -154,12 +154,14 @@ async function check(
 
   const config = await loadConfig(configOptions);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
-  // A directory means every TSX/JSX file under it.
+  // An existing path is taken literally, so `app/(marketing)` and `[slug]` are not
+  // glob syntax. A directory means every TSX/JSX file under it.
   const globs = patterns.map((pattern) => {
-    const isDir = fs
-      .statSync(path.resolve(io.cwd, pattern), { throwIfNoEntry: false })
-      ?.isDirectory();
-    return toPosix(isDir ? path.join(pattern, '**/*.{tsx,jsx}') : pattern);
+    const stat = fs.statSync(path.resolve(io.cwd, pattern), { throwIfNoEntry: false });
+    if (!stat) return toPosix(pattern);
+    const literal = escapePath(toPosix(path.join(pattern, '.')));
+    if (!stat.isDirectory()) return literal;
+    return literal === '.' ? '**/*.{tsx,jsx}' : `${literal}/**/*.{tsx,jsx}`;
   });
   const files = (
     await glob(globs, {

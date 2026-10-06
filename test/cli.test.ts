@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { main, type Io } from '../src/cli.js';
 import { VERSION } from '../src/version.js';
-import { DEMO_ROOT } from './helpers.js';
+import { DEMO_ROOT, fixture } from './helpers.js';
 
 async function run(args: string[], cwd = DEMO_ROOT) {
   const out: string[] = [];
@@ -28,6 +28,33 @@ describe('design-system-mcp check', () => {
     const { code, stdout } = await run(['check', 'app', '--no-cache']);
     expect(code).toBe(1);
     expect(stdout).toContain('in 2 files');
+  });
+
+  it('takes paths with glob characters literally (Next.js route groups and segments)', async () => {
+    const button = '<button className="px-3">Go</button>';
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/(marketing)/page.tsx': `export default () => ${button}`,
+      'app/blog/[slug]/page.tsx': `export default () => ${button}`,
+    });
+    const { stdout } = await run(
+      ['check', 'app/(marketing)', 'app/blog/[slug]/page.tsx', '--no-cache'],
+      root,
+    );
+    expect(stdout).toContain('app/(marketing)/page.tsx');
+    expect(stdout).toContain('app/blog/[slug]/page.tsx');
+    expect(stdout).toContain('in 2 files');
+  });
+
+  it('reports editor columns for files with a byte-order mark', async () => {
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/page.tsx': '\uFEFF<button>Go</button>',
+    });
+    const { stdout } = await run(['check', 'app/page.tsx', '--no-cache'], root);
+    expect(stdout).toMatch(/^\s+1:2\s+error\s+Native <button>/m);
   });
 
   it('exits 0 on clean files', async () => {

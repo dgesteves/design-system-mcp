@@ -51,6 +51,13 @@ export function checkSource(code: string, target: LintTarget, options: CheckOpti
   const analysis = analyze(sourceFile);
   const diagnostics: Diagnostic[] = [];
   const cache = new Map<unknown, Resolution>();
+  // A byte-order mark is a character to TypeScript but not a column to editors.
+  // Offsets (fix ranges) stay on the text as given.
+  const bom = code.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const position = (offset: number) => {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(offset);
+    return { line: line + 1, column: Math.max(1, character + 1 - (line === 0 ? bom : 0)) };
+  };
 
   for (const rule of RULES) {
     const setting = options.rules[rule.id];
@@ -73,16 +80,16 @@ export function checkSource(code: string, target: LintTarget, options: CheckOpti
         return resolution;
       },
       report(report) {
-        const start = sourceFile.getLineAndCharacterOfPosition(report.start);
-        const end = sourceFile.getLineAndCharacterOfPosition(report.end);
+        const start = position(report.start);
+        const end = position(report.end);
         const diagnostic: Diagnostic = {
           ruleId: rule.id,
           severity: report.severity === 'warning' ? 'warning' : severity,
           message: report.message,
-          line: start.line + 1,
-          column: start.character + 1,
-          endLine: end.line + 1,
-          endColumn: end.character + 1,
+          line: start.line,
+          column: start.column,
+          endLine: end.line,
+          endColumn: end.column,
           source: code.slice(report.start, report.end),
         };
         if (report.suggestion) diagnostic.suggestion = report.suggestion;
@@ -95,15 +102,15 @@ export function checkSource(code: string, target: LintTarget, options: CheckOpti
 
   // Syntax errors make every other finding suspect; surface them first.
   for (const error of syntaxErrors(sourceFile)) {
-    const start = sourceFile.getLineAndCharacterOfPosition(error.start);
+    const start = position(error.start);
     diagnostics.push({
       ruleId: 'syntax',
       severity: 'error',
       message: `Syntax error: ${ts.flattenDiagnosticMessageText(error.messageText, ' ')}`,
-      line: start.line + 1,
-      column: start.character + 1,
-      endLine: start.line + 1,
-      endColumn: start.character + 1 + error.length,
+      line: start.line,
+      column: start.column,
+      endLine: start.line,
+      endColumn: start.column + error.length,
       source: code.slice(error.start, error.start + error.length),
     });
   }
