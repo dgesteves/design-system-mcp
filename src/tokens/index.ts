@@ -112,6 +112,19 @@ export interface Nearest<T> {
   distance: number;
 }
 
+export interface NearestLength extends Nearest<LengthCandidate> {
+  /** A radius so far above the scale that it means "fully rounded" (`rounded-full`). */
+  pill?: boolean;
+}
+
+/** Radius values from here up are pills (`9999px`, `rounded-full`), not sizes. */
+const PILL_PX = 1000;
+/**
+ * A radius this many times the largest finite step reads as "fully rounded":
+ * `rounded-[100px]` or `[999px]` is a pill, not a large `rounded-4xl`.
+ */
+const PILL_FACTOR = 3;
+
 /**
  * `rounded-full` is a static utility rather than a theme variable. 9999px is
  * the conventional way to write it by hand (and its Tailwind v3 value).
@@ -191,11 +204,24 @@ export class TokenIndex {
   }
 
   /** The step closest to the magnitude of `px`; callers keep the sign. */
-  nearestLength(category: 'spacing' | 'radius', px: number): Nearest<LengthCandidate> | undefined {
+  nearestLength(category: 'spacing' | 'radius', px: number): NearestLength | undefined {
     const target = Math.abs(px);
-    const list =
+    let list =
       category === 'spacing' ? [...this.spacing, ...this.spacingSteps(target)] : this.radius;
-    let best: Nearest<LengthCandidate> | undefined;
+    let pill = false;
+    if (category === 'radius') {
+      // Far above the largest finite step, a radius means "fully rounded":
+      // the pill tokens are the answer, and below that they never are.
+      const finite = list.filter((c) => c.px < PILL_PX);
+      const pills = list.filter((c) => c.px >= PILL_PX);
+      const largest = Math.max(0, ...finite.map((c) => c.px));
+      pill =
+        pills.length > 0 &&
+        finite.length > 0 &&
+        (target >= PILL_FACTOR * largest || target >= PILL_PX);
+      list = pill || !finite.length ? pills : finite;
+    }
+    let best: NearestLength | undefined;
     for (const candidate of list) {
       const distance = Math.abs(candidate.px - target);
       if (
@@ -207,6 +233,7 @@ export class TokenIndex {
         best = { candidate, distance };
       }
     }
+    if (best && pill) best.pill = true;
     return best;
   }
 

@@ -229,6 +229,39 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
     ]);
   });
 
+  it('reads radii far above the scale as fully rounded, and does not fix far-off steps', async () => {
+    const code = `<div className="rounded-[999px] rounded-t-[1000px] rounded-[100px] rounded-[80px] rounded-[48px]" style={{ borderRadius: 500 }} />`;
+    const diagnostics = check(code, 'no-hardcoded-radius');
+    expect(diagnostics.map((d) => [d.source, d.suggestion, d.fix?.[0]?.text])).toEqual([
+      ['rounded-[999px]', 'rounded-full', 'rounded-full'],
+      ['rounded-t-[1000px]', 'rounded-t-full', 'rounded-t-full'],
+      ['rounded-[100px]', 'rounded-full', 'rounded-full'],
+      ['rounded-[80px]', 'rounded-4xl', undefined],
+      ['rounded-[48px]', 'rounded-4xl', 'rounded-4xl'],
+      ['500', 'rounded-full', undefined],
+    ]);
+    expect(diagnostics[0]?.message).toBe(
+      '`rounded-[999px]` (999px) is far above the radius scale, so it reads as fully rounded: use `rounded-full`.',
+    );
+    expect(diagnostics[3]?.message).toBe(
+      'Hardcoded radius `rounded-[80px]` (80px) is off the scale. Nearest: `rounded-4xl` (32px), too far off to replace automatically.',
+    );
+    expect(diagnostics[5]?.message).toContain('Use `rounded-full` (fully rounded) in className');
+
+    const pill = await load(
+      fixture({
+        'design-system-mcp.config.json': '{ "tokens": ["a.css"] }',
+        'a.css': `@import "tailwindcss";
+@theme { --radius-*: initial; --radius-card: 0.75rem; --radius-pill: 9999px; }`,
+      }),
+    );
+    expect(
+      pill
+        .check(`<div className="rounded-[999px] rounded-[40px] rounded-[10px] rounded-[9999px]" />`)
+        .diagnostics.map((d) => d.suggestion),
+    ).toEqual(['rounded-pill', 'rounded-pill', 'rounded-card', 'rounded-pill']);
+  });
+
   it('only offers classes that survive a namespace reset, from any stylesheet', async () => {
     const system = await load(
       fixture({
