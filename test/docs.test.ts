@@ -62,6 +62,11 @@ describe('component docs', () => {
     );
   });
 
+  it('keeps an unclosed fence, which runs to the end of the document', () => {
+    const doc = parseDoc('# Button\n\n## Install\n\n```sh\nnpm i @acme/ui\n', 'button.md');
+    expect(doc.sections[0]?.body).toBe('```sh\nnpm i @acme/ui\n\n```');
+  });
+
   it('drops MDX imports and exports and skips JSX when picking the description', () => {
     const doc = parseDoc(read('docs/alert.mdx'), 'docs/alert.mdx');
     expect(doc.description).toBe('Shows a short, important message, such as a failed save.');

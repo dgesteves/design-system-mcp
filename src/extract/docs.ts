@@ -12,6 +12,13 @@ export interface ParsedDoc {
 
 const EXAMPLE_LANGS = new Set(['tsx', 'jsx', 'ts', 'js', 'typescript', 'javascript']);
 
+interface Fence {
+  marker: string;
+  lang: string;
+  title?: string;
+  lines: string[];
+}
+
 /**
  * Parses a component's Markdown/MDX page into a description, sections and
  * runnable examples. MDX `import`/`export` lines are dropped; JSX in prose is
@@ -23,8 +30,24 @@ export function parseDoc(text: string, file: string): ParsedDoc {
 
   let heading: string | undefined;
   let buffer: string[] = [];
-  let fence: { marker: string; lang: string; title?: string; lines: string[] } | undefined;
+  let fence: Fence | undefined;
   let preamble: string[] = [];
+
+  /** Example-language blocks become examples; the rest stay in the prose. */
+  const closeFence = (block: Fence) => {
+    if (EXAMPLE_LANGS.has(block.lang)) {
+      const example: ExampleInfo = {
+        code: dedent(block.lines.join('\n')),
+        lang: block.lang,
+        source: 'docs',
+      };
+      const title = block.title ?? heading;
+      if (title) example.title = title;
+      doc.examples.push(example);
+    } else {
+      buffer.push(`${block.marker}${block.lang}`, ...block.lines, block.marker);
+    }
+  };
 
   const flush = () => {
     const content = buffer.join('\n').trim();
@@ -39,18 +62,7 @@ export function parseDoc(text: string, file: string): ParsedDoc {
       // a "```tsx" line inside a "```md" block is content.
       const close = /^\s*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
       if (close && close[0] === fence.marker[0] && close.length >= fence.marker.length) {
-        if (EXAMPLE_LANGS.has(fence.lang)) {
-          const example: ExampleInfo = {
-            code: dedent(fence.lines.join('\n')),
-            lang: fence.lang,
-            source: 'docs',
-          };
-          const title = fence.title ?? heading;
-          if (title) example.title = title;
-          doc.examples.push(example);
-        } else {
-          buffer.push(`${fence.marker}${fence.lang}`, ...fence.lines, fence.marker);
-        }
+        closeFence(fence);
         fence = undefined;
       } else {
         fence.lines.push(line);
@@ -78,6 +90,8 @@ export function parseDoc(text: string, file: string): ParsedDoc {
     }
     buffer.push(line);
   }
+  // As in CommonMark, an unclosed fence runs to the end of the document.
+  if (fence) closeFence(fence);
   flush();
 
   const description =
