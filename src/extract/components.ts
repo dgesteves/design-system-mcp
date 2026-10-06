@@ -1,0 +1,845 @@
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+
+import ts from 'typescript';
+
+import type {
+  ComponentInfo,
+  ExampleInfo,
+  InheritedProps,
+  PropInfo,
+  VariantInfo,
+} from '../types.js';
+import { relativePath, toPosix } from '../util/paths.js';
+import { isPascalCase, truncate, unique } from '../util/strings.js';
+import { classText, findVariantDefinitions, type VariantDefinition } from './cva.js';
+import { createProgram, readProjectConfig, type ProjectConfig } from './program.js';
+
+export interface ExtractComponentsOptions {
+  root: string;
+  /** Absolute paths of the component source files. */
+  files: string[];
+  tsconfig?: string | undefined;
+  /** Package name the design system is imported from; overrides tsconfig path inference. */
+  importPath?: string | undefined;
+  /** Previous program, to let TypeScript reuse unchanged source files when watching. */
+  oldProgram?: ts.Program | undefined;
+}
+
+export interface ExtractComponentsResult {
+  components: ComponentInfo[];
+  propSets: Record<string, string[]>;
+  warnings: string[];
+  program: ts.Program;
+}
+
+/**
+ * Extracts React components from source with the TypeScript checker: props
+ * (types, required, defaults, JSDoc), `cva()`/`tv()` variants, the native
+ * element they wrap, and compound structure (`CardHeader` under `Card`,
+ * `Tabs.List` via static members or `Object.assign`).
+ */
+export function extractComponents(options: ExtractComponentsOptions): ExtractComponentsResult {
+  const project = readProjectConfig(options.root, options.tsconfig);
+  const program = createProgram(options.files, project, options.oldProgram);
+  const checker = program.getTypeChecker();
+  const propSets = new Map<string, string[]>();
+  const warnings: string[] = [];
+  const components: ComponentInfo[] = [];
+  const seen = new Set<ts.Node>();
+
+  for (const file of options.files) {
+    const sourceFile = program.getSourceFile(file);
+    const rel = relativePath(options.root, file);
+    if (!sourceFile) {
+      warnings.push(`${rel}: could not be read by TypeScript`);
+      continue;
+    }
+    const context: FileContext = {
+      checker,
+      sourceFile,
+      rel,
+      importPath: importPathFor(options, project, file),
+      definitions: findVariantDefinitions(sourceFile),
+      propSets,
+    };
+    const candidates = findCandidates(context).filter((c) => {
+      if (seen.has(c.declaration)) return false;
+      seen.add(c.declaration);
+      return true;
+    });
+    const fileComponents = candidates.map((candidate) => buildComponent(context, candidate));
+    linkComposition(fileComponents);
+    components.push(...fileComponents);
+  }
+
+  return {
+    components,
+    propSets: Object.fromEntries(propSets),
+    warnings,
+    program,
+  };
+}
+
+interface FileContext {
+  checker: ts.TypeChecker;
+  sourceFile: ts.SourceFile;
+  rel: string;
+  importPath: string;
+  definitions: Map<string, VariantDefinition>;
+  propSets: Map<string, string[]>;
+}
+
+interface Candidate {
+  /** JSX name: `Button` or `Tabs.List`. */
+  name: string;
+  exportName: string;
+  /** Local identifier of the declaration (`TabsList`). */
+  localName: string;
+  declaration: ts.Node;
+  /** The render function, with forwardRef/memo unwrapped. */
+  fn?: ts.SignatureDeclaration | undefined;
+  /** Explicit props type from `forwardRef<El, Props>`, `FC<Props>` or a class heritage clause. */
+  propsTypeNode?: ts.TypeNode | undefined;
+  /** First type argument of `forwardRef<El, Props>`. */
+  refTypeNode?: ts.TypeNode | undefined;
+  /** Symbol to read JSDoc from. */
+  symbol?: ts.Symbol | undefined;
+  /** Static members: `Card.Header = CardHeader` or `Object.assign(Root, { Header })`. */
+  members: Map<string, ts.Expression>;
+  aliases: string[];
+  parent?: string | undefined;
+}
+
+// ─── Discovery ──────────────────────────────────────────────────────────────
+
+function findCandidates(context: FileContext): Candidate[] {
+  const { checker, sourceFile } = context;
+  const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
+  if (!moduleSymbol) return [];
+
+  const byLocal = new Map<string, Candidate>();
+  const candidates: Candidate[] = [];
+
+  for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+    const symbol =
+      exported.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
+    const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
+    if (!declaration || declaration.getSourceFile() !== sourceFile) continue;
+    const localName = declarationName(declaration);
+    const exportName = exported.getName();
+    const name = exportName === 'default' ? (localName ?? '') : exportName;
+    if (!isPascalCase(name)) continue;
+    const analysis = analyze(declaration, checker);
+    if (!analysis) continue;
+    const candidate: Candidate = {
+      name,
+      exportName,
+      localName: localName ?? name,
+      declaration,
+      symbol,
+      aliases: [],
+      ...analysis,
+    };
+    byLocal.set(candidate.localName, candidate);
+    candidates.push(candidate);
+  }
+
+  // `Card.Header = CardHeader` statements.
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExpressionStatement(statement)) continue;
+    const expr = statement.expression;
+    if (
+      ts.isBinaryExpression(expr) &&
+      expr.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(expr.left) &&
+      ts.isIdentifier(expr.left.expression)
+    ) {
+      const owner = byLocal.get(expr.left.expression.text);
+      if (owner) owner.members.set(expr.left.name.text, expr.right);
+    }
+  }
+
+  // Resolve members into candidates of their own (or aliases of exported ones).
+  for (const owner of [...candidates]) {
+    for (const [member, expression] of owner.members) {
+      const accessName = `${owner.name}.${member}`;
+      const target = ts.isIdentifier(expression) ? byLocal.get(expression.text) : undefined;
+      if (target) {
+        target.aliases.push(accessName);
+        target.parent ??= owner.name;
+        continue;
+      }
+      const resolved = resolveExpression(expression, checker);
+      if (!resolved) continue;
+      const analysis = analyze(resolved.declaration, checker);
+      if (!analysis) continue;
+      const candidate: Candidate = {
+        name: accessName,
+        exportName: accessName,
+        localName: resolved.name ?? accessName,
+        declaration: resolved.declaration,
+        symbol: resolved.symbol,
+        aliases: [],
+        parent: owner.name,
+        ...analysis,
+      };
+      byLocal.set(candidate.localName, candidate);
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+interface Analysis {
+  fn?: ts.SignatureDeclaration | undefined;
+  propsTypeNode?: ts.TypeNode | undefined;
+  refTypeNode?: ts.TypeNode | undefined;
+  members: Map<string, ts.Expression>;
+}
+
+/** Decides whether a declaration is a component and finds its render function. */
+function analyze(declaration: ts.Node, checker: ts.TypeChecker, depth = 0): Analysis | undefined {
+  if (depth > 5) return undefined;
+  if (ts.isFunctionDeclaration(declaration)) {
+    return { fn: declaration, members: new Map() };
+  }
+  if (ts.isClassDeclaration(declaration)) {
+    const heritage = declaration.heritageClauses?.find(
+      (h) => h.token === ts.SyntaxKind.ExtendsKeyword,
+    )?.types[0];
+    if (!heritage || !/Component$/.test(heritage.expression.getText())) return undefined;
+    return { propsTypeNode: heritage.typeArguments?.[0], members: new Map() };
+  }
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+    const result = analyzeExpression(declaration.initializer, checker, depth);
+    if (!result) return undefined;
+    // `const Button: React.FC<ButtonProps> = (props) => ...`
+    if (!result.propsTypeNode && declaration.type && ts.isTypeReferenceNode(declaration.type)) {
+      result.propsTypeNode = declaration.type.typeArguments?.[0];
+    }
+    return result;
+  }
+  return undefined;
+}
+
+function analyzeExpression(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+  depth: number,
+): Analysis | undefined {
+  const expr = skipOuter(expression);
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    return { fn: expr, members: new Map() };
+  }
+  if (ts.isIdentifier(expr)) {
+    const resolved = resolveExpression(expr, checker);
+    return resolved ? analyze(resolved.declaration, checker, depth + 1) : undefined;
+  }
+  if (!ts.isCallExpression(expr)) return undefined;
+
+  const callee = expr.expression.getText();
+  const [first, second] = expr.arguments;
+  if (/(^|\.)(forwardRef|memo)$/.test(callee) && first) {
+    const inner = analyzeExpression(first, checker, depth + 1);
+    if (!inner) return undefined;
+    if (/forwardRef$/.test(callee) && expr.typeArguments) {
+      inner.refTypeNode ??= expr.typeArguments[0];
+      inner.propsTypeNode ??= expr.typeArguments[1];
+    } else if (/memo$/.test(callee) && expr.typeArguments) {
+      inner.propsTypeNode ??= expr.typeArguments[0];
+    }
+    return inner;
+  }
+  if (callee === 'Object.assign' && first && second && ts.isObjectLiteralExpression(second)) {
+    const inner = analyzeExpression(first, checker, depth + 1);
+    if (!inner) return undefined;
+    for (const prop of second.properties) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+        inner.members.set(prop.name.text, prop.initializer);
+      } else if (ts.isShorthandPropertyAssignment(prop)) {
+        inner.members.set(prop.name.text, prop.name);
+      }
+    }
+    return inner;
+  }
+  return undefined;
+}
+
+function resolveExpression(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+): { declaration: ts.Node; symbol: ts.Symbol; name?: string | undefined } | undefined {
+  const expr = skipOuter(expression);
+  if (!ts.isIdentifier(expr)) {
+    return undefined;
+  }
+  let symbol = checker.getSymbolAtLocation(expr);
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+  if (!symbol || !declaration || declaration.getSourceFile().isDeclarationFile) return undefined;
+  return { declaration, symbol, name: declarationName(declaration) };
+}
+
+function skipOuter(expression: ts.Expression): ts.Expression {
+  let expr = expression;
+  while (
+    ts.isParenthesizedExpression(expr) ||
+    ts.isAsExpression(expr) ||
+    ts.isSatisfiesExpression(expr) ||
+    ts.isTypeAssertionExpression(expr) ||
+    ts.isNonNullExpression(expr)
+  ) {
+    expr = expr.expression;
+  }
+  return expr;
+}
+
+function declarationName(declaration: ts.Node): string | undefined {
+  if (
+    (ts.isFunctionDeclaration(declaration) || ts.isClassDeclaration(declaration)) &&
+    declaration.name
+  ) {
+    return declaration.name.text;
+  }
+  if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
+    return declaration.name.text;
+  }
+  return undefined;
+}
+
+// ─── Building the component ─────────────────────────────────────────────────
+
+function buildComponent(context: FileContext, candidate: Candidate): ComponentInfo {
+  const { checker, sourceFile } = context;
+  const param = candidate.fn?.parameters[0];
+  const typeNode = candidate.propsTypeNode ?? param?.type;
+  const definitions = linkedDefinitions(context, candidate, typeNode);
+  const variants = definitions.flatMap((d) => d.variants);
+
+  const { props, inherits, openProps } = extractProps(context, candidate, typeNode, param);
+  mergeVariantProps(props, variants);
+  applyDestructuredDefaults(props, param);
+
+  const position = sourceFile.getLineAndCharacterOfPosition(candidate.declaration.getStart());
+  const info: ComponentInfo = {
+    name: candidate.name,
+    aliases: unique(candidate.aliases),
+    importPath: context.importPath,
+    exportName: candidate.exportName,
+    source: { file: context.rel, line: position.line + 1 },
+    subcomponents: [],
+    props,
+    inherits,
+    openProps,
+    variants,
+    compoundVariants: definitions.flatMap((d) => d.compoundVariants),
+    examples: [],
+    classNames: [],
+    cssVars: [],
+  };
+
+  const symbol = candidate.symbol;
+  if (symbol) {
+    const description = ts.displayPartsToString(symbol.getDocumentationComment(checker)).trim();
+    if (description) info.description = description;
+    for (const tag of symbol.getJsDocTags(checker)) {
+      const text = ts.displayPartsToString(tag.text).trim();
+      if (tag.name === 'deprecated') info.deprecated = text || true;
+      if (tag.name === 'example' && text) info.examples.push(jsdocExample(text));
+    }
+  }
+  if (candidate.parent) info.parent = candidate.parent;
+
+  const element = inferElement(context, candidate, typeNode);
+  if (element) info.element = element;
+
+  const classSources: ts.Node[] = definitions.map((d) => d.node);
+  if (candidate.fn) classSources.push(candidate.fn);
+  const classes = collectClasses(classSources);
+  info.classNames = classes.classNames;
+  info.cssVars = classes.cssVars;
+  return info;
+}
+
+function jsdocExample(text: string): ExampleInfo {
+  const fenced = /```(\w+)?[^\n]*\n([\s\S]*?)```/.exec(text);
+  return {
+    code: (fenced?.[2] ?? text).trim(),
+    lang: fenced?.[1] ?? 'tsx',
+    source: 'jsdoc',
+  };
+}
+
+/** cva/tv definitions that belong to this component. */
+function linkedDefinitions(
+  context: FileContext,
+  candidate: Candidate,
+  typeNode: ts.TypeNode | undefined,
+): VariantDefinition[] {
+  const { definitions } = context;
+  if (!definitions.size) return [];
+  const typeText = typeNode ? expandLocalTypeText(context, typeNode) : '';
+  const bodyText = candidate.fn?.getText() ?? '';
+  return [...definitions.values()].filter(
+    (d) =>
+      new RegExp(`typeof\\s+${d.name}\\b`).test(typeText) ||
+      new RegExp(`\\b${d.name}\\s*\\(`).test(bodyText),
+  );
+}
+
+/**
+ * The text of a props type plus any local interfaces/aliases it references,
+ * so `interface ButtonProps extends VariantProps<typeof buttonVariants>` and
+ * `ButtonHTMLAttributes<HTMLButtonElement>` are visible to text heuristics.
+ */
+function expandLocalTypeText(context: FileContext, typeNode: ts.Node, depth = 0): string {
+  let text = typeNode.getText();
+  if (depth > 4) return text;
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node)) {
+      const nameNode = ts.isTypeReferenceNode(node) ? node.typeName : node.expression;
+      const symbol = context.checker.getSymbolAtLocation(nameNode);
+      for (const declaration of symbol?.declarations ?? []) {
+        if (
+          declaration.getSourceFile() === context.sourceFile &&
+          (ts.isInterfaceDeclaration(declaration) || ts.isTypeAliasDeclaration(declaration))
+        ) {
+          text += `\n${expandLocalTypeText(context, declaration, depth + 1)}`;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(typeNode);
+  return text;
+}
+
+// ─── Props ──────────────────────────────────────────────────────────────────
+
+interface ExtractedProps {
+  props: PropInfo[];
+  inherits: InheritedProps[];
+  openProps: boolean;
+}
+
+function extractProps(
+  context: FileContext,
+  candidate: Candidate,
+  typeNode: ts.TypeNode | undefined,
+  param: ts.ParameterDeclaration | undefined,
+): ExtractedProps {
+  const { checker } = context;
+  const location = typeNode ?? param ?? candidate.declaration;
+  let type: ts.Type | undefined;
+  if (typeNode) type = checker.getTypeFromTypeNode(typeNode);
+  else if (param) type = checker.getTypeAtLocation(param);
+  if (!type) return { props: [], inherits: [], openProps: !candidate.fn && !typeNode };
+
+  let openProps = false;
+  let types: ts.Type[];
+  if (isAny(type)) {
+    // An unresolved part (e.g. React types not installed) collapses the whole
+    // intersection to `any`. Recover the parts that do resolve.
+    openProps = true;
+    types = typeNode ? constituents(context, typeNode).filter((t) => !isAny(t)) : [];
+  } else {
+    types = type.isUnion() ? type.types : [type];
+    if (typeNode && constituents(context, typeNode).some(isAny)) openProps = true;
+  }
+
+  const own = new Map<string, { symbol: ts.Symbol; requiredIn: number; origin: string }>();
+  for (const t of types) {
+    if (checker.getIndexInfosOfType(t).length) openProps = true;
+    for (const symbol of checker.getPropertiesOfType(t)) {
+      const entry = own.get(symbol.getName()) ?? {
+        symbol,
+        requiredIn: 0,
+        origin: originOf(symbol),
+      };
+      if (!(symbol.flags & ts.SymbolFlags.Optional)) entry.requiredIn++;
+      own.set(symbol.getName(), entry);
+    }
+  }
+
+  // Props declared by React's DOM typings, or by a package contributing a
+  // large set, are summarised; the rest are documented individually.
+  const byOrigin = new Map<string, string[]>();
+  for (const [name, { origin }] of own) {
+    byOrigin.set(origin, [...(byOrigin.get(origin) ?? []), name]);
+  }
+  const summarised = new Set(
+    [...byOrigin]
+      .filter(
+        ([origin, names]) =>
+          origin === 'react' || (origin !== 'own' && names.length > MAX_LISTED_INHERITED),
+      )
+      .map(([origin]) => origin),
+  );
+
+  const props: PropInfo[] = [];
+  for (const [name, { symbol, requiredIn, origin }] of own) {
+    if (summarised.has(origin)) continue;
+    props.push(describeProp(context, name, symbol, location, requiredIn === types.length, origin));
+  }
+
+  const inherits: InheritedProps[] = [];
+  for (const origin of summarised) {
+    const names = (byOrigin.get(origin) ?? []).sort();
+    const key = registerPropSet(context.propSets, names);
+    const from = origin === 'react' ? inheritedLabel(context, typeNode) : origin;
+    inherits.push({ from, count: names.length, set: key });
+  }
+  return { props, inherits, openProps };
+}
+
+/** Packages contributing more props than this are summarised instead of listed. */
+const MAX_LISTED_INHERITED = 40;
+
+/** Flattens intersections and local aliases into the types they are built from. */
+function constituents(context: FileContext, typeNode: ts.TypeNode, depth = 0): ts.Type[] {
+  const { checker } = context;
+  if (depth > 4) return [checker.getTypeFromTypeNode(typeNode)];
+  if (ts.isIntersectionTypeNode(typeNode)) {
+    return typeNode.types.flatMap((t) => constituents(context, t, depth + 1));
+  }
+  if (ts.isParenthesizedTypeNode(typeNode)) return constituents(context, typeNode.type, depth + 1);
+  if (ts.isTypeReferenceNode(typeNode)) {
+    const symbol = checker.getSymbolAtLocation(typeNode.typeName);
+    const alias = symbol?.declarations?.find(ts.isTypeAliasDeclaration);
+    if (alias && alias.getSourceFile() === context.sourceFile && !alias.typeParameters) {
+      return constituents(context, alias.type, depth + 1);
+    }
+    // A local interface: its own members plus whatever it extends, so an
+    // unresolved `extends React.ButtonHTMLAttributes<...>` is noticed.
+    const iface = symbol?.declarations?.find(ts.isInterfaceDeclaration);
+    if (iface && iface.getSourceFile() === context.sourceFile) {
+      const bases = (iface.heritageClauses ?? []).flatMap((clause) =>
+        clause.types.map((t) => checker.getTypeAtLocation(t)),
+      );
+      return [checker.getTypeFromTypeNode(typeNode), ...bases];
+    }
+  }
+  return [checker.getTypeFromTypeNode(typeNode)];
+}
+
+/** Where a prop is declared: the project, React's DOM typings, or another package. */
+function originOf(symbol: ts.Symbol): string {
+  const declaration = symbol.declarations?.[0];
+  if (!declaration) return 'own';
+  const file = toPosix(declaration.getSourceFile().fileName);
+  const index = file.lastIndexOf('/node_modules/');
+  if (index === -1) return declaration.getSourceFile().isDeclarationFile ? 'react' : 'own';
+  const rest = file.slice(index + '/node_modules/'.length).split('/');
+  const pkg = rest[0]?.startsWith('@') ? `${rest[0]}/${rest[1] ?? ''}` : (rest[0] ?? '');
+  if (pkg === '@types/react' || pkg === 'typescript') return 'react';
+  return pkg;
+}
+
+function describeProp(
+  context: FileContext,
+  name: string,
+  symbol: ts.Symbol,
+  location: ts.Node,
+  required: boolean,
+  origin: string,
+): PropInfo {
+  const { checker } = context;
+  const declared = checker.getTypeOfSymbolAtLocation(symbol, location);
+  const type = checker.getNonNullableType(declared);
+  // Print the declared type so aliases such as `ReactNode` survive, then drop
+  // the `undefined` that optional props carry.
+  const printed = checker
+    .typeToString(
+      declared,
+      undefined,
+      ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope,
+    )
+    .replace(/^(?:(?:undefined|null) \| )+|(?: \| (?:undefined|null))+$/g, '');
+  const prop: PropInfo = {
+    name,
+    type: truncate(unwrapParens(printed) || 'unknown', 200),
+    required,
+    kind: 'prop',
+  };
+  const values = literalValues(type);
+  if (values) prop.values = values;
+  const description = ts.displayPartsToString(symbol.getDocumentationComment(checker)).trim();
+  if (description) prop.description = description;
+  for (const tag of symbol.getJsDocTags(checker)) {
+    const text = ts.displayPartsToString(tag.text).trim();
+    if ((tag.name === 'default' || tag.name === 'defaultValue') && text) prop.default = text;
+    if (tag.name === 'deprecated') prop.deprecated = text || true;
+  }
+  if (origin !== 'own') {
+    prop.description = [prop.description, `From ${origin}.`].filter(Boolean).join(' ');
+  }
+  return prop;
+}
+
+/** `(() => void)` → `() => void`, but leaves `(a) => (b)` alone. */
+function unwrapParens(text: string): string {
+  if (!text.startsWith('(') || !text.endsWith(')')) return text;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') depth--;
+    if (depth === 0 && i < text.length - 1) return text;
+  }
+  return text.slice(1, -1);
+}
+
+function literalValues(type: ts.Type): string[] | undefined {
+  const members = type.isUnion() ? type.types : [type];
+  if (!members.every((t) => t.isStringLiteral())) return undefined;
+  return members.map((t) => t.value);
+}
+
+function isAny(type: ts.Type): boolean {
+  return (type.flags & ts.TypeFlags.Any) !== 0;
+}
+
+function registerPropSet(sets: Map<string, string[]>, names: string[]): string {
+  const key = createHash('sha1').update(names.join(',')).digest('hex').slice(0, 10);
+  if (!sets.has(key)) sets.set(key, names);
+  return key;
+}
+
+/** `React.ComponentProps<"button">`, or the heritage clauses of a props interface. */
+function inheritedLabel(context: FileContext, typeNode: ts.TypeNode | undefined): string {
+  if (!typeNode) return 'React DOM attributes';
+  const parts: string[] = [];
+  const visit = (node: ts.TypeNode, depth: number): void => {
+    if (depth > 4) return;
+    if (ts.isIntersectionTypeNode(node)) {
+      node.types.forEach((t) => {
+        visit(t, depth + 1);
+      });
+      return;
+    }
+    if (ts.isTypeReferenceNode(node)) {
+      const symbol = context.checker.getSymbolAtLocation(node.typeName);
+      const local = symbol?.declarations?.find((d) => d.getSourceFile() === context.sourceFile);
+      if (local && ts.isTypeAliasDeclaration(local)) {
+        visit(local.type, depth + 1);
+        return;
+      }
+      if (local && ts.isInterfaceDeclaration(local)) {
+        for (const clause of local.heritageClauses ?? []) {
+          for (const t of clause.types)
+            if (!/VariantProps/.test(t.getText())) parts.push(t.getText());
+        }
+        return;
+      }
+      if (!/VariantProps/.test(node.getText())) parts.push(node.getText());
+    }
+  };
+  visit(typeNode, 0);
+  return parts.length ? parts.join(' & ') : 'React DOM attributes';
+}
+
+/** Adds or enriches variant props from cva/tv definitions (works without type info). */
+function mergeVariantProps(props: PropInfo[], variants: VariantInfo[]): void {
+  for (const variant of variants) {
+    const isBoolean = variant.values.every((v) => v === 'true' || v === 'false');
+    const existing = props.find((p) => p.name === variant.name);
+    const prop: PropInfo = existing ?? {
+      name: variant.name,
+      type: isBoolean ? 'boolean' : variant.values.map((v) => JSON.stringify(v)).join(' | '),
+      required: false,
+      kind: 'variant',
+    };
+    prop.kind = 'variant';
+    if (!isBoolean) {
+      // The checker orders union members arbitrarily; the cva config order is the meaningful one.
+      prop.values = [...variant.values];
+      prop.type = variant.values.map((v) => JSON.stringify(v)).join(' | ');
+    }
+    if (variant.default !== undefined)
+      prop.default = isBoolean ? variant.default : JSON.stringify(variant.default);
+    if (!existing) props.push(prop);
+  }
+  // Variants first: they are what callers most often get wrong.
+  props.sort((a, b) => Number(b.kind === 'variant') - Number(a.kind === 'variant'));
+}
+
+function applyDestructuredDefaults(
+  props: PropInfo[],
+  param: ts.ParameterDeclaration | undefined,
+): void {
+  if (!param || !ts.isObjectBindingPattern(param.name)) return;
+  for (const element of param.name.elements) {
+    if (!element.initializer || element.dotDotDotToken) continue;
+    const nameNode = element.propertyName ?? element.name;
+    if (!ts.isIdentifier(nameNode) && !ts.isStringLiteral(nameNode)) continue;
+    const prop = props.find((p) => p.name === nameNode.text);
+    if (prop) prop.default = element.initializer.getText();
+  }
+}
+
+// ─── Element inference ──────────────────────────────────────────────────────
+
+const ELEMENT_INTERFACES: Record<string, string> = {
+  Anchor: 'a',
+  Button: 'button',
+  Input: 'input',
+  TextArea: 'textarea',
+  Select: 'select',
+  Label: 'label',
+  Dialog: 'dialog',
+  Form: 'form',
+  Image: 'img',
+  Table: 'table',
+  HR: 'hr',
+  Progress: 'progress',
+  Meter: 'meter',
+  Div: 'div',
+  Span: 'span',
+  Paragraph: 'p',
+  Heading: 'h2',
+  UList: 'ul',
+  OList: 'ol',
+  LI: 'li',
+  Details: 'details',
+  FieldSet: 'fieldset',
+  Output: 'output',
+};
+
+function inferElement(
+  context: FileContext,
+  candidate: Candidate,
+  typeNode: ts.TypeNode | undefined,
+): string | undefined {
+  const typeText = typeNode ? expandLocalTypeText(context, typeNode) : '';
+  const componentProps = /ComponentProps(?:WithRef|WithoutRef)?<\s*["'`](\w+)["'`]\s*>/.exec(
+    typeText,
+  );
+  if (componentProps?.[1]) return componentProps[1];
+  const htmlAttributes = /HTMLAttributes<\s*HTML(\w+)Element\s*>/.exec(typeText);
+  if (htmlAttributes?.[1]) return ELEMENT_INTERFACES[htmlAttributes[1]];
+  const ref = candidate.refTypeNode?.getText();
+  const refElement = ref ? /^HTML(\w+)Element$/.exec(ref)?.[1] : undefined;
+  if (refElement) return ELEMENT_INTERFACES[refElement];
+  return candidate.fn ? renderedElement(candidate.fn) : undefined;
+}
+
+/** The intrinsic element returned by the render function, following `const Comp = asChild ? Slot : "button"`. */
+function renderedElement(fn: ts.SignatureDeclaration): string | undefined {
+  let found: string | undefined;
+  const stringAssignments = new Map<string, string>();
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const literal = firstStringLiteral(node.initializer);
+      if (literal) stringAssignments.set(node.name.text, literal);
+    }
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName;
+      if (ts.isIdentifier(tag)) {
+        found = /^[a-z]/.test(tag.text) ? tag.text : stringAssignments.get(tag.text);
+      }
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn);
+  return found;
+}
+
+function firstStringLiteral(node: ts.Expression): string | undefined {
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isConditionalExpression(node)) {
+    return firstStringLiteral(node.whenFalse) ?? firstStringLiteral(node.whenTrue);
+  }
+  return undefined;
+}
+
+// ─── Classes and composition ────────────────────────────────────────────────
+
+/** Utility classes and CSS variables referenced from class strings in the given nodes. */
+function collectClasses(nodes: ts.Node[]): { classNames: string[]; cssVars: string[] } {
+  const classNames = new Set<string>();
+  const cssVars = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxAttribute(node) && /^(className|class)$/.test(node.name.getText())) {
+      addClasses(node.initializer ? classText(node.initializer) : '');
+      return;
+    }
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression.getText();
+      if (
+        /^(cn|clsx|cx|twMerge|twJoin|classNames|cva|tv)$/.test(callee) ||
+        /Variants$/.test(callee)
+      ) {
+        node.arguments.forEach((arg) => {
+          addClasses(classText(arg));
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  const addClasses = (text: string) => {
+    for (const cls of text.split(/\s+/)) {
+      if (!cls) continue;
+      classNames.add(cls);
+      for (const match of cls.matchAll(/--[\w-]+/g)) cssVars.add(match[0]);
+    }
+  };
+  nodes.forEach(visit);
+  return { classNames: [...classNames], cssVars: [...cssVars] };
+}
+
+/**
+ * shadcn/ui-style flat parts (`CardHeader` next to `Card` in card.tsx) belong
+ * to the longest component name they extend in the same file.
+ */
+function linkComposition(components: ComponentInfo[]): void {
+  const names = components.map((c) => c.name);
+  for (const component of components) {
+    if (component.parent || component.name.includes('.')) continue;
+    const parent = names
+      .filter(
+        (n) =>
+          n !== component.name &&
+          !n.includes('.') &&
+          component.name.startsWith(n) &&
+          /^[A-Z]/.test(component.name.charAt(n.length)),
+      )
+      .sort((a, b) => b.length - a.length)[0];
+    if (parent) component.parent = parent;
+  }
+  for (const component of components) {
+    component.subcomponents = components
+      .filter((c) => c.parent === component.name)
+      .map((c) => c.name);
+  }
+}
+
+// ─── Import paths ───────────────────────────────────────────────────────────
+
+/**
+ * The specifier an app would import this file with: the configured package
+ * name, a tsconfig `paths` alias (`@/components/ui/button`), or a path
+ * relative to the root.
+ */
+function importPathFor(
+  options: ExtractComponentsOptions,
+  project: ProjectConfig,
+  file: string,
+): string {
+  if (options.importPath) return options.importPath;
+  const withoutExt = file.replace(/\.(tsx?|jsx?|mts|cts)$/, '').replace(/\/index$/, '');
+  for (const [pattern, targets] of Object.entries(project.paths)) {
+    if (!pattern.endsWith('/*')) continue;
+    for (const target of targets) {
+      if (!target.endsWith('/*')) continue;
+      const targetDir = path.resolve(project.pathsBase, target.slice(0, -2));
+      const rel = path.relative(targetDir, withoutExt);
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        return `${pattern.slice(0, -2)}/${toPosix(rel)}`;
+      }
+    }
+  }
+  const rel = relativePath(options.root, withoutExt);
+  return rel.startsWith('.') ? rel : `./${rel}`;
+}
