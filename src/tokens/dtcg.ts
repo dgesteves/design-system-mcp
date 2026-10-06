@@ -78,10 +78,22 @@ export function parseDtcgTokens(
     return value;
   };
 
+  const aliasTarget = (value: Json): string | undefined =>
+    typeof value === 'string' ? /^\{([^{}]+)\}$/.exec(value)?.[1] : undefined;
+  /** `$type` of a token, or of the token its alias chain ends at. */
+  const typeOf = (token: RawToken, seen = new Set<string>()): string | undefined => {
+    if (token.type) return token.type;
+    const alias = aliasTarget(token.value);
+    if (alias === undefined || seen.has(alias)) return undefined;
+    seen.add(alias);
+    const target = byPath.get(alias);
+    return target ? typeOf(target, seen) : undefined;
+  };
+
   const tokens = raw.map((t): Token => {
     const name = t.path.join('.');
-    const aliasOf = typeof t.value === 'string' ? /^\{([^{}]+)\}$/.exec(t.value)?.[1] : undefined;
-    const type = t.type ?? (aliasOf ? byPath.get(aliasOf)?.type : undefined);
+    const aliasOf = aliasTarget(t.value);
+    const type = typeOf(t);
     const value = formatValue(resolve(t.value, new Set([name])), type);
     const token: Token = {
       name,
