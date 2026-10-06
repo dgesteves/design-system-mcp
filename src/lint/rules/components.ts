@@ -320,6 +320,24 @@ const ICON_LABELS: [RegExp, string][] = [
 
 type Content = 'text' | 'icon' | 'empty';
 
+/** i18n components that render text: react-intl's `Formatted*`, react-i18next's and Lingui's `Trans`. */
+const TEXT_COMPONENTS = /^(?:Formatted[A-Z]\w*|Trans|Translate)$/;
+
+/** `<svg><title>Close</title>…</svg>`: the title is the image's accessible name. */
+function hasSvgTitle(svg: ts.Node, context: RuleContext): boolean {
+  return (
+    ts.isJsxElement(svg) &&
+    svg.children.some(
+      (child) =>
+        ts.isJsxElement(child) &&
+        child.openingElement.tagName.getText(context.sourceFile) === 'title' &&
+        child.children.some((c) =>
+          ts.isJsxText(c) ? c.text.trim() !== '' : ts.isJsxExpression(c) && c.expression,
+        ),
+    )
+  );
+}
+
 function classify(children: readonly ts.Node[], context: RuleContext, icons: string[]): Content {
   let result: Content = 'empty';
   for (const child of children) {
@@ -336,10 +354,12 @@ function classify(children: readonly ts.Node[], context: RuleContext, icons: str
           /^(aria-label|aria-labelledby|alt|title)$/.test(a.name.getText(context.sourceFile)) &&
           !(a.initializer && ts.isStringLiteral(a.initializer) && !a.initializer.text.trim()),
       );
-      if (hasLabel) kind = 'text';
+      if (hasLabel || (tag === 'svg' && hasSvgTitle(child, context))) kind = 'text';
       else if (tag === 'svg' || tag === 'img') kind = 'icon';
       else if (ts.isJsxElement(child) && child.children.length) {
         kind = classify(child.children, context, icons);
+      } else if (TEXT_COMPONENTS.test(tag)) {
+        kind = 'text';
       } else if (/^[A-Z]/.test(tag)) {
         icons.push(tag);
         kind = 'icon';

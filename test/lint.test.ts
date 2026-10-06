@@ -494,12 +494,16 @@ describe('icon-button-accessible-name', () => {
       `<Button asChild><a href="/x"><Trash2 /></a></Button>`,
       `<Button {...props}><Trash2 /></Button>`,
       `<button title="Close"><svg /></button>`,
+      `<Button size="icon"><svg viewBox="0 0 24 24"><title>Close</title><path /></svg></Button>`,
+      `<Button><FormattedMessage id="save" /></Button>`,
+      `<Button><Trans i18nKey="save" /></Button>`,
     ];
     for (const code of ok) expect(check(`${IMPORTS}${code}`, rule), code).toEqual([]);
   });
 
   it('still flags an empty aria-label', () => {
     expect(check(`<button aria-label=""><svg /></button>`, rule)).toHaveLength(1);
+    expect(check(`<button><svg><title> </title></svg></button>`, rule)).toHaveLength(1);
   });
 });
 
