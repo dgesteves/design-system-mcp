@@ -80,7 +80,7 @@ describe('MCP server over the in-memory transport', () => {
       '- variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" = "default"',
     );
     expect(body).toContain('## Variants');
-    expect(body).toContain('## Guidelines (docs/button.md)');
+    expect(body).toContain('## Docs (docs/button.md)');
     expect(body).toContain('### Destructive action');
     expect(result.structuredContent).toMatchObject({ name: 'Button', element: 'button' });
 
