@@ -7,9 +7,10 @@ import path from 'node:path';
 import { glob } from 'tinyglobby';
 import type ts from 'typescript';
 
-import type { ResolvedConfig } from './config.js';
+import { loadConfig, type ResolvedConfig } from './config.js';
 import { extractComponents } from './extract/components.js';
 import { attachDocs, parseDoc, type ParsedDoc } from './extract/docs.js';
+import { projectFiles } from './extract/program.js';
 import { checkSource, LintTarget } from './lint/index.js';
 import {
   buildSearchIndex,
@@ -27,7 +28,7 @@ import type {
 } from './types.js';
 import { silentLogger, type Logger } from './util/log.js';
 import { globBase, isInside, relativePath } from './util/paths.js';
-import { closest } from './util/strings.js';
+import { closest, unique } from './util/strings.js';
 import { parseUtility } from './lint/tailwind.js';
 import { VERSION } from './version.js';
 
@@ -165,16 +166,40 @@ async function resolveFiles(config: ResolvedConfig): Promise<ResolvedFiles> {
   return { components, tokens, docs };
 }
 
-/** Everything that, when changed, invalidates the cached model. */
-async function cacheKey(config: ResolvedConfig, files: ResolvedFiles): Promise<string> {
-  const stat = async (file: string) => {
-    try {
-      const s = await fsp.stat(file);
-      return `${relativePath(config.root, file)}:${s.size}:${Math.round(s.mtimeMs)}`;
-    } catch {
-      return `${file}:missing`;
-    }
-  };
+/** Size and mtime of files, each read once per build. */
+class FileStats {
+  private readonly stats = new Map<string, Promise<string>>();
+
+  constructor(private readonly root: string) {}
+
+  of(files: readonly string[]): Promise<string[]> {
+    return Promise.all(
+      files.map((file) => {
+        let stat = this.stats.get(file);
+        if (!stat) {
+          stat = fsp.stat(file).then(
+            (s) => `${relativePath(this.root, file)}:${s.size}:${Math.round(s.mtimeMs)}`,
+            () => `${file}:missing`,
+          );
+          this.stats.set(file, stat);
+        }
+        return stat;
+      }),
+    );
+  }
+}
+
+/**
+ * Everything that, when changed, invalidates the cached model: the tracked
+ * files, `dependencies` (project files the components import and the tsconfig
+ * chain, known after extraction), the lockfile and the config.
+ */
+async function cacheKey(
+  config: ResolvedConfig,
+  files: ResolvedFiles,
+  dependencies: readonly string[],
+  stats = new FileStats(config.root),
+): Promise<string> {
   const extra = [
     'tsconfig.json',
     'package.json',
@@ -185,11 +210,16 @@ async function cacheKey(config: ResolvedConfig, files: ResolvedFiles): Promise<s
   ]
     .map((f) => path.join(config.root, f))
     .filter((f) => fs.existsSync(f));
-  const all = [...files.components, ...files.tokens.map((t) => t.file), ...files.docs, ...extra];
-  const stats = await Promise.all(all.map(stat));
+  const all = unique([
+    ...files.components,
+    ...files.tokens.map((t) => t.file),
+    ...files.docs,
+    ...extra,
+    ...dependencies,
+  ]);
   const { rules: _rules, ...relevant } = config;
   return createHash('sha256')
-    .update(JSON.stringify({ version: VERSION, config: relevant, stats }))
+    .update(JSON.stringify({ version: VERSION, config: relevant, stats: await stats.of(all) }))
     .digest('hex');
 }
 
@@ -207,11 +237,19 @@ export interface BuildResult {
   program?: ts.Program | undefined;
   /** Fingerprint of every input file; unchanged fingerprint means nothing to rebuild. */
   key?: string;
+  /** Project files the model depends on beyond the tracked ones; pass them to `fingerprint`. */
+  dependencies?: string[];
 }
 
-/** Fingerprint of the files a config tracks (paths, sizes, mtimes), without extracting anything. */
-export async function fingerprint(config: ResolvedConfig): Promise<string> {
-  return cacheKey(config, await resolveFiles(config));
+/**
+ * Fingerprint of the files a config tracks (paths, sizes, mtimes), plus the
+ * `dependencies` of a previous build, without extracting anything.
+ */
+export async function fingerprint(
+  config: ResolvedConfig,
+  dependencies: readonly string[] = [],
+): Promise<string> {
+  return cacheKey(config, await resolveFiles(config), dependencies);
 }
 
 export async function buildModel(
@@ -222,23 +260,29 @@ export async function buildModel(
   const started = performance.now();
   const files = await resolveFiles(config);
   const useCache = options.cache !== false;
-  const key = await cacheKey(config, files);
   const cachePath = cacheFile(config.root);
 
+  let cached: { key?: string; dependencies?: string[]; model?: DesignSystemModel } | undefined;
   if (useCache && !options.oldProgram) {
     try {
-      const cached = JSON.parse(await fsp.readFile(cachePath, 'utf8')) as {
-        key?: string;
-        model?: DesignSystemModel;
-      };
-      if (cached.key === key && cached.model?.version === 1) {
-        cached.model.stats.fromCache = true;
-        cached.model.stats.durationMs = Math.round(performance.now() - started);
-        return { model: cached.model, key };
-      }
+      cached = JSON.parse(await fsp.readFile(cachePath, 'utf8')) as typeof cached;
     } catch {
       // No cache yet, or unreadable: extract.
     }
+  }
+  const known = Array.isArray(cached?.dependencies)
+    ? cached.dependencies
+    : options.oldProgram
+      ? projectFiles(options.oldProgram)
+      : [];
+  // Stat every input known up front before extracting, so a file saved
+  // during the build still changes the next fingerprint.
+  const stats = new FileStats(config.root);
+  const before = await cacheKey(config, files, known, stats);
+  if (cached?.model?.version === 1 && cached.key === before && Array.isArray(cached.dependencies)) {
+    cached.model.stats.fromCache = true;
+    cached.model.stats.durationMs = Math.round(performance.now() - started);
+    return { model: cached.model, key: before, dependencies: cached.dependencies };
   }
 
   const extracted = extractComponents({
@@ -286,15 +330,17 @@ export async function buildModel(
     },
   };
 
+  const { dependencies } = extracted;
+  const key = await cacheKey(config, files, dependencies, stats);
   if (useCache) {
     try {
       await fsp.mkdir(path.dirname(cachePath), { recursive: true });
-      await fsp.writeFile(cachePath, JSON.stringify({ key, model }));
+      await fsp.writeFile(cachePath, JSON.stringify({ key, dependencies, model }));
     } catch (error) {
       logger.warn(`could not write cache ${cachePath}: ${(error as Error).message}`);
     }
   }
-  return { model, program: extracted.program, key };
+  return { model, program: extracted.program, key, dependencies };
 }
 
 export async function loadDesignSystem(
@@ -315,18 +361,27 @@ export async function loadDesignSystem(
 export interface HostOptions extends LoadOptions {
   /** Builds the model; replaceable in tests. Defaults to `buildModel`. */
   build?: typeof buildModel;
+  /**
+   * Re-reads the config when its file changes while watching. Defaults to
+   * loading the same config file; pass your own to keep overrides such as CLI flags.
+   */
+  loadConfig?: () => Promise<ResolvedConfig>;
 }
 
 export class DesignSystemHost {
   private current?: Promise<DesignSystem>;
   private program?: ts.Program | undefined;
   private key?: string | undefined;
+  private dependencies: string[] = [];
+  /** Bumped by every build; only the latest may update the state above. */
+  private generation = 0;
+  private configChanged = false;
   private watchers: fs.FSWatcher[] = [];
   private timer?: NodeJS.Timeout;
   private readonly listeners = new Set<(ds: DesignSystem) => void>();
 
   constructor(
-    private readonly config: ResolvedConfig,
+    private config: ResolvedConfig,
     private readonly options: HostOptions = {},
   ) {}
 
@@ -352,7 +407,7 @@ export class DesignSystemHost {
     return () => this.listeners.delete(listener);
   }
 
-  /** Watches the component, token and docs locations plus config files. */
+  /** Watches the component, token and docs locations plus the config and tsconfig. */
   watch(): void {
     if (this.watchers.length) return;
     const { root } = this.config;
@@ -367,42 +422,28 @@ export class DesignSystemHost {
     }
     const files = [
       this.config.configFile,
-      path.join(root, this.config.tsconfig ?? 'tsconfig.json'),
-    ].filter((f): f is string => Boolean(f && fs.existsSync(f)));
-    // Watched directories can hold unrelated files (a token file in app/ puts
-    // every page under watch), so only rebuild when a tracked file changed.
-    const schedule = () => {
-      clearTimeout(this.timer);
-      this.timer = setTimeout(() => {
-        void fingerprint(this.config).then(
-          (key) => (key === this.key ? undefined : this.reload()),
-          () => this.reload(),
-        );
-      }, 150);
+      path.resolve(root, this.config.tsconfig ?? 'tsconfig.json'),
+    ].filter((f): f is string => Boolean(f));
+    const changed = (file: string | undefined) => {
+      if (file === undefined || file === this.config.configFile) this.configChanged = true;
+      this.schedule();
     };
     // Skip dirs nested inside another watched dir.
     const roots = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && isInside(o, d)));
     for (const dir of roots) {
-      try {
-        // Non-persistent: the process lives as long as stdin, not as long as the watchers.
-        const watcher = fs.watch(dir, { recursive: true, persistent: false }, (_event, file) => {
-          if (file && /node_modules|\.git[\\/]/.test(file)) return;
-          schedule();
-        });
-        watcher.on('error', () => undefined);
-        this.watchers.push(watcher);
-      } catch {
-        // Recursive watch unsupported here; changes need a restart.
-      }
+      this.watchDirectory(dir, true, (file) => {
+        if (file && /node_modules|\.git[\\/]/.test(file)) return;
+        changed(file ? path.join(dir, file) : path.join(dir, '.'));
+      });
     }
-    for (const file of files) {
-      try {
-        const watcher = fs.watch(file, { persistent: false }, schedule);
-        watcher.on('error', () => undefined);
-        this.watchers.push(watcher);
-      } catch {
-        // ignore
-      }
+    // Config files are watched through their directory: editors save by
+    // renaming a new file over the old one, which ends a watch on the file.
+    for (const dir of unique(files.map((f) => path.dirname(f)))) {
+      if (roots.some((r) => isInside(r, dir)) || !fs.existsSync(dir)) continue;
+      this.watchDirectory(dir, false, (file) => {
+        const full = file ? path.join(dir, file) : undefined;
+        if (full === undefined || files.includes(full)) changed(full);
+      });
     }
   }
 
@@ -412,20 +453,80 @@ export class DesignSystemHost {
     this.watchers = [];
   }
 
+  private watchDirectory(
+    dir: string,
+    recursive: boolean,
+    onChange: (file: string | null) => void,
+  ): void {
+    try {
+      // Non-persistent: the process lives as long as stdin, not as long as the watchers.
+      const watcher = fs.watch(dir, { recursive, persistent: false }, (_event, file) => {
+        onChange(file);
+      });
+      watcher.on('error', () => undefined);
+      this.watchers.push(watcher);
+    } catch {
+      // Recursive watch unsupported here; changes need a restart.
+    }
+  }
+
+  private schedule(): void {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (this.configChanged) {
+        this.configChanged = false;
+        void this.reloadConfig();
+        return;
+      }
+      // Watched directories can hold unrelated files (a token file in app/ puts
+      // every page under watch), so only rebuild when a tracked file changed.
+      fingerprint(this.config, this.dependencies)
+        .then(
+          (key) => (key === this.key ? undefined : this.reload()),
+          () => this.reload(),
+        )
+        .catch(() => undefined);
+    }, 150);
+  }
+
+  /** Re-reads the config, re-watches what it points at and rebuilds. */
+  private async reloadConfig(): Promise<void> {
+    const { root, configFile } = this.config;
+    const load = this.options.loadConfig ?? (() => loadConfig({ root, config: configFile }));
+    try {
+      this.config = await load();
+    } catch (error) {
+      (this.options.logger ?? silentLogger).error(
+        `config reload failed: ${(error as Error).message}`,
+      );
+      return;
+    }
+    if (this.watchers.length) {
+      this.close();
+      this.watch();
+    }
+    await this.reload().catch(() => undefined);
+  }
+
   private async build(incremental: boolean): Promise<DesignSystem> {
+    const generation = ++this.generation;
+    const config = this.config;
     const logger = this.options.logger ?? silentLogger;
     const build = this.options.build ?? buildModel;
-    const { model, program, key } = await build(this.config, {
+    const { model, program, key, dependencies } = await build(config, {
       ...this.options,
       oldProgram: incremental ? this.program : undefined,
     });
+    const ds = new DesignSystem(model, config);
+    // A newer build started meanwhile: its result is the current one.
+    if (generation !== this.generation) return ds;
     if (program) this.program = program;
     this.key = key;
-    const ds = new DesignSystem(model, this.config);
+    this.dependencies = dependencies ?? [];
     const { stats } = model;
     logger.info(
       `${incremental ? 'reloaded' : 'loaded'} ${model.components.length} components, ${model.tokens.length} tokens` +
-        ` from ${relativePath(process.cwd(), this.config.root) || '.'} in ${stats.durationMs}ms${stats.fromCache ? ' (cache)' : ''}`,
+        ` from ${relativePath(process.cwd(), config.root) || '.'} in ${stats.durationMs}ms${stats.fromCache ? ' (cache)' : ''}`,
     );
     for (const warning of model.warnings) logger.warn(warning);
     if (incremental) for (const listener of this.listeners) listener(ds);

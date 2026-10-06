@@ -6,12 +6,12 @@ import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ListRootsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createServer } from '../src/server/index.js';
 import { serveStdio } from '../src/server/stdio.js';
 import { silentLogger } from '../src/util/log.js';
-import { DEMO_ROOT, loadOnce } from './helpers.js';
+import { DEMO_ROOT, fixture, loadOnce } from './helpers.js';
 
 function text(result: unknown): string {
   const content = (result as CallToolResult).content[0];
@@ -249,4 +249,44 @@ describe('project root from MCP client roots', () => {
     await server.close();
     fs.rmSync(cwd, { recursive: true, force: true });
   });
+});
+
+describe('change notifications', () => {
+  it('logs, rather than throws, when the client cannot be notified', async () => {
+    const root = fixture({
+      'components/ui/chip.tsx': 'export function Chip() { return <span /> }\n',
+    });
+    const warnings: string[] = [];
+    const logger = { ...silentLogger, warn: (message: string) => warnings.push(message) };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const send = serverTransport.send.bind(serverTransport);
+    serverTransport.send = (message, options) =>
+      'method' in message && message.method === 'notifications/resources/list_changed'
+        ? Promise.reject(new Error('client went away'))
+        : send(message, options);
+    const server = await serveStdio({
+      cwd: root,
+      root,
+      cache: false,
+      watch: true,
+      logger,
+      transport: serverTransport,
+    });
+    const client = new Client({ name: 'c', version: '1.0.0' });
+    await client.connect(clientTransport);
+    await client.callTool({ name: 'list_components', arguments: {} });
+    await new Promise((r) => setTimeout(r, 100));
+    fs.writeFileSync(
+      path.join(root, 'components/ui/badge.tsx'),
+      'export function Badge() { return <span /> }\n',
+    );
+    await vi.waitFor(
+      () => {
+        expect(warnings.join('\n')).toContain('client went away');
+      },
+      { timeout: 10_000 },
+    );
+    await client.close();
+    await server.close();
+  }, 15_000);
 });

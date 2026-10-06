@@ -13,7 +13,13 @@ import type {
 import { relativePath, toPosix } from '../util/paths.js';
 import { isPascalCase, truncate, unique } from '../util/strings.js';
 import { classText, findVariantDefinitions, type VariantDefinition } from './cva.js';
-import { createProgram, readProjectConfig, type ProjectConfig } from './program.js';
+import {
+  createProgram,
+  isProjectFile,
+  projectFiles,
+  readProjectConfig,
+  type ProjectConfig,
+} from './program.js';
 
 export interface ExtractComponentsOptions {
   root: string;
@@ -31,6 +37,8 @@ export interface ExtractComponentsResult {
   propSets: Record<string, string[]>;
   warnings: string[];
   program: ts.Program;
+  /** Project files extraction depends on: the tsconfig chain and every module the components import. */
+  dependencies: string[];
 }
 
 /**
@@ -78,6 +86,7 @@ export function extractComponents(options: ExtractComponentsOptions): ExtractCom
     propSets: Object.fromEntries(propSets),
     warnings,
     program,
+    dependencies: unique([...project.configFiles.filter(isProjectFile), ...projectFiles(program)]),
   };
 }
 

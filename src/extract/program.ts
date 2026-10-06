@@ -20,6 +20,8 @@ export interface ProjectConfig {
   pathsBase: string;
   paths: Record<string, string[]>;
   configFile?: string;
+  /** The tsconfig and the configs it extends. */
+  configFiles: string[];
 }
 
 /**
@@ -30,12 +32,25 @@ export interface ProjectConfig {
 export function readProjectConfig(root: string, tsconfig?: string): ProjectConfig {
   const configFile = tsconfig ? path.resolve(root, tsconfig) : path.join(root, 'tsconfig.json');
   if (!fs.existsSync(configFile)) {
-    return { options: { ...DEFAULT_OPTIONS }, pathsBase: root, paths: {} };
+    return { options: { ...DEFAULT_OPTIONS }, pathsBase: root, paths: {}, configFiles: [] };
   }
+  const configFiles = [configFile];
   const read = ts.readConfigFile(configFile, (file) => ts.sys.readFile(file));
-  if (read.error)
-    return { options: { ...DEFAULT_OPTIONS }, pathsBase: root, paths: {}, configFile };
-  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(configFile));
+  if (read.error) {
+    return { options: { ...DEFAULT_OPTIONS }, pathsBase: root, paths: {}, configFile, configFiles };
+  }
+  // Every file read while parsing is a config it extends.
+  const host: ts.ParseConfigHost = {
+    useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
+    fileExists: (file) => ts.sys.fileExists(file),
+    readDirectory: (dir, extensions, excludes, includes, depth) =>
+      ts.sys.readDirectory(dir, extensions, excludes, includes, depth),
+    readFile: (file) => {
+      configFiles.push(file);
+      return ts.sys.readFile(file);
+    },
+  };
+  const parsed = ts.parseJsonConfigFileContent(read.config, host, path.dirname(configFile));
   const options: ts.CompilerOptions = { ...DEFAULT_OPTIONS, ...parsed.options };
   // Extraction only needs the checker. Keep it fast and permissive.
   options.noEmit = true;
@@ -51,6 +66,7 @@ export function readProjectConfig(root: string, tsconfig?: string): ProjectConfi
     pathsBase: options.baseUrl ?? path.dirname(configFile),
     paths: options.paths ?? {},
     configFile,
+    configFiles,
   };
 }
 
@@ -64,4 +80,18 @@ export function createProgram(
     options: config.options,
     ...(oldProgram ? { oldProgram } : {}),
   });
+}
+
+/** Files of a program outside `node_modules` and TypeScript's libs: the project code it read. */
+export function projectFiles(program: ts.Program): string[] {
+  return program
+    .getSourceFiles()
+    .filter((file) => !program.isSourceFileDefaultLibrary(file))
+    .map((file) => file.fileName)
+    .filter(isProjectFile);
+}
+
+/** Installed packages are covered by the lockfile; everything else is the project's. */
+export function isProjectFile(file: string): boolean {
+  return !/[\\/]node_modules[\\/]/.test(file);
 }
