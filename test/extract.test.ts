@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { DesignSystem } from '../src/design-system.js';
 import type { ComponentInfo } from '../src/types.js';
-import { ACME_ROOT, DEMO_ROOT, loadOnce } from './helpers.js';
+import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, TSCONFIG } from './helpers.js';
 
 function component(ds: DesignSystem, name: string): ComponentInfo {
   const found = ds.getComponent(name);
@@ -165,5 +165,98 @@ describe('extraction without node_modules (fixture)', () => {
     expect(button.examples.find((e) => e.source === 'jsdoc')?.code).toBe(
       '<Button intent="danger">Delete</Button>',
     );
+  });
+});
+
+describe('components defined as aliases of library components', () => {
+  // shadcn/ui's Radix-era dialog.tsx and its form.tsx.
+  const files = {
+    'tsconfig.json': TSCONFIG,
+    'components/ui/dialog.tsx': `"use client"
+import * as React from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+
+const Dialog = DialogPrimitive.Root
+const DialogTrigger = DialogPrimitive.Trigger
+/** Not a component: the namespace itself. */
+const DialogParts = DialogPrimitive
+
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Content ref={ref} className={className} {...props} />
+))
+
+export { Dialog, DialogTrigger, DialogContent, DialogParts }
+`,
+    'components/ui/form.tsx': `import * as React from "react"
+import { FormProvider } from "react-hook-form"
+
+const Form = FormProvider
+
+function FormItem(props: React.ComponentProps<"div">) {
+  return <div {...props} />
+}
+
+export { Form, FormItem }
+`,
+  };
+  // react-hook-form is not installed in the demo; a minimal package stands in for it.
+  const typed = {
+    ...files,
+    'node_modules/react-hook-form/package.json':
+      '{ "name": "react-hook-form", "types": "index.d.ts" }',
+    'node_modules/react-hook-form/index.d.ts': `import type * as React from "react"
+export interface FormProviderProps<T> { children: React.ReactNode; control: T }
+export declare const FormProvider: <T>(props: FormProviderProps<T>) => React.JSX.Element
+`,
+  };
+  const usage = `import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Form, FormItem } from "@/components/ui/form"
+
+export function X({ form }: { form: object }) {
+  return (
+    <Form {...form}>
+      <FormItem />
+      <Dialog modal><DialogTrigger asChild>Open</DialogTrigger><DialogContent>Hi</DialogContent></Dialog>
+    </Form>
+  )
+}`;
+
+  it('reads props from the call signature when the types resolve', async () => {
+    const ds = await load(fixture(typed, { nodeModules: true }));
+    expect(ds.components.map((c) => c.name).sort()).toEqual([
+      'Dialog',
+      'DialogContent',
+      'DialogTrigger',
+      'Form',
+      'FormItem',
+    ]);
+    const dialog = component(ds, 'Dialog');
+    expect(dialog).toMatchObject({
+      openProps: false,
+      subcomponents: ['DialogTrigger', 'DialogContent'],
+    });
+    expect(prop(dialog, 'onOpenChange').description).toContain('@radix-ui/react-dialog');
+    const trigger = component(ds, 'DialogTrigger');
+    expect(trigger.parent).toBe('Dialog');
+    expect(trigger.inherits[0]?.count).toBeGreaterThan(200);
+    expect(
+      component(ds, 'Form')
+        .props.map((p) => p.name)
+        .sort(),
+    ).toEqual(['children', 'control']);
+
+    expect(ds.check(usage, 'app/x.tsx').diagnostics).toEqual([]);
+    const [d] = ds.check(`${usage}\n<Dialog isOpen />`, 'app/x.tsx').diagnostics;
+    expect(d).toMatchObject({ ruleId: 'no-unknown-prop', suggestion: 'open' });
+  });
+
+  it('keeps them, with open props, when the library types are not installed', async () => {
+    const ds = await load(fixture(files));
+    expect(component(ds, 'Dialog').openProps).toBe(true);
+    expect(component(ds, 'Form').openProps).toBe(true);
+    expect(ds.check(`${usage}\n<Dialog isOpen />`, 'app/x.tsx').diagnostics).toEqual([]);
   });
 });
