@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { ConfigError, configJsonSchema, DEFAULT_COMPONENTS, loadConfig } from '../src/config.js';
-import { ACME_ROOT, DEMO_ROOT } from './helpers.js';
+import { ACME_ROOT, DEMO_ROOT, fixture, load } from './helpers.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-config-'));
 afterAll(() => {
@@ -72,6 +72,63 @@ describe('loadConfig', () => {
     await expect(loadConfig({ config: path.join(dir, 'missing.json') })).rejects.toThrow(
       /not found/,
     );
+  });
+
+  it('reads Windows-style paths, keeping glob escapes in slash-separated patterns', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'win-'));
+    fs.writeFileSync(path.join(dir, 'tsconfig.app.json'), '{}');
+    fs.writeFileSync(
+      path.join(dir, 'design-system-mcp.config.json'),
+      JSON.stringify({
+        tsconfig: '.\\tsconfig.app.json',
+        components: 'components\\ui\\**\\*.tsx',
+        tokens: ['app\\globals.css', { path: 'tokens\\*.tokens.json', prefix: 'acme' }],
+        docs: ['docs\\**\\*.md'],
+        exclude: ['**\\*.stories.tsx', 'app/\\(marketing\\)/**'],
+      }),
+    );
+    expect(await loadConfig({ root: dir, docs: ['guides\\*.mdx'] })).toMatchObject({
+      tsconfig: './tsconfig.app.json',
+      components: ['components/ui/**/*.tsx'],
+      tokens: [{ path: 'app/globals.css' }, { path: 'tokens/*.tokens.json', prefix: 'acme' }],
+      docs: ['guides/*.mdx'],
+      exclude: ['**/*.stories.tsx', 'app/\\(marketing\\)/**'],
+    });
+  });
+
+  it('rejects a tsconfig that does not exist instead of ignoring it', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'tsconfig-'));
+    fs.writeFileSync(
+      path.join(dir, 'design-system-mcp.config.json'),
+      JSON.stringify({ tsconfig: 'tsconfig.app.json' }),
+    );
+    const error = await loadConfig({ root: dir }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toContain(
+      `tsconfig not found: ${path.join(dir, 'tsconfig.app.json')}`,
+    );
+  });
+
+  it('resolves path aliases through a Windows-style tsconfig path', async () => {
+    const root = fixture({
+      'design-system-mcp.config.json': JSON.stringify({
+        tsconfig: '.\\tsconfig.app.json',
+        components: 'components\\ui\\*.tsx',
+        tokens: [],
+      }),
+      'tsconfig.app.json': JSON.stringify({
+        compilerOptions: { jsx: 'react-jsx', paths: { '@/*': ['./*'] } },
+      }),
+      'components/ui/button.tsx': `export function Button(props: { variant?: "default" | "ghost" }) {
+  return <button data-variant={props.variant} />
+}`,
+    });
+    const ds = await load(root);
+    expect(ds.getComponent('Button')?.importPath).toBe('@/components/ui/button');
+    const { diagnostics } = ds.check(
+      `import { Button } from "@/components/ui/button"\n<Button variant="danger" />`,
+    );
+    expect(diagnostics.map((d) => d.ruleId)).toEqual(['no-unknown-variant']);
   });
 
   it('exports a JSON Schema for editors', () => {
