@@ -42,9 +42,19 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   const start = async (root: string | undefined) => {
     try {
       const config = await loadConfig({ ...options, root });
-      const host = new DesignSystemHost(config, { cache: options.cache, logger });
+      const host = new DesignSystemHost(config, {
+        cache: options.cache,
+        logger,
+        // Keep CLI overrides when the config file is edited.
+        loadConfig: () => loadConfig({ ...options, root }),
+      });
       host.onChange(() => {
-        if (server.isConnected()) server.sendResourceListChanged();
+        if (!server.isConnected()) return;
+        // McpServer.sendResourceListChanged() drops this promise, so a failed send
+        // would surface as an unhandled rejection.
+        server.server.sendResourceListChanged().catch((error: unknown) => {
+          logger.warn(`could not notify the client: ${(error as Error).message}`);
+        });
       });
       if (options.watch) host.watch();
       host.get().catch((error: unknown) => {
