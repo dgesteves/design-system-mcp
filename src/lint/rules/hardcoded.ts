@@ -213,6 +213,12 @@ function reportColor(
   if (close && advice) message += ` → ${advice}`;
   if (variant) message += `, or use ${variant}`;
   message += close ? '.' : '. Pick the semantic token that fits.';
+  const owner =
+    !variant && input.prefix && input.element
+      ? variantProp(context, input.element, input.prefix)
+      : undefined;
+  if (owner)
+    message += ` <${owner.component}> already sets ${input.prefix}-* through \`${owner.prop}\`; prefer a variant over overriding it.`;
 
   context.report({
     start: input.start,
@@ -221,6 +227,22 @@ function reportColor(
     suggestion: close ? (variant ?? replacement) : undefined,
     fix: close && edit ? [{ range: [input.start, input.end], text: edit }] : undefined,
   });
+}
+
+/** The variant prop of the element's component that already sets `prefix-*` classes, if any. */
+function variantProp(
+  context: RuleContext,
+  element: JsxNode,
+  prefix: string,
+): { component: string; prop: string } | undefined {
+  const resolution = context.resolve(element);
+  if (resolution.kind !== 'component') return undefined;
+  const variant = resolution.component.variants.find((v) =>
+    Object.values(v.classes).some((classes) =>
+      classes.split(/\s+/).some((c) => c.startsWith(`${prefix}-`)),
+    ),
+  );
+  return variant ? { component: resolution.component.name, prop: variant.name } : undefined;
 }
 
 /** `variant="destructive"` when a variant of the element's component already applies `cls`. */
