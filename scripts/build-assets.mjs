@@ -220,16 +220,6 @@ async function hero() {
     `fixed draft should be clean: ${JSON.stringify(after.diagnostics)}`,
   );
 
-  const shortRule = {
-    'no-hardcoded-color': 'no-hardcoded-color',
-    'no-hardcoded-spacing': 'no-hardcoded-spacing',
-    'no-hardcoded-radius': 'no-hardcoded-radius',
-    'prefer-design-system-component': 'prefer-ds-component',
-    'no-unknown-component': 'no-unknown-component',
-    'no-unknown-prop': 'no-unknown-prop',
-    'no-unknown-variant': 'no-unknown-variant',
-    'icon-button-accessible-name': 'icon-button-name',
-  };
   const rows = result.diagnostics.map((d) => {
     let found = d.source;
     let fix = d.suggestion ?? '';
@@ -247,7 +237,7 @@ async function hero() {
     return {
       loc: `${d.line}:${d.column}`,
       error: d.severity === 'error',
-      rule: shortRule[d.ruleId],
+      rule: d.ruleId,
       found,
       fix,
       note,
@@ -340,7 +330,7 @@ async function hero() {
     dot: panelX + 24,
     loc: panelX + 40,
     rule: panelX + 40 + charW * 7,
-    found: panelX + 40 + charW * 29,
+    found: panelX + 40 + charW * 36,
   };
   let ry = y + headerH + 30;
   for (const row of rows) {
