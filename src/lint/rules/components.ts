@@ -204,6 +204,8 @@ export const noUnknownProp: Rule = {
           : '';
         const valueOk =
           !prop?.values || literalValues(attribute).every((l) => prop.values?.includes(l.text));
+        // Renaming `isOpen` to `open` next to an existing `open` would duplicate it.
+        const taken = guess !== undefined && findAttribute(element, guess) !== undefined;
         context.report({
           start: attribute.name.getStart(context.sourceFile),
           end: attribute.name.end,
@@ -212,7 +214,7 @@ export const noUnknownProp: Rule = {
             (guess ? ` Did you mean "${guess}"${values}?` : ''),
           suggestion: guess,
           fix:
-            guess && valueOk
+            guess && valueOk && !taken
               ? [
                   {
                     range: [attribute.name.getStart(context.sourceFile), attribute.name.end],

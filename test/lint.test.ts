@@ -419,6 +419,13 @@ describe('no-unknown-prop', () => {
     expect(check(code, rule)).toEqual([]);
   });
 
+  it('does not offer a rename that would duplicate an attribute', () => {
+    const code = `import { Dialog } from "@/components/ui/dialog"\n<Dialog isOpen={a} open={b} />`;
+    const [d] = check(code, rule);
+    expect(d).toMatchObject({ source: 'isOpen', suggestion: 'open' });
+    expect(d?.fix).toBeUndefined();
+  });
+
   it('suggests close matches for typos', () => {
     expect(check(`${IMPORTS}<Button varient="ghost" />`, rule)[0]?.suggestion).toBe('variant');
     expect(check(`${IMPORTS}<Button isDisabled />`, rule)[0]?.suggestion).toBe('disabled');
