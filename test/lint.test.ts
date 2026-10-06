@@ -154,6 +154,39 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
     expect(style?.suggestion).toBe('rounded-xl');
   });
 
+  it('keeps the sign of negative values', () => {
+    const code = `<div className="mt-[-3px] -mx-[8px] p-[-4px]" style={{ margin: "-8px" }} />`;
+    const diagnostics = check(code, 'no-hardcoded-spacing');
+    expect(diagnostics.map((d) => [d.source, d.suggestion])).toEqual([
+      ['mt-[-3px]', '-mt-0.5'],
+      ['-mx-[8px]', '-mx-2'],
+      ['"-8px"', '-m-2'],
+    ]);
+    expect(applyFixes(code, diagnostics)).toBe(
+      `<div className="-mt-0.5 -mx-2 p-[-4px]" style={{ margin: "-8px" }} />`,
+    );
+  });
+
+  it("offers every whole and half step of Tailwind's --spacing, and px", () => {
+    const code = `<div className="p-[52px] px-[18px] py-[1px] gap-[13px]" />`;
+    const diagnostics = check(code, 'no-hardcoded-spacing');
+    expect(diagnostics.map((d) => d.suggestion)).toEqual(['p-13', 'px-4.5', 'py-px', 'gap-3']);
+    expect(diagnostics[0]?.message).toBe(
+      '`p-[52px]` is 52px, which is on the spacing scale: use `p-13`.',
+    );
+    expect(diagnostics[3]?.message).toContain('off the scale');
+  });
+
+  it("knows Tailwind's default radius keys and rounded-full", () => {
+    const code = `<div className="rounded-[16px] rounded-t-[2px] rounded-[9999px]" style={{ borderRadius: 9999 }} />`;
+    expect(check(code, 'no-hardcoded-radius').map((d) => d.suggestion)).toEqual([
+      'rounded-2xl',
+      'rounded-t-xs',
+      'rounded-full',
+      'rounded-full',
+    ]);
+  });
+
   it('uses var() fixes for systems without Tailwind', async () => {
     const acme = await loadOnce(ACME_ROOT);
     const diagnostics = acme.check(
@@ -169,6 +202,15 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
         acme.check(`<div style={{ padding: "8px" }} />`).diagnostics,
       ),
     ).toBe(`<div style={{ padding: "var(--acme-space-2)" }} />`);
+    const negative = `<div style={{ margin: "-8px" }} className="-m-[1rem]" />`;
+    const fixes = acme.check(negative).diagnostics;
+    expect(fixes.map((d) => d.suggestion)).toEqual([
+      'calc(var(--acme-space-2) * -1)',
+      '-m-[var(--acme-space-4)]',
+    ]);
+    expect(applyFixes(negative, fixes)).toBe(
+      `<div style={{ margin: "calc(var(--acme-space-2) * -1)" }} className="-m-[var(--acme-space-4)]" />`,
+    );
     expect(acme.check(`<div className="rounded-[9999px]" />`).diagnostics).toEqual([]);
   });
 });

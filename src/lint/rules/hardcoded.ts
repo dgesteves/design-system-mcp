@@ -14,6 +14,7 @@ import { attributeName, literalValues, type JsxNode } from '../analyze.js';
 import type { Rule, RuleContext } from '../context.js';
 import {
   COLOR_PREFIXES,
+  NEGATIVE_PREFIXES,
   RADIUS_PREFIXES,
   SPACING_PREFIXES,
   STYLE_COLOR_PROPERTIES,
@@ -287,17 +288,21 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           if (allow.has(token.value) || allow.has(utility.arbitrary)) continue;
           const px = lengthToPx(utility.arbitrary);
           if (px === undefined || px === 0) continue;
+          // `-mt-[3px]` and `mt-[-3px]` are the same negative margin; the fix keeps the sign.
+          const negative = utility.negative !== px < 0;
+          if (negative && !NEGATIVE_PREFIXES.has(utility.prefix)) continue;
           const replacement = lengthReplacement(context, spec.category, px, utility.prefix);
           if (!replacement) continue;
+          const fixed = withBase({ ...utility, negative }, replacement.cls);
           const message = replacement.exact
-            ? `\`${token.value}\` is ${formatPx(px)}, which is on the ${spec.category} scale: use \`${withBase(utility, replacement.cls)}\`.`
-            : `Hardcoded ${spec.category} \`${token.value}\` (${formatPx(px)}) is off the scale. Nearest: \`${withBase(utility, replacement.cls)}\` (${formatPx(replacement.px)}).`;
+            ? `\`${token.value}\` is ${formatPx(px)}, which is on the ${spec.category} scale: use \`${fixed}\`.`
+            : `Hardcoded ${spec.category} \`${token.value}\` (${formatPx(px)}) is off the scale. Nearest: \`${fixed}\` (${formatPx(replacement.px)}).`;
           context.report({
             start: token.start,
             end: token.end,
             message,
-            suggestion: withBase(utility, replacement.cls),
-            fix: [{ range: [token.start, token.end], text: withBase(utility, replacement.cls) }],
+            suggestion: fixed,
+            fix: [{ range: [token.start, token.end], text: fixed }],
           });
         }
       }
@@ -321,31 +326,28 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           );
           if (lengths.some((px) => px === undefined) || lengths.every((px) => px === 0)) continue;
           const px = lengths.find((v) => v !== 0) ?? 0;
+          const negative = px < 0;
+          if (negative && !NEGATIVE_PREFIXES.has(prefix)) continue;
           const replacement =
             values.length === 1 ? lengthReplacement(context, spec.category, px, prefix) : undefined;
+          const cls = replacement && `${negative ? '-' : ''}${replacement.cls}`;
+          const cssVar =
+            replacement?.cssVar &&
+            (negative ? `calc(${replacement.cssVar} * -1)` : replacement.cssVar);
           const shown = ts.isNumericLiteral(init) ? `${name}: ${raw}` : `${name}: "${raw}"`;
           const advice = replacement
             ? replacement.tailwind
-              ? `Use \`${replacement.cls}\` (${formatPx(replacement.px)}) in className instead of an inline style.`
-              : `Use \`${replacement.cssVar ?? replacement.cls}\` (${formatPx(replacement.px)}).`
+              ? `Use \`${cls}\` (${formatPx(replacement.px)}) in className instead of an inline style.`
+              : `Use \`${cssVar ?? cls}\` (${formatPx(replacement.px)}).`
             : `Use ${spec.category} tokens instead.`;
           context.report({
             start: init.getStart(context.sourceFile),
             end: init.end,
             message: `Hardcoded ${spec.category} \`${shown}\` in style. ${advice}`,
-            suggestion: replacement
-              ? replacement.tailwind
-                ? replacement.cls
-                : replacement.cssVar
-              : undefined,
+            suggestion: replacement ? (replacement.tailwind ? cls : cssVar) : undefined,
             fix:
-              replacement && !replacement.tailwind && replacement.cssVar && replacement.exact
-                ? [
-                    {
-                      range: [init.getStart(context.sourceFile), init.end],
-                      text: `"${replacement.cssVar}"`,
-                    },
-                  ]
+              replacement && !replacement.tailwind && cssVar && replacement.exact
+                ? [{ range: [init.getStart(context.sourceFile), init.end], text: `"${cssVar}"` }]
                 : undefined,
           });
         }

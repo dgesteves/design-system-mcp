@@ -160,6 +160,21 @@ export const SPACING_PREFIXES = new Set([
   'space-y',
 ]);
 
+/** Spacing utilities that can be negated (`-mt-2`); negative padding or gap is invalid CSS. */
+export const NEGATIVE_PREFIXES = new Set([
+  'm',
+  'mx',
+  'my',
+  'mt',
+  'mr',
+  'mb',
+  'ml',
+  'ms',
+  'me',
+  'space-x',
+  'space-y',
+]);
+
 export const RADIUS_PREFIXES = new Set([
   'rounded',
   'rounded-t',

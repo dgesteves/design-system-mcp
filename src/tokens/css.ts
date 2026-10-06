@@ -32,6 +32,17 @@ const NAMESPACES: [prefix: string, category: TokenCategory][] = [
 ];
 
 const TAILWIND_DEFAULT_SPACING = '0.25rem';
+/** Tailwind v4's default `--radius-*` scale; a theme overrides keys one by one. */
+const TAILWIND_DEFAULT_RADIUS: Record<string, string> = {
+  xs: '0.125rem',
+  sm: '0.25rem',
+  md: '0.375rem',
+  lg: '0.5rem',
+  xl: '0.75rem',
+  '2xl': '1rem',
+  '3xl': '1.5rem',
+  '4xl': '2rem',
+};
 
 /**
  * Reads design tokens from CSS custom properties, the way shadcn/ui and
@@ -46,6 +57,8 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
   const base = new Map<string, RawVar>();
   const modes = new Map<string, Map<string, RawVar>>();
   const theme = new Map<string, ThemeVar>();
+  /** Namespaces cleared with `--radius-*: initial`; `*` for `--*: initial`. */
+  const resets = new Set<string>();
   const importsTailwind = root.nodes.some(
     (node) =>
       node.type === 'atrule' &&
@@ -63,7 +76,11 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
     const themeRule = closestAtRule(decl, 'theme');
     if (themeRule) {
       // `--color-*: initial` style resets clear Tailwind's defaults; they are not tokens.
-      if (raw.value === 'initial' || raw.name.includes('*')) return;
+      if (raw.value === 'initial' || raw.name.includes('*')) {
+        const reset = /^--(?:([\w-]+)-)?\*$/.exec(raw.name);
+        if (reset) resets.add(reset[1] ?? '*');
+        return;
+      }
       theme.set(raw.name, { ...raw, inline: /\binline\b/.test(themeRule.params) });
       return;
     }
@@ -161,7 +178,7 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
     );
   }
 
-  if (importsTailwind && !theme.has('--spacing') && !base.has('--spacing')) {
+  if (importsTailwind && !resets.has('*') && !theme.has('--spacing') && !base.has('--spacing')) {
     tokens.push({
       ...finalize({
         name: 'spacing',
@@ -176,6 +193,25 @@ export function parseCssTokens(css: string, file: string): { tokens: Token[]; wa
       }),
       origin: 'tailwind-default',
     });
+  }
+  if (importsTailwind && !resets.has('*') && !resets.has('radius')) {
+    for (const [key, value] of Object.entries(TAILWIND_DEFAULT_RADIUS)) {
+      if (theme.has(`--radius-${key}`)) continue;
+      tokens.push({
+        ...finalize({
+          name: `radius-${key}`,
+          category: 'radius',
+          value,
+          cssVar: `--radius-${key}`,
+          tailwind: key,
+          tailwindNamespace: '--radius',
+          description: "Tailwind's default radius scale.",
+          line: 1,
+          file,
+        }),
+        origin: 'tailwind-default',
+      });
+    }
   }
 
   return { tokens, warnings: [] };
