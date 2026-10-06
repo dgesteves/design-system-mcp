@@ -10,7 +10,7 @@ import type ts from 'typescript';
 import { loadConfig, type ResolvedConfig } from './config.js';
 import { extractComponents } from './extract/components.js';
 import { attachDocs, parseDoc, type ParsedDoc } from './extract/docs.js';
-import { projectFiles } from './extract/program.js';
+import { isProjectFile, projectFiles, readProjectConfig } from './extract/program.js';
 import { checkSource, LintTarget } from './lint/index.js';
 import {
   buildSearchIndex,
@@ -399,6 +399,10 @@ export class DesignSystemHost {
   private generation = 0;
   private configChanged = false;
   private watchers: fs.FSWatcher[] = [];
+  /** Recursively watched directories, and the config files watched through their directory. */
+  private watchedRoots: string[] = [];
+  private readonly watchedDirs = new Set<string>();
+  private readonly watchedFiles = new Set<string>();
   private timer?: NodeJS.Timeout;
   private readonly listeners = new Set<(ds: DesignSystem) => void>();
 
@@ -429,7 +433,7 @@ export class DesignSystemHost {
     return () => this.listeners.delete(listener);
   }
 
-  /** Watches the component, token and docs locations plus the config and tsconfig. */
+  /** Watches the component, token and docs locations, the config and the tsconfig chain. */
   watch(): void {
     if (this.watchers.length) return;
     const { root } = this.config;
@@ -442,37 +446,57 @@ export class DesignSystemHost {
       const base = path.resolve(root, globBase(pattern));
       if (isInside(root, base) && fs.existsSync(base)) dirs.add(base);
     }
-    const files = [
-      this.config.configFile,
-      path.resolve(root, this.config.tsconfig ?? 'tsconfig.json'),
-    ].filter((f): f is string => Boolean(f));
-    const changed = (file: string | undefined) => {
-      if (file === undefined || file === this.config.configFile) this.configChanged = true;
-      this.schedule();
-    };
     // Skip dirs nested inside another watched dir.
-    const roots = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && isInside(o, d)));
-    for (const dir of roots) {
+    this.watchedRoots = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && isInside(o, d)));
+    for (const dir of this.watchedRoots) {
       this.watchDirectory(dir, true, (file) => {
         if (file && /node_modules|\.git[\\/]/.test(file)) return;
-        changed(file ? path.join(dir, file) : path.join(dir, '.'));
+        this.changed(file ? path.join(dir, file) : path.join(dir, '.'));
       });
     }
-    // Config files are watched through their directory: editors save by
-    // renaming a new file over the old one, which ends a watch on the file.
+    this.watchConfigFiles();
+  }
+
+  /**
+   * Watches the config file, the tsconfig and the tsconfigs it extends through
+   * their directories: editors save by renaming a new file over the old one,
+   * which ends a watch on the file. Called again after each build, so a new
+   * `extends` target is picked up.
+   */
+  private watchConfigFiles(): void {
+    const { root, configFile, tsconfig } = this.config;
+    const files = [
+      configFile,
+      path.resolve(root, tsconfig ?? 'tsconfig.json'),
+      // Installed bases (`@tsconfig/next`) change with the lockfile, which the fingerprint covers.
+      ...readProjectConfig(root, tsconfig).configFiles.filter(isProjectFile),
+    ]
+      .filter((f): f is string => Boolean(f))
+      .map((f) => path.resolve(f));
+    for (const file of files) this.watchedFiles.add(file);
     for (const dir of unique(files.map((f) => path.dirname(f)))) {
-      if (roots.some((r) => isInside(r, dir)) || !fs.existsSync(dir)) continue;
+      if (this.watchedDirs.has(dir) || this.watchedRoots.some((r) => isInside(r, dir))) continue;
+      if (!fs.existsSync(dir)) continue;
+      this.watchedDirs.add(dir);
       this.watchDirectory(dir, false, (file) => {
         const full = file ? path.join(dir, file) : undefined;
-        if (full === undefined || files.includes(full)) changed(full);
+        if (full === undefined || this.watchedFiles.has(full)) this.changed(full);
       });
     }
+  }
+
+  private changed(file: string | undefined): void {
+    if (file === undefined || file === this.config.configFile) this.configChanged = true;
+    this.schedule();
   }
 
   close(): void {
     clearTimeout(this.timer);
     for (const watcher of this.watchers) watcher.close();
     this.watchers = [];
+    this.watchedRoots = [];
+    this.watchedDirs.clear();
+    this.watchedFiles.clear();
   }
 
   private watchDirectory(
@@ -545,6 +569,7 @@ export class DesignSystemHost {
     if (program) this.program = program;
     this.key = key;
     this.dependencies = dependencies ?? [];
+    if (this.watchers.length) this.watchConfigFiles();
     const { stats } = model;
     logger.info(
       `${incremental ? 'reloaded' : 'loaded'} ${model.components.length} components, ${model.tokens.length} tokens` +

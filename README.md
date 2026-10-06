@@ -245,7 +245,7 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 - Linting is per file and syntactic. Class names built at runtime (`` `bg-${color}-500` ``) are not checked, and spread props are trusted.
 - `no-unknown-prop` is skipped for components whose props type does not fully resolve (dependencies not installed).
 - Composition is inferred from naming and static members; other patterns need explicit exports.
-- While the server runs, it rebuilds on changes in the component, token and docs folders, the config file and the tsconfig. An edit to another file the components import (a shared `lib/types.ts`) is picked up on the next start.
+- While the server runs, it rebuilds on changes in the component, token and docs folders, the config file, the tsconfig and the tsconfigs it extends. An edit to another file the components import (a shared `lib/types.ts`) is picked up on the next start.
 - No typography or shadow rules yet, and stdio is the only transport.
 
 ## Roadmap

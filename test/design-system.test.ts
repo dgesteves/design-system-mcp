@@ -195,6 +195,28 @@ describe('DesignSystemHost', () => {
     host.close();
   }, 15_000);
 
+  it('reloads when a tsconfig the main one extends changes', async () => {
+    const root = copyFixture();
+    const tsconfig = path.join(root, 'tsconfig.json');
+    const base = path.join(root, 'tsconfig.base.json');
+    fs.writeFileSync(base, fs.readFileSync(tsconfig));
+    fs.writeFileSync(tsconfig, '{ "extends": "./tsconfig.base.json" }');
+    const host = new DesignSystemHost(await loadConfig({ root }), { cache: false });
+    expect((await host.get()).getComponent('Button')?.importPath).toBe('@acme/button');
+    host.watch();
+    await new Promise((r) => setTimeout(r, 100));
+    const reloaded = new Promise<string | undefined>((resolve) => {
+      host.onChange((ds) => {
+        resolve(ds.getComponent('Button')?.importPath);
+      });
+    });
+    // An atomic save, as editors do it.
+    fs.writeFileSync(`${base}.tmp`, fs.readFileSync(base, 'utf8').replace('"@acme/*"', '"~/*"'));
+    fs.renameSync(`${base}.tmp`, base);
+    await expect(reloaded).resolves.toBe('~/button');
+    host.close();
+  }, 15_000);
+
   it('ignores an older reload that finishes after a newer one', async () => {
     const root = copyFixture();
     let calls = 0;
