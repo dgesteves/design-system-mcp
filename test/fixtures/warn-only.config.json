@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "no-hardcoded-color": "warn",
+    "prefer-design-system-component": "warn",
+    "no-unknown-component": "warn",
+    "no-unknown-prop": "warn",
+    "no-unknown-variant": "warn",
+    "icon-button-accessible-name": "warn"
+  }
+}

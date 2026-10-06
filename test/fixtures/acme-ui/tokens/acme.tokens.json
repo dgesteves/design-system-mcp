@@ -1,0 +1,39 @@
+{
+  "color": {
+    "$type": "color",
+    "brand": {
+      "500": { "$value": "#3b5bdb", "$description": "Primary brand color." },
+      "600": {
+        "$value": { "colorSpace": "srgb", "components": [0.2, 0.3, 0.75], "hex": "#334dbf" }
+      }
+    },
+    "danger": {
+      "$value": { "colorSpace": "oklch", "components": [0.577, 0.245, 27.325] },
+      "$extensions": { "modes": { "dark": "{color.brand.500}" } }
+    },
+    "surface": { "$value": "#ffffff" },
+    "ink": { "$value": "{color.brand.600}" },
+    "legacy-red": { "$value": "#ff0000", "$deprecated": "Use color.danger." }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": { "$value": { "value": 4, "unit": "px" } },
+    "2": { "$value": "8px" },
+    "4": { "$value": { "value": 1, "unit": "rem" } }
+  },
+  "radius": {
+    "$type": "dimension",
+    "md": { "$value": "6px" }
+  },
+  "font": {
+    "body": { "$type": "fontFamily", "$value": ["Inter", "system-ui", "sans-serif"] },
+    "weight": { "$type": "fontWeight", "$value": 600 }
+  },
+  "shadow": {
+    "card": {
+      "$type": "shadow",
+      "$value": { "offsetX": "0px", "offsetY": "1px", "blur": "2px", "spread": "0px", "color": "{color.ink}" }
+    }
+  },
+  "broken": { "$type": "color", "$value": "{color.missing}" }
+}
