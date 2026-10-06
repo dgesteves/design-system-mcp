@@ -129,15 +129,23 @@ export class LintTarget {
   /**
    * Whether an import specifier points at the design system. Relative
    * specifiers are resolved against `fromFile` (relative to the root) and
-   * must land on a component file or in a directory that holds one.
+   * must land on a component file, in a directory that holds one, or on that
+   * directory itself (a barrel: `../components/ui` and its index).
    */
   isDesignSystemImport(specifier: string, fromFile = 'snippet.tsx'): boolean {
     if (specifier.startsWith('.')) {
       const resolved = this.resolveRelative(specifier, fromFile);
-      return this.modules.has(resolved) || this.moduleDirs.has(path.posix.dirname(resolved));
+      return (
+        this.modules.has(resolved) ||
+        this.moduleDirs.has(resolved) ||
+        this.moduleDirs.has(path.posix.dirname(resolved))
+      );
     }
     if (this.importPaths.has(specifier) || specifier === this.config.importPath) return true;
-    return this.importPrefixes.some((prefix) => specifier.startsWith(prefix));
+    // `@/components/ui/button`, or the barrel `@/components/ui` itself.
+    return this.importPrefixes.some(
+      (prefix) => specifier.startsWith(prefix) || specifier === prefix.slice(0, -1),
+    );
   }
 
   /**

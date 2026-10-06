@@ -479,6 +479,27 @@ export default () => <main><AcmeLogo /><LatestInvoices /><Button variant="danger
     ).toHaveLength(1);
   });
 
+  it('resolves barrel imports of the component directory', () => {
+    for (const [code, file] of [
+      [`import { Button } from "@/components/ui"\n<Button variant="danger" />`, 'app/page.tsx'],
+      [`import * as UI from "@/components/ui"\n<UI.Button variant="danger" />`, 'app/page.tsx'],
+      [`import { Button } from "../components/ui"\n<Button variant="danger" />`, 'app/page.tsx'],
+      [
+        `import { Button } from "../../components/ui/index"\n<Button variant="danger" />`,
+        'app/a/page.tsx',
+      ],
+      [`import { Button } from "."\n<Button variant="danger" />`, 'components/ui/form.tsx'],
+    ] as const) {
+      expect(ds.check(code, file).diagnostics.map((d) => d.ruleId)).toEqual(['no-unknown-variant']);
+    }
+    expect(
+      ds.check(`import * as UI from "@/components/ui"\n<UI.Buton />`, 'app/page.tsx').diagnostics,
+    ).toMatchObject([{ ruleId: rule, suggestion: '<Button>' }]);
+    expect(
+      ds.check(`import { Thing } from "@/components/uikit"\n<Thing />`, 'app/page.tsx').diagnostics,
+    ).toEqual([]);
+  });
+
   it('treats a configured package name as one module, not a scope', async () => {
     const config = await loadConfig({ root: ACME_ROOT });
     const acme = await loadDesignSystem({ ...config, importPath: '@acme/ui' }, { cache: false });
