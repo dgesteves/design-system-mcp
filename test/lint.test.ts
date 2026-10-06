@@ -229,6 +229,25 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
     ]);
   });
 
+  it('only offers classes that survive a namespace reset, from any stylesheet', async () => {
+    const system = await load(
+      fixture({
+        'design-system-mcp.config.json': '{ "tokens": ["styles/*.css"] }',
+        'styles/a.css': '@import "tailwindcss";',
+        'styles/b.css': `@theme {
+          --spacing-*: initial; --spacing-sm: 0.5rem; --spacing-md: 1rem;
+          --radius-*: initial; --radius-card: 0.75rem;
+        }`,
+      }),
+    );
+    const code = `<div className="p-[18px] gap-[13px] rounded-[11px]" />`;
+    expect(system.check(code).diagnostics.map((d) => [d.ruleId, d.suggestion])).toEqual([
+      ['no-hardcoded-spacing', 'p-md'],
+      ['no-hardcoded-spacing', 'gap-md'],
+      ['no-hardcoded-radius', 'rounded-card'],
+    ]);
+  });
+
   it('uses var() fixes for systems without Tailwind', async () => {
     const acme = await loadOnce(ACME_ROOT);
     const diagnostics = acme.check(

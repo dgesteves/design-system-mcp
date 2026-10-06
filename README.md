@@ -162,7 +162,7 @@ snippet.tsx: 2 errors, 1 warning
 | `no-unknown-variant`             | error   | Values outside a cva variant or literal union (`variant="danger"`)                                                                    | Allowed values and a synonym match (`danger` → `destructive`, `small` → `sm`)                                                                   |
 | `icon-button-accessible-name`    | error   | Buttons whose only content is an icon, with no `aria-label`, `aria-labelledby`, `title` or visually hidden text                       | `aria-label`, guessed from the icon (`Trash2` → "Delete")                                                                                       |
 
-Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offered; beyond that the message names the nearest token but leaves the choice to the agent. Rules that need tokens are skipped when the design system defines none of that category; a stylesheet that imports `tailwindcss` brings Tailwind's default spacing unit and radius scale. Syntax errors are reported as `syntax`.
+Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offered; beyond that the message names the nearest token but leaves the choice to the agent. Rules that need tokens are skipped when the design system defines none of that category; a stylesheet that imports `tailwindcss` brings Tailwind's default spacing unit and radius scale, unless the theme resets that namespace (`--spacing-*: initial`, `--radius-*: initial`), in which case only the project's own steps are suggested. Syntax errors are reported as `syntax`.
 
 ## Configuration
 

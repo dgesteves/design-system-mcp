@@ -218,8 +218,9 @@ export function cssSheetTokens(sheets: readonly CssSheet[]): {
     );
   }
 
+  // `--spacing-*: initial` clears `--spacing` too: `p-4` no longer exists, only the named steps.
   const cleared = (namespace: string) => resets.has('*') || resets.has(namespace);
-  if (tailwind && !resets.has('*') && !theme.has('--spacing') && !base.has('--spacing')) {
+  if (tailwind && !cleared('spacing') && !theme.has('--spacing') && !base.has('--spacing')) {
     tokens.push({
       ...finalize({
         name: 'spacing',
