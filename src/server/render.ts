@@ -146,7 +146,7 @@ export function renderComponent(ds: DesignSystem, component: ComponentInfo): str
   }
 
   if (component.docs?.sections.length) {
-    lines.push('', `## Guidelines (${component.docs.file})`);
+    lines.push('', `## Docs (${component.docs.file})`);
     for (const section of component.docs.sections) {
       if (/^examples?$/i.test(section.heading) && !section.body) continue;
       lines.push(`### ${section.heading}`);
