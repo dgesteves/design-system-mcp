@@ -1,0 +1,218 @@
+import ts from 'typescript';
+
+export interface ImportBinding {
+  source: string;
+  /** Imported name, `default`, or `*` for namespace imports. */
+  imported: string;
+}
+
+export interface JsxNode {
+  node: ts.JsxElement | ts.JsxSelfClosingElement;
+  opening: ts.JsxOpeningElement | ts.JsxSelfClosingElement;
+  closing?: ts.JsxClosingElement | undefined;
+  tagName: ts.JsxTagNameExpression;
+  /** Tag as written: `button`, `Button`, `Card.Header`. */
+  tag: string;
+  attributes: ts.JsxAttribute[];
+  hasSpread: boolean;
+  children: readonly ts.JsxChild[];
+}
+
+/** A run of literal class text with its absolute offset in the source. */
+export interface ClassString {
+  text: string;
+  start: number;
+  /** The JSX element whose `className` this is, if any. */
+  element?: JsxNode | undefined;
+}
+
+export interface StyleObject {
+  element: JsxNode;
+  object: ts.ObjectLiteralExpression;
+}
+
+export interface Analysis {
+  imports: Map<string, ImportBinding>;
+  declared: Set<string>;
+  elements: JsxNode[];
+  classStrings: ClassString[];
+  styles: StyleObject[];
+}
+
+const CLASS_FUNCTIONS = /^(cn|clsx|cx|twMerge|twJoin|classNames|classnames|cva|tv)$/;
+
+export function analyze(sourceFile: ts.SourceFile): Analysis {
+  const analysis: Analysis = {
+    imports: new Map(),
+    declared: new Set(),
+    elements: [],
+    classStrings: [],
+    styles: [],
+  };
+  const seenStrings = new Set<ts.Node>();
+  const text = sourceFile.text;
+
+  const collectStrings = (node: ts.Node, element?: JsxNode): void => {
+    const visit = (n: ts.Node): void => {
+      if (seenStrings.has(n)) return;
+      // Conditions like `size === "icon"` are not class names.
+      if (ts.isBinaryExpression(n) && isComparison(n.operatorToken.kind)) return;
+      if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+        seenStrings.add(n);
+        const start = n.getStart(sourceFile) + 1;
+        analysis.classStrings.push({ text: text.slice(start, n.end - 1), start, element });
+        return;
+      }
+      if (ts.isTemplateExpression(n)) {
+        seenStrings.add(n);
+        const parts: ts.TemplateLiteralLikeNode[] = [
+          n.head,
+          ...n.templateSpans.map((s) => s.literal),
+        ];
+        for (const part of parts) {
+          const start = part.getStart(sourceFile) + 1;
+          const end = ts.isTemplateTail(part) ? part.end - 1 : part.end - 2;
+          analysis.classStrings.push({ text: text.slice(start, end), start, element });
+        }
+        n.templateSpans.forEach((span) => {
+          visit(span.expression);
+        });
+        return;
+      }
+      // Object keys in clsx({ "bg-red-500": cond }) are classes; values are conditions.
+      if (ts.isPropertyAssignment(n)) {
+        visit(n.name);
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(node);
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const source = node.moduleSpecifier.text;
+      const clause = node.importClause;
+      if (clause?.name) analysis.imports.set(clause.name.text, { source, imported: 'default' });
+      const bindings = clause?.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        analysis.imports.set(bindings.name.text, { source, imported: '*' });
+      } else if (bindings) {
+        for (const element of bindings.elements) {
+          analysis.imports.set(element.name.text, {
+            source,
+            imported: (element.propertyName ?? element.name).text,
+          });
+        }
+      }
+      return;
+    }
+
+    if (
+      (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      analysis.declared.add(node.name.text);
+    }
+    if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isEnumDeclaration(node)) &&
+      node.name
+    ) {
+      analysis.declared.add(node.name.text);
+    }
+
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const opening = ts.isJsxElement(node) ? node.openingElement : node;
+      const element: JsxNode = {
+        node,
+        opening,
+        closing: ts.isJsxElement(node) ? node.closingElement : undefined,
+        tagName: opening.tagName,
+        tag: opening.tagName.getText(sourceFile),
+        attributes: opening.attributes.properties.filter(ts.isJsxAttribute),
+        hasSpread: opening.attributes.properties.some(ts.isJsxSpreadAttribute),
+        children: ts.isJsxElement(node) ? node.children : [],
+      };
+      analysis.elements.push(element);
+      for (const attribute of element.attributes) {
+        const name = attribute.name.getText(sourceFile);
+        const init = attribute.initializer;
+        if (!init) continue;
+        if (name === 'className' || name === 'class') collectStrings(init, element);
+        if (
+          name === 'style' &&
+          ts.isJsxExpression(init) &&
+          init.expression &&
+          ts.isObjectLiteralExpression(init.expression)
+        ) {
+          analysis.styles.push({ element, object: init.expression });
+        }
+      }
+    }
+
+    if (ts.isCallExpression(node) && CLASS_FUNCTIONS.test(node.expression.getText(sourceFile))) {
+      node.arguments.forEach((arg) => {
+        collectStrings(arg);
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return analysis;
+}
+
+function isComparison(kind: ts.SyntaxKind): boolean {
+  return (
+    kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    kind === ts.SyntaxKind.EqualsEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsToken
+  );
+}
+
+export function attributeName(attribute: ts.JsxAttribute): string {
+  return ts.isIdentifier(attribute.name)
+    ? attribute.name.text
+    : `${attribute.name.namespace.text}:${attribute.name.name.text}`;
+}
+
+export function findAttribute(element: JsxNode, name: string): ts.JsxAttribute | undefined {
+  return element.attributes.find((a) => attributeName(a) === name);
+}
+
+/** Literal values of the named attribute, or none when it is absent. */
+export function attributeLiterals(element: JsxNode, name: string): ts.StringLiteralLike[] {
+  const attribute = findAttribute(element, name);
+  return attribute ? literalValues(attribute) : [];
+}
+
+/**
+ * String literals an attribute can evaluate to: `"a"`, `{"a"}`, `` {`a`} ``,
+ * and both branches of `{cond ? "a" : "b"}`.
+ */
+export function literalValues(attribute: ts.JsxAttribute): ts.StringLiteralLike[] {
+  const init = attribute.initializer;
+  if (!init) return [];
+  if (ts.isStringLiteral(init)) return [init];
+  if (!ts.isJsxExpression(init) || !init.expression) return [];
+  const out: ts.StringLiteralLike[] = [];
+  const visit = (expr: ts.Expression): void => {
+    if (ts.isStringLiteralLike(expr)) out.push(expr);
+    else if (ts.isParenthesizedExpression(expr)) visit(expr.expression);
+    else if (ts.isConditionalExpression(expr)) {
+      visit(expr.whenTrue);
+      visit(expr.whenFalse);
+    } else if (
+      ts.isBinaryExpression(expr) &&
+      (expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+    ) {
+      visit(expr.right);
+    }
+  };
+  visit(init.expression);
+  return out;
+}
