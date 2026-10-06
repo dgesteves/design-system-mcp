@@ -1,0 +1,95 @@
+{
+  "name": "@dgesteves/design-system-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that gives coding agents ground truth about your React design system: components, props, cva variants, tokens and docs, plus a linter they can run on their own UI.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "design-system",
+    "design-tokens",
+    "react",
+    "shadcn",
+    "cva",
+    "tailwindcss",
+    "linter",
+    "ai-agents",
+    "claude-code",
+    "cursor"
+  ],
+  "homepage": "https://github.com/dgesteves/design-system-mcp#readme",
+  "bugs": "https://github.com/dgesteves/design-system-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dgesteves/design-system-mcp.git"
+  },
+  "license": "MIT",
+  "author": "Diogo Esteves (https://github.com/dgesteves)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema.json": "./schema.json",
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "design-system-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "schema.json"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown && node scripts/build-schema.mjs",
+    "dev": "tsdown --watch",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "node scripts/smoke.mjs",
+    "assets": "node scripts/build-assets.mjs",
+    "palette": "node scripts/build-palette.mjs",
+    "demo:check": "node dist/cli.js check --root examples/shadcn-demo \"app/**/*.tsx\"",
+    "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "culori": "^4.0.2",
+    "postcss": "^8.5.29",
+    "stemmer": "^2.0.1",
+    "tinyglobby": "^0.2.17",
+    "typescript": "~6.0.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@types/culori": "^4.0.1",
+    "@types/node": "^24.19.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "geist": "^1.7.2",
+    "globals": "^17.13.0",
+    "opentype.js": "^2.0.0",
+    "prettier": "^3.9.9",
+    "publint": "^0.3.25",
+    "tsdown": "^0.23.0",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}
