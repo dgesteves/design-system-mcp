@@ -31,7 +31,9 @@ export interface Utility {
   modifier: string;
   /** For arbitrary values: the part before `-[`, e.g. `bg`, `px`, `rounded-t`. */
   prefix?: string;
-  /** For arbitrary values: the content of `[...]` with `_` turned into spaces. */
+  /** For arbitrary properties (`[background-color:#f00]`): the CSS property. */
+  property?: string;
+  /** For arbitrary values and properties: the value in `[...]` with `_` turned into spaces. */
   arbitrary?: string;
 }
 
@@ -64,6 +66,12 @@ export function parseUtility(cls: string): Utility {
   if (arbitrary?.[1] && arbitrary[2]) {
     utility.prefix = arbitrary[1];
     utility.arbitrary = arbitrary[2].replace(/_/g, ' ');
+  }
+  // `[color:red]`; custom properties (`[--brand:...]`) define values rather than use them.
+  const property = /^\[([a-z][a-z-]*):(.+)\]$/.exec(base);
+  if (property?.[1] && property[2]) {
+    utility.property = property[1];
+    utility.arbitrary = property[2].replace(/_/g, ' ');
   }
   return utility;
 }
@@ -238,6 +246,17 @@ export const STYLE_COLOR_PROPERTIES: Record<string, string | undefined> = {
   textShadow: undefined,
   backgroundImage: undefined,
 };
+
+/**
+ * The `STYLE_COLOR_PROPERTIES` entry for a CSS property in an arbitrary
+ * property class (`background-color` → `backgroundColor`), or for any other
+ * `*-color` property; undefined when the property takes no color.
+ */
+export function cssColorProperty(property: string): { prefix: string | undefined } | undefined {
+  const name = property.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+  if (name in STYLE_COLOR_PROPERTIES) return { prefix: STYLE_COLOR_PROPERTIES[name] };
+  return property.endsWith('-color') ? { prefix: undefined } : undefined;
+}
 
 /** `style` spacing properties → Tailwind prefix. */
 export const STYLE_SPACING_PROPERTIES: Record<string, string> = {
