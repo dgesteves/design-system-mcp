@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dgesteves/design-system-mcp",
+  "title": "Design System MCP",
+  "description": "Ground truth about your React design system for coding agents, plus a UI linter they can run.",
+  "repository": {
+    "url": "https://github.com/dgesteves/design-system-mcp",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@dgesteves/design-system-mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
