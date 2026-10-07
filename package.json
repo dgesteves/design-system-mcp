@@ -1,6 +1,7 @@
 {
   "name": "@dgesteves/design-system-mcp",
   "version": "0.1.0",
+  "mcpName": "io.github.dgesteves/design-system-mcp",
   "description": "MCP server that gives coding agents ground truth about your React design system: components, props, cva variants, tokens and docs, plus a linter they can run on their own UI.",
   "keywords": [
     "mcp",
@@ -64,6 +65,7 @@
     "demo:check": "cd examples/shadcn-demo && node ../../dist/cli.js check \"app/**/*.tsx\"",
     "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
     "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-server-json.mjs",
     "release": "pnpm build && changeset publish"
   },
   "dependencies": {
