@@ -200,6 +200,11 @@ async function find(config: ResolvedConfig, patterns: string[]): Promise<string[
   return unique(found.flat()).sort();
 }
 
+/** The design system's own component files, as absolute paths. */
+export function componentFiles(config: ResolvedConfig): Promise<string[]> {
+  return find(config, config.components);
+}
+
 async function resolveFiles(config: ResolvedConfig): Promise<ResolvedFiles> {
   const components = await find(config, config.components);
   const docs = await find(config, config.docs);

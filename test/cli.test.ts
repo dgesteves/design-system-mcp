@@ -112,6 +112,48 @@ describe('design-system-mcp check', () => {
   });
 });
 
+describe("design-system-mcp check and the design system's own files", () => {
+  it('skips them unless asked, and says so', async () => {
+    const all = await run(['check', '.', '--no-cache']);
+    expect(all.stdout.split('\n').at(-1)).toBe(
+      '8 errors, 3 warnings in 2 files (5 design-system files skipped)',
+    );
+    const included = await run(['check', '.', '--include-design-system', '--no-cache']);
+    expect(included.stdout).toContain('in 7 files');
+  });
+
+  it('exits 0 when only design-system files match, with [] for the hook', async () => {
+    expect(await run(['check', 'components/ui/button.tsx', '--no-cache'])).toEqual({
+      code: 0,
+      stdout:
+        'Nothing to check: 1 design-system file skipped. Pass --include-design-system to check it.',
+      stderr: '',
+    });
+    // The Claude Code hook's call: an edit to the design system itself is not linted.
+    const hook = await run([
+      'check',
+      'components/ui/button.tsx',
+      '--format',
+      'json',
+      '--quiet-without-design-system',
+      '--no-cache',
+    ]);
+    expect(hook).toMatchObject({ code: 0, stdout: '[]' });
+  });
+
+  it('reads includeDesignSystem from the config', async () => {
+    const root = fixture({
+      'design-system-mcp.config.json': '{ "includeDesignSystem": true }',
+      'app/globals.css': '@import "tailwindcss";',
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button className="p-[3px]" {...props} /> }',
+    });
+    const { stdout } = await run(['check', '.', '--no-cache'], root);
+    expect(stdout).toContain('components/ui/button.tsx');
+    expect(stdout).toContain('`p-[3px]`');
+  });
+});
+
 describe('design-system-mcp check with a baseline', () => {
   const BUTTON =
     'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }';

@@ -25,6 +25,8 @@ export function formatDiagnostics(
     baselined?: number | undefined;
     /** Says that baseline entries no longer occur, and how to drop them. */
     fixedHint?: string | undefined;
+    /** Design-system files the glob matched but `check` left out. */
+    skipped?: number | undefined;
   } = {},
 ): string {
   const { fixedHint } = options;
@@ -61,14 +63,17 @@ export function formatDiagnostics(
     lines.push('');
   }
   const total = errors + warnings;
-  const inBaseline =
+  const notes = [
     options.baselined === undefined
       ? ''
-      : ` (${options.baselined.toLocaleString('en-US')} in the baseline)`;
+      : `${options.baselined.toLocaleString('en-US')} in the baseline`,
+    options.skipped ? `${plural(options.skipped, 'design-system file')} skipped` : '',
+  ].filter(Boolean);
+  const aside = notes.length ? ` (${notes.join('; ')})` : '';
   lines.push(
     total
-      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${plural(results.length, 'file')}${inBaseline}`
-      : `${options.baselined === undefined ? 'No problems' : 'No new problems'} in ${plural(results.length, 'file')}${inBaseline}.`,
+      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${plural(results.length, 'file')}${aside}`
+      : `${options.baselined === undefined ? 'No problems' : 'No new problems'} in ${plural(results.length, 'file')}${aside}.`,
   );
   if (fixedHint) lines.push(dim(fixedHint, useColor));
   return lines.join('\n');

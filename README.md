@@ -79,7 +79,7 @@ The plugin bundles the server, a skill that tells Claude to look components and 
 ⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-muted, hook passes
 ```
 
-The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without a design system, so installing the plugin for every project is safe. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx`, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove design-system`) to avoid two copies of the tools.
+The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without a design system, so installing the plugin for every project is safe. Like `check`, it leaves the design system's own files alone: an edit to `components/ui/button.tsx` changes the design system, which is a call for you and your reviewers rather than a lint error. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx`, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove design-system`) to avoid two copies of the tools.
 
 ### Other clients
 
@@ -246,13 +246,14 @@ A candidate whose files cannot be found is skipped. Components found through `ex
 }
 ```
 
-| Field        | Default                                                                                                                                                     |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `components` | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                           |
-| `tokens`     | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json` |
-| `docs`       | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                               |
-| `importPath` | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`)                                                     |
-| `tsconfig`   | `tsconfig.json` in the root                                                                                                                                 |
+| Field                 | Default                                                                                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components`          | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                           |
+| `tokens`              | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json` |
+| `docs`                | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                               |
+| `importPath`          | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`)                                                     |
+| `includeDesignSystem` | `false`: `check` skips the component files themselves ([CI](#ci))                                                                                           |
+| `tsconfig`            | `tsconfig.json` in the root                                                                                                                                 |
 
 Paths and globs are relative to the root and use forward slashes. Windows-style backslashes (`components\ui\**\*.tsx`, `.\tsconfig.app.json`) are read as separators, except in a pattern that already uses `/`, where `\` escapes glob syntax (`app/\(marketing\)/**`). A `tsconfig` that does not exist is a config error rather than a silent fallback.
 
@@ -266,7 +267,7 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 
 ## CI
 
-`check` runs the same rules as `check_ui` and exits 1 on errors (or on more than `--max-warnings` warnings):
+`check` runs the same rules as `check_ui` and exits 1 on errors (or on more than `--max-warnings` warnings). It skips the design system's own component files, the ones `components` matches: they implement the scale and the primitives the rules enforce, so a fresh shadcn/ui project's `p-[3px]` is not a finding. `--include-design-system`, or `"includeDesignSystem": true` in the config, lints them too.
 
 ```yaml
 - run: npx @dgesteves/design-system-mcp check "app/**/*.tsx" "src/**/*.tsx" --format github

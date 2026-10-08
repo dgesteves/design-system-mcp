@@ -14,7 +14,7 @@ import {
   writeBaseline,
 } from './baseline.js';
 import { ConfigError, loadConfig } from './config.js';
-import { loadDesignSystem } from './design-system.js';
+import { componentFiles, loadDesignSystem } from './design-system.js';
 import { formatDiagnostics, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
 import type { CheckResult, Diagnostic } from './types.js';
@@ -47,6 +47,9 @@ Options
   --baseline <file>       check: baseline file (default: ${BASELINE_FILE} in the root,
                           used whenever it exists)
   --ignore-baseline       check: report every finding, baseline or not
+  --include-design-system
+                          check: also lint the design system's own component
+                          files, which are skipped by default
   --quiet-without-design-system
                           check: print nothing and exit 0 when the project has no
                           design system (no components, no tokens of its own, no
@@ -96,6 +99,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         'update-baseline': { type: 'boolean', default: false },
         'ignore-baseline': { type: 'boolean', default: false },
         'quiet-without-design-system': { type: 'boolean', default: false },
+        'include-design-system': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -122,6 +126,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     components: values.components,
     tokens: values.tokens,
     docs: values.docs,
+    includeDesignSystem: values['include-design-system'],
   };
 
   try {
@@ -192,7 +197,7 @@ async function check(
     if (!stat.isDirectory()) return literal;
     return literal === '.' ? '**/*.{tsx,jsx}' : `${literal}/**/*.{tsx,jsx}`;
   });
-  const files = (
+  let files = (
     await glob(globs, {
       cwd: io.cwd,
       absolute: true,
@@ -214,6 +219,25 @@ async function check(
     ds.tokens.every((t) => t.origin === 'tailwind-default')
   ) {
     if (format === 'json') io.stdout('[]');
+    return 0;
+  }
+
+  // The design system's own files implement the scale and the primitives the
+  // rules enforce (shadcn/ui's `p-[3px]`), so `check .` leaves them alone.
+  let skipped = 0;
+  if (!config.includeDesignSystem) {
+    const own = new Set((await componentFiles(config)).map(realPath));
+    const rest = files.filter((file) => !own.has(realPath(file)));
+    skipped = files.length - rest.length;
+    files = rest;
+  }
+  if (!files.length) {
+    if (format === 'json') io.stdout('[]');
+    else if (format === 'pretty') {
+      io.stdout(
+        `Nothing to check: ${plural(skipped, 'design-system file')} skipped. Pass --include-design-system to check ${skipped === 1 ? 'it' : 'them'}.`,
+      );
+    }
     return 0;
   }
 
@@ -270,6 +294,7 @@ async function check(
   const output = formatDiagnostics(results, format, {
     color: io.color,
     baselined: baseline ? baselined : undefined,
+    skipped,
     fixedHint: fixed
       ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
       : undefined,
@@ -339,6 +364,15 @@ function count(n: number, word: string): string {
 /** Quotes a pattern for the hint when the shell would expand or split it. */
 function shellQuote(pattern: string): string {
   return /^[\w./@-]+$/.test(pattern) ? pattern : `"${pattern.replace(/(["\\$`])/g, '\\$1')}"`;
+}
+
+/** The file's real path, so a linked root or a differently spelled path matches. */
+function realPath(file: string): string {
+  try {
+    return fs.realpathSync.native(file);
+  } catch {
+    return file;
+  }
 }
 
 /** Relative to cwd when the file is below it, absolute otherwise. */

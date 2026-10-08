@@ -116,6 +116,10 @@
         "type": "string"
       }
     },
+    "includeDesignSystem": {
+      "description": "check: lint the design system's own component files too. Off by default: they implement the scale and primitives the rules enforce.",
+      "type": "boolean"
+    },
     "rules": {
       "description": "Rule severities and options: \"off\" | \"warn\" | \"error\" | [severity, { allow }].",
       "type": "object",

@@ -81,6 +81,12 @@ export const configSchema = z
       .record(z.string(), z.string())
       .optional()
       .describe('Extra native element → component mappings, e.g. { "a": "Link" }.'),
+    includeDesignSystem: z
+      .boolean()
+      .optional()
+      .describe(
+        "check: lint the design system's own component files too. Off by default: they implement the scale and primitives the rules enforce.",
+      ),
     rules: z
       .partialRecord(z.enum(RULE_IDS), ruleSettingSchema)
       .optional()
@@ -121,6 +127,8 @@ export interface ResolvedConfig {
   /** A Tailwind v3 config, which maps color classes to custom properties (`primary` → `hsl(var(--primary))`). */
   tailwindConfig?: string | undefined;
   elements: Record<string, string>;
+  /** `check` lints the component files themselves, which it skips by default. */
+  includeDesignSystem: boolean;
   rules: Record<RuleId, ResolvedRule>;
 }
 
@@ -178,6 +186,7 @@ export interface LoadConfigOptions {
   components?: string[] | undefined;
   tokens?: string[] | undefined;
   docs?: string[] | undefined;
+  includeDesignSystem?: boolean | undefined;
 }
 
 export class ConfigError extends Error {
@@ -265,6 +274,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     detected: detection?.source,
     tailwindConfig: findTailwindConfig(root),
     elements: config.elements ?? {},
+    includeDesignSystem: options.includeDesignSystem ?? config.includeDesignSystem ?? false,
     rules,
   };
 }
