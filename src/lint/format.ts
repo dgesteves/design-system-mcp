@@ -70,9 +70,15 @@ export function formatDiagnostics(
     options.skipped ? `${plural(options.skipped, 'design-system file')} skipped` : '',
   ].filter(Boolean);
   const aside = notes.length ? ` (${notes.join('; ')})` : '';
+  // "in 1 of 3 files checked", not "in 3 files", when the findings are in fewer.
+  const flagged = results.filter((r) => r.diagnostics.length).length;
+  const where =
+    flagged === results.length
+      ? plural(results.length, 'file')
+      : `${flagged} of ${plural(results.length, 'file')} checked`;
   lines.push(
     total
-      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${plural(results.length, 'file')}${aside}`
+      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${where}${aside}`
       : `${options.baselined === undefined ? 'No problems' : 'No new problems'} in ${plural(results.length, 'file')}${aside}.`,
   );
   if (fixedHint) lines.push(dim(fixedHint, useColor));

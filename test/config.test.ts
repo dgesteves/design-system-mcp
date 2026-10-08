@@ -45,10 +45,10 @@ describe('loadConfig', () => {
     const config = await loadConfig({
       root: ACME_ROOT,
       components: ['src/**/*.tsx'],
-      tokens: ['a.css'],
+      tokens: ['tokens/acme.tokens.json'],
     });
     expect(config.components).toEqual(['src/**/*.tsx']);
-    expect(config.tokens).toEqual([{ path: 'a.css' }]);
+    expect(config.tokens).toEqual([{ path: 'tokens/acme.tokens.json' }]);
   });
 
   it('loads TypeScript configs', async () => {
@@ -74,9 +74,47 @@ describe('loadConfig', () => {
     );
   });
 
+  it('names unknown keys, rules and severities, with the closest valid one', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'typo-'));
+    fs.writeFileSync(
+      path.join(dir, 'design-system-mcp.config.json'),
+      JSON.stringify({
+        component: ['ui/**/*.tsx'],
+        rules: {
+          'no-hardcoded-colors': 'error',
+          'no-hardcoded-spacing': 'warning',
+          'no-unknown-prop': ['warn', { alow: ['tone'] }],
+        },
+      }),
+    );
+    const message = await loadConfig({ root: dir }).catch((e: unknown) => (e as Error).message);
+    expect(message).toContain('Unknown config key "component". Did you mean "components"?');
+    expect(message).toContain(
+      'Unknown rule "no-hardcoded-colors". Did you mean "no-hardcoded-color"?',
+    );
+    expect(message).toContain(
+      'Invalid severity "warning": use "off", "warn" or "error" (did you mean "warn"?).',
+    );
+    expect(message).toContain('Unknown rule option "alow". Did you mean "allow"?');
+  });
+
+  it('rejects a missing root and token files named outright, but not globs', async () => {
+    await expect(loadConfig({ root: path.join(tmp, 'nope') })).rejects.toThrow(
+      `Project root not found: ${path.join(tmp, 'nope')}`,
+    );
+    await expect(loadConfig({ root: ACME_ROOT, tokens: ['styles/missing.css'] })).rejects.toThrow(
+      `Token file not found: ${path.join(ACME_ROOT, 'styles/missing.css')} (from --tokens)`,
+    );
+    expect((await loadConfig({ root: ACME_ROOT, tokens: ['styles/*.css'] })).tokens).toEqual([
+      { path: 'styles/*.css' },
+    ]);
+  });
+
   it('reads Windows-style paths, keeping glob escapes in slash-separated patterns', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'win-'));
     fs.writeFileSync(path.join(dir, 'tsconfig.app.json'), '{}');
+    fs.mkdirSync(path.join(dir, 'app'));
+    fs.writeFileSync(path.join(dir, 'app/globals.css'), '');
     fs.writeFileSync(
       path.join(dir, 'design-system-mcp.config.json'),
       JSON.stringify({

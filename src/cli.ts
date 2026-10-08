@@ -23,6 +23,8 @@ import { relativePath, toPosix } from './util/paths.js';
 import { plural } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
 
+const README = 'https://github.com/dgesteves/design-system-mcp#readme';
+
 const HELP = `${NAME} ${VERSION}
 
 Gives coding agents ground truth about your React design system, and lints
@@ -30,13 +32,17 @@ the UI they write against it.
 
 Usage
   design-system-mcp [serve] [options]     Start the MCP server on stdio (default)
-  design-system-mcp check <files...>      Lint files with the check_ui rules (for CI)
+  design-system-mcp check <paths...>      Lint files, folders or globs with the check_ui
+                                          rules (for CI)
   design-system-mcp inspect               Print what was extracted from the project
+  design-system-mcp help                  Show this help
 
 Options
   --root <dir>            Project root (default: the config file's directory, or cwd)
   --config <file>         Config file (default: design-system-mcp.config.{json,ts,mjs,js})
-  --components <glob>     Component sources, repeatable (default: components/ui/**/*.tsx)
+  --components <glob>     Component sources, repeatable (default: found through
+                          components.json or a workspace package, else
+                          components/ui/**/*.{tsx,jsx} and src/components/ui/...)
   --tokens <file>         Token file (DTCG .json or CSS), repeatable
   --docs <glob>           Component docs (Markdown/MDX), repeatable
   --no-cache              Ignore the on-disk extraction cache
@@ -58,9 +64,11 @@ Options
   -v, --version           Show the version
 
 Examples
-  claude mcp add design-system -- npx -y ${NAME}
-  npx ${NAME} check "app/**/*.tsx" --format github
-  npx ${NAME} check "src/**/*.tsx" --update-baseline   # adopt in an existing codebase
+  npx -y ${NAME} inspect
+  npx -y ${NAME} check . --format github
+  npx -y ${NAME} check . --update-baseline   # adopt in an existing codebase
+
+Docs: ${README}
 `;
 
 export interface Io {
@@ -119,9 +127,22 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
   }
 
   const [command = 'serve', ...rest] = positionals;
+  if (command === 'help') {
+    io.stdout(HELP);
+    return 0;
+  }
+  // `--root ${workspaceFolder}` from a client that does not expand variables
+  // would make a folder of that name the project.
+  let root = values.root;
+  if (root !== undefined && /\$\{[^}]*\}/.test(root)) {
+    io.stderr(
+      `--root "${root}" holds a variable the client did not expand; using ${command === 'serve' ? "the client's workspace roots or " : ''}the working directory instead.`,
+    );
+    root = undefined;
+  }
   const configOptions = {
     cwd: io.cwd,
-    root: values.root,
+    root,
     config: values.config,
     components: values.components,
     tokens: values.tokens,
@@ -171,7 +192,7 @@ async function check(
   io: Io,
 ): Promise<number> {
   if (!patterns.length) {
-    io.stderr('check: pass files or globs, e.g. design-system-mcp check "src/**/*.tsx"');
+    io.stderr('check: pass files, folders or globs, e.g. design-system-mcp check .');
     return 2;
   }
   const format = values.format as OutputFormat;
