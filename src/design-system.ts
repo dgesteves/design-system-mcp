@@ -8,6 +8,7 @@ import { glob } from 'tinyglobby';
 import type ts from 'typescript';
 
 import { loadConfig, type ResolvedConfig } from './config.js';
+import { moduleResolver } from './detect.js';
 import { extractComponents } from './extract/components.js';
 import { attachDocs, parseDoc, type ParsedDoc } from './extract/docs.js';
 import { isProjectFile, projectFiles, readProjectConfig } from './extract/program.js';
@@ -20,6 +21,7 @@ import {
 } from './search/index.js';
 import { loadTokens, type TokenIndex } from './tokens/index.js';
 import { scopedFamily } from './tokens/roles.js';
+import { applyTailwindColors, readTailwindColors } from './tokens/tailwind-config.js';
 import type {
   CheckResult,
   ComponentInfo,
@@ -352,6 +354,11 @@ export async function buildModel(
   warnings.push(...attachDocs(extracted.components, docs));
   const tokens = await loadTokens(config.root, files.tokens);
   warnings.push(...tokens.warnings);
+  // Tailwind v3 maps color classes in its config rather than in `@theme`.
+  const tailwind = config.tailwindConfig
+    ? readTailwindColors(config.tailwindConfig, moduleResolver(config.root))
+    : undefined;
+  if (tailwind) applyTailwindColors(tokens.tokens, tailwind.colors);
 
   if (!files.components.length) {
     warnings.push(
@@ -379,7 +386,7 @@ export async function buildModel(
     },
   };
 
-  const { dependencies } = extracted;
+  const dependencies = unique([...extracted.dependencies, ...(tailwind?.files ?? [])]);
   const key = await cacheKey(config, files, dependencies, stats);
   if (useCache) {
     try {

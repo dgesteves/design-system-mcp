@@ -183,7 +183,7 @@ export class TokenIndex {
     let unit: number | undefined;
     for (const token of tokens) {
       if (token.category === 'color') {
-        const color = parseColor(token.value);
+        const color = parseColor(token.value, { bareHsl: true });
         if (color) this.colors.push({ token, color, ...colorModes(token) });
         if (token.tailwind) this.colorKeys.add(token.tailwind);
       } else if (token.category === 'spacing' || token.category === 'radius') {
@@ -337,7 +337,7 @@ export class TokenIndex {
 function colorModes(token: Token): { modes?: Record<string, Oklch> } {
   const modes: Record<string, Oklch> = {};
   for (const [mode, value] of Object.entries(token.modes ?? {})) {
-    const color = parseColor(value);
+    const color = parseColor(value, { bareHsl: true });
     if (color) modes[mode] = color;
   }
   return Object.keys(modes).length ? { modes } : {};

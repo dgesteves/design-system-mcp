@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import * as z from 'zod';
 
 import { detectProject, type ImportMapping } from './detect.js';
+import { findTailwindConfig } from './tokens/tailwind-config.js';
 import { slashGlob } from './util/paths.js';
 
 export const RULE_IDS = [
@@ -117,6 +118,8 @@ export interface ResolvedConfig {
   imports?: ImportMapping[] | undefined;
   /** How the design system was found when the config does not say (`components.json`, a workspace package). */
   detected?: string | undefined;
+  /** A Tailwind v3 config, which maps color classes to custom properties (`primary` → `hsl(var(--primary))`). */
+  tailwindConfig?: string | undefined;
   elements: Record<string, string>;
   rules: Record<RuleId, ResolvedRule>;
 }
@@ -260,6 +263,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     importPath: config.importPath,
     imports: detection?.imports ?? [],
     detected: detection?.source,
+    tailwindConfig: findTailwindConfig(root),
     elements: config.elements ?? {},
     rules,
   };

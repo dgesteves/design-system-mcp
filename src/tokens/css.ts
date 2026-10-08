@@ -321,7 +321,7 @@ function categorize(name: string, value: string): TokenCategory {
   if (/font|text-size|leading|line-height|tracking|letter-spacing|typography/.test(n)) {
     return 'typography';
   }
-  if (parseColor(value)) return 'color';
+  if (parseColor(value, { bareHsl: true })) return 'color';
   return 'other';
 }
 

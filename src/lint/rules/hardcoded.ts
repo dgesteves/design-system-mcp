@@ -13,6 +13,7 @@ import {
 import type { ColorSuggestion } from '../../tokens/index.js';
 import { colorRole, scopesIn, type ColorRole, type ScopedFamily } from '../../tokens/roles.js';
 import { formatPx, lengthToPx } from '../../tokens/units.js';
+import { cssReference } from '../../tokens/usage.js';
 import type { Token } from '../../types.js';
 import { attributeName, literalValues, type JsxNode } from '../analyze.js';
 import type { Rule, RuleContext } from '../context.js';
@@ -219,7 +220,7 @@ function reportColor(
   const token = nearest.candidate.token;
 
   const cls = input.prefix && token.tailwind ? `${input.prefix}-${token.tailwind}` : undefined;
-  const cssVar = token.cssVar ? `var(${token.cssVar})` : undefined;
+  const cssVar = cssReference(token);
   const close = match !== undefined;
   const variant = cls && input.element ? variantApplying(context, input.element, cls) : undefined;
 

@@ -256,7 +256,7 @@ A candidate whose files cannot be found is skipped. Components found through `ex
 
 Paths and globs are relative to the root and use forward slashes. Windows-style backslashes (`components\ui\**\*.tsx`, `.\tsconfig.app.json`) are read as separators, except in a pattern that already uses `/`, where `\` escapes glob syntax (`app/\(marketing\)/**`). A `tsconfig` that does not exist is a config error rather than a silent fallback.
 
-Tokens can be [W3C DTCG](https://www.designtokens.org/) JSON (`$type` inheritance, aliases, object color and dimension values, `$deprecated`, modes under `$extensions.modes`) or CSS custom properties: `:root` values, `.dark` / `[data-theme]` / `prefers-color-scheme` / `@variant dark` modes, and Tailwind v4 `@theme` mappings, with `calc()` evaluated. Token stylesheets are read as one theme, so `.dark` can live in its own file; without a `:root` block the `light` mode is the base, and a dark mode never is. A DTCG file and the CSS generated from it are merged by custom property.
+Tokens can be [W3C DTCG](https://www.designtokens.org/) JSON (`$type` inheritance, aliases, object color and dimension values, `$deprecated`, modes under `$extensions.modes`) or CSS custom properties: `:root` values, `.dark` / `[data-theme]` / `prefers-color-scheme` / `@variant dark` modes, and Tailwind v4 `@theme` mappings, with `calc()` evaluated. Tailwind v3 works too: bare HSL channels (`--border: 214.3 31.8% 91.4%`) are colors, and class names come from the `colors` in `tailwind.config.*` (the one `components.json` names, else the root's) and the presets it imports from the project, read without running it. When those colors cannot be read, shadcn/ui's names are used (`--sidebar-background` is `bg-sidebar`). Token stylesheets are read as one theme, so `.dark` can live in its own file; without a `:root` block the `light` mode is the base, and a dark mode never is. A DTCG file and the CSS generated from it are merged by custom property.
 
 `elements` maps a native element to the component that replaces it (`{ "a": "Link" }`, or a key such as `input[type=checkbox]` for a non-text input type); a mapped component is treated as a drop-in, so the rename is auto-fixed.
 
@@ -327,7 +327,7 @@ These tools work at different layers, and several combine well:
 
 ### Limits
 
-- React only. Fix suggestions are Tailwind classes when the tokens come from a Tailwind theme, otherwise `var(--token)`.
+- React only. Fix suggestions are Tailwind classes when a Tailwind theme maps the token (`@theme`, or a v3 `tailwind.config`), otherwise `var(--token)` (`hsl(var(--token))` for v3 channels). A v3 config is read statically, so colors computed in code are not seen.
 - Linting is per file and syntactic. Class names built at runtime (`` `bg-${color}-500` ``) are not checked, and spread props are trusted.
 - `no-unknown-prop` is skipped for components whose props type does not fully resolve (dependencies not installed).
 - Composition is inferred from naming and static members; other patterns need explicit exports.

@@ -20,11 +20,32 @@ const KEYWORDS = new Set([
 
 export type { Oklch };
 
-/** Parses any CSS color (hex, rgb(), hsl(), oklch(), named, ...) into OKLCH. */
-export function parseColor(value: string): Oklch | undefined {
+/**
+ * HSL channels without the function, `214.3 31.8% 91.4%` (commas, `deg` and
+ * `/ alpha` allowed): how Tailwind v3 projects, and shadcn/ui before v4, store
+ * colors, to be used as `hsl(var(--border))`.
+ */
+const BARE_HSL =
+  /^(-?\d*\.?\d+)(deg)?(?:\s*,\s*|\s+)(\d*\.?\d+)%(?:\s*,\s*|\s+)(\d*\.?\d+)%(?:\s*\/\s*(\d*\.?\d+%?))?$/;
+
+export function isBareHsl(value: string): boolean {
+  return BARE_HSL.test(value.trim());
+}
+
+/**
+ * Parses any CSS color (hex, rgb(), hsl(), oklch(), named, ...) into OKLCH.
+ * With `bareHsl`, for token values, HSL channels count too: in a stylesheet
+ * they can only be a color, while in a class or style they are not one.
+ */
+export function parseColor(value: string, options: { bareHsl?: boolean } = {}): Oklch | undefined {
   const text = value.trim();
   if (!text || KEYWORDS.has(text.toLowerCase()) || text.includes('var(')) return undefined;
-  const parsed = parse(text);
+  let parsed = parse(text);
+  const hsl = !parsed && options.bareHsl ? BARE_HSL.exec(text) : null;
+  if (hsl) {
+    const [, h, deg = '', s, l, alpha] = hsl;
+    parsed = parse(`hsl(${h}${deg} ${s}% ${l}%${alpha ? ` / ${alpha}` : ''})`);
+  }
   return parsed ? toOklch(parsed) : undefined;
 }
 

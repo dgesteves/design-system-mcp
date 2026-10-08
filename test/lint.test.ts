@@ -282,6 +282,123 @@ describe('no-hardcoded-color on a stock shadcn/ui theme', () => {
   });
 });
 
+describe('no-hardcoded-color on Tailwind v3 projects', () => {
+  const rule = 'no-hardcoded-color';
+  // shadcn/ui before Tailwind v4: bare HSL channels, mapped to classes in tailwind.config.
+  const globals = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%; /* white */
+    --foreground: 222.2 47.4% 11.2%; /* slate-900 */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --border: 214.3 31.8% 91.4%;
+    /* Rules heavier than --border. */
+    --border-strong: 212.7 26.8% 83.9%;
+    --sidebar-background: 0 0% 98%;
+    --brand: 221.2deg, 83.2%, 53.3%;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+  }
+}
+`;
+  const preset = `module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        border: "hsl(var(--border))",
+        muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
+      },
+    },
+  },
+}`;
+  const config = `const { fontFamily } = require("tailwindcss/defaultTheme")
+const preset = require("./tailwind.preset.js")
+
+module.exports = {
+  presets: [preset],
+  theme: {
+    extend: {
+      fontFamily: { sans: ["var(--font-sans)", ...fontFamily.sans] },
+      colors: {
+        sidebar: { DEFAULT: "hsl(var(--sidebar-background))" },
+        brand: "hsl(var(--brand) / <alpha-value>)",
+      },
+    },
+  },
+}`;
+
+  it('reads HSL channels as colors and the classes from tailwind.config and its presets', async () => {
+    const system = await load(
+      fixture({
+        'components.json': JSON.stringify({
+          tailwind: { config: 'tailwind.config.js', css: 'app/globals.css' },
+          aliases: { components: '@/components', ui: '@/components/ui' },
+        }),
+        'tailwind.config.js': config,
+        'tailwind.preset.js': preset,
+        'app/globals.css': globals,
+      }),
+    );
+    const colors = system.getTokens({ category: 'color' });
+    expect(colors.map((t) => [t.name, t.tailwind, t.description])).toEqual([
+      ['background', 'background', 'white'],
+      ['foreground', 'foreground', 'slate-900'],
+      ['muted', 'muted', undefined],
+      ['muted-foreground', 'muted-foreground', undefined],
+      ['border', 'border', undefined],
+      ['border-strong', undefined, 'Rules heavier than --border.'],
+      ['brand', 'brand', undefined],
+      ['sidebar-background', 'sidebar', undefined],
+    ]);
+    expect(colors[0]?.usage).toContain('hsl(var(--background))');
+
+    const code = `<div className="text-gray-500 border-slate-300 dark:bg-slate-950 bg-blue-600" style={{ color: "#64748b" }} />`;
+    const diagnostics = system
+      .check(code, 'app/page.tsx')
+      .diagnostics.filter((d) => d.ruleId === rule);
+    expect(diagnostics.map((d) => d.fix?.[0]?.text)).toEqual([
+      'text-muted-foreground',
+      // Not in tailwind.config, so no class: an arbitrary value that works with bare channels.
+      'border-[hsl(var(--border-strong))]',
+      'dark:bg-background',
+      'bg-brand',
+      'hsl(var(--muted-foreground))',
+    ]);
+  });
+
+  it("falls back to shadcn/ui's names when the config's colors cannot be read", async () => {
+    const system = await load(
+      fixture({
+        'tailwind.config.js': `module.exports = require("@acme/tailwind-preset")`,
+        'app/globals.css': globals,
+      }),
+    );
+    const tailwind = Object.fromEntries(
+      system.getTokens({ category: 'color' }).map((t) => [t.name, t.tailwind]),
+    );
+    expect(tailwind).toMatchObject({
+      background: 'background',
+      'muted-foreground': 'muted-foreground',
+      'sidebar-background': 'sidebar',
+    });
+    expect(tailwind.brand).toBeUndefined();
+    expect(tailwind['border-strong']).toBeUndefined();
+  });
+
+  it('keeps var() suggestions without a Tailwind config', async () => {
+    const system = await load(fixture({ 'app/globals.css': globals }));
+    const [d] = system.check(`<p className="text-gray-500" />`).diagnostics;
+    expect(d?.suggestion).toBe('text-[hsl(var(--muted-foreground))]');
+  });
+});
+
 describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
   it('snaps arbitrary spacing to the scale', () => {
     const [d] = check(`<div className="md:-mt-[13px]" />`, 'no-hardcoded-spacing');

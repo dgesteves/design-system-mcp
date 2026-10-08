@@ -337,6 +337,41 @@ function packageName(specifier: string): string | undefined {
   return /^[a-z0-9]/i.test(first) ? first : undefined;
 }
 
+const MODULE_EXTENSIONS = ['.ts', '.js', '.cjs', '.mjs', '.cts', '.mts', '.tsx', '.jsx'];
+
+/**
+ * Resolves specifiers to project files for the modules we read ourselves (a
+ * Tailwind config's presets): relative paths and workspace packages, with or
+ * without a subpath. Installed packages resolve to nothing: they are not the
+ * project's to describe.
+ */
+export function moduleResolver(
+  root: string,
+): (specifier: string, fromFile: string) => string | undefined {
+  const packages = new PackageFinder(root);
+  return (specifier, fromFile) => {
+    if (specifier.startsWith('.'))
+      return moduleFile(path.resolve(path.dirname(fromFile), specifier));
+    const name = packageName(specifier);
+    const dir = name ? packages.find(name) : undefined;
+    if (!name || !dir) return undefined;
+    const subpath = specifier.slice(name.length + 1);
+    if (subpath) return moduleFile(path.join(dir, subpath));
+    const main = readJson(path.join(dir, 'package.json'))?.main;
+    return moduleFile(path.resolve(dir, typeof main === 'string' ? main : 'index'));
+  };
+}
+
+/** `base` as a file, with an extension added, or as a directory's index. */
+function moduleFile(base: string): string | undefined {
+  const candidates = [
+    base,
+    ...MODULE_EXTENSIONS.map((ext) => `${base}${ext}`),
+    ...MODULE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
+  ];
+  return candidates.find((file) => isFile(file) && !/[\\/]node_modules[\\/]/.test(file));
+}
+
 /** `@acme/ui`, `@acme/ui-kit`, `@acme/design-system`, `acme-ui`; not `@acme/email-components`. */
 export function isDesignSystemName(name: string): boolean {
   const base = name.slice(name.lastIndexOf('/') + 1);
@@ -466,6 +501,14 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function isFile(file: string): boolean {
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function isDirectory(dir: string): boolean {

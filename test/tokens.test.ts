@@ -399,6 +399,18 @@ describe('units and colors', () => {
     expect(parseColor('var(--x)')).toBeUndefined();
   });
 
+  it('reads bare HSL channels as colors in token values only', () => {
+    const hsl = (value: string) => parseColor(value, { bareHsl: true });
+    const border = hsl('214.3 31.8% 91.4%');
+    const reference = parseColor('hsl(214.3 31.8% 91.4%)');
+    expect(border && reference && colorDistance(border, reference)).toBeCloseTo(0, 6);
+    expect(hsl('0, 0%, 96%')).toMatchObject({ l: expect.closeTo(0.97, 2) as number });
+    expect(hsl('221.2deg 83.2% 53.3% / 0.5')).toMatchObject({ alpha: 0.5 });
+    // Bare RGB channels are ambiguous; in code, channels are not a color at all.
+    expect(hsl('112 205 159')).toBeUndefined();
+    expect(parseColor('214.3 31.8% 91.4%')).toBeUndefined();
+  });
+
   it('finds color literals inside CSS values', () => {
     expect(
       findColorLiterals('1px solid #ccc, 0 0 0 2px rgb(0 0 0 / 0.5)').map((m) => m.text),
