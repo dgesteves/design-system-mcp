@@ -7,6 +7,7 @@ import * as z from 'zod';
 import { detectProject, type ImportMapping } from './detect.js';
 import { findTailwindConfig } from './tokens/tailwind-config.js';
 import { slashGlob } from './util/paths.js';
+import { closest } from './util/strings.js';
 
 export const RULE_IDS = [
   'no-hardcoded-color',
@@ -20,24 +21,46 @@ export const RULE_IDS = [
 ] as const;
 export type RuleId = (typeof RULE_IDS)[number];
 
-const severitySchema = z.enum(['off', 'warn', 'error']);
+const SEVERITIES = ['off', 'warn', 'error'] as const;
+const severitySchema = z.enum(SEVERITIES);
 export type RuleSeverity = z.infer<typeof severitySchema>;
 
-const ruleOptionsSchema = z
-  .object({
-    allow: z
-      .array(z.string())
-      .optional()
-      .describe('Values the rule accepts anyway: colors, lengths, element or component names.'),
-  })
-  .strict();
+/** Names keys a strict object or record does not know, with the closest known one. */
+function unknownKeys(what: string, known: readonly string[]) {
+  return (issue: z.core.$ZodRawIssue): string | undefined => {
+    if (issue.code !== 'unrecognized_keys') return undefined;
+    return issue.keys
+      .map((key) => {
+        const guess = closest(key, known, 0.5);
+        return `Unknown ${what} "${key}". ${guess ? `Did you mean "${guess}"?` : `Expected one of: ${known.join(', ')}.`}`;
+      })
+      .join('\n');
+  };
+}
+
+const ruleOptionsShape = {
+  allow: z
+    .array(z.string())
+    .optional()
+    .describe('Values the rule accepts anyway: colors, lengths, element or component names.'),
+};
+const ruleOptionsSchema = z.strictObject(ruleOptionsShape, {
+  error: unknownKeys('rule option', Object.keys(ruleOptionsShape)),
+});
 export type RuleOptions = z.infer<typeof ruleOptionsSchema>;
 
-const ruleSettingSchema = z.union([
-  severitySchema,
-  z.tuple([severitySchema]),
-  z.tuple([severitySchema, ruleOptionsSchema]),
-]);
+const ruleSettingSchema = z.union(
+  [severitySchema, z.tuple([severitySchema]), z.tuple([severitySchema, ruleOptionsSchema])],
+  {
+    // `"warning"` otherwise reads "Invalid input"; arrays keep their own, more precise issues.
+    error: (issue) => {
+      if (typeof issue.input !== 'string') return undefined;
+      const input = issue.input;
+      const guess = SEVERITIES.find((s) => input && (s.startsWith(input) || input.startsWith(s)));
+      return `Invalid severity "${input}": use "off", "warn" or "error"${guess ? ` (did you mean "${guess}"?)` : ''}.`;
+    },
+  },
+);
 
 const globsSchema = z.union([z.string(), z.array(z.string())]);
 const tokenSourceSchema = z.union([
@@ -53,46 +76,48 @@ const tokenSourceSchema = z.union([
     .strict(),
 ]);
 
-export const configSchema = z
-  .object({
-    $schema: z.string().optional(),
-    components: globsSchema
-      .optional()
-      .describe('Globs for component source files, relative to the root.'),
-    exclude: z
-      .array(z.string())
-      .optional()
-      .describe(
-        'Globs to ignore (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.',
-      ),
-    tokens: z
-      .union([tokenSourceSchema, z.array(tokenSourceSchema)])
-      .optional()
-      .describe('Token files: W3C DTCG JSON (*.json) or CSS custom properties (*.css).'),
-    docs: globsSchema.optional().describe('Globs for per-component Markdown/MDX docs.'),
-    tsconfig: z.string().optional().describe('tsconfig used to resolve types and path aliases.'),
-    importPath: z
-      .string()
-      .optional()
-      .describe(
-        'Package name components are imported from, e.g. "@acme/ui". Default: inferred from tsconfig paths.',
-      ),
-    elements: z
-      .record(z.string(), z.string())
-      .optional()
-      .describe('Extra native element → component mappings, e.g. { "a": "Link" }.'),
-    includeDesignSystem: z
-      .boolean()
-      .optional()
-      .describe(
-        "check: lint the design system's own component files too. Off by default: they implement the scale and primitives the rules enforce.",
-      ),
-    rules: z
-      .partialRecord(z.enum(RULE_IDS), ruleSettingSchema)
-      .optional()
-      .describe('Rule severities and options: "off" | "warn" | "error" | [severity, { allow }].'),
-  })
-  .strict();
+const configShape = {
+  $schema: z.string().optional(),
+  components: globsSchema
+    .optional()
+    .describe('Globs for component source files, relative to the root.'),
+  exclude: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Globs to ignore (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.',
+    ),
+  tokens: z
+    .union([tokenSourceSchema, z.array(tokenSourceSchema)])
+    .optional()
+    .describe('Token files: W3C DTCG JSON (*.json) or CSS custom properties (*.css).'),
+  docs: globsSchema.optional().describe('Globs for per-component Markdown/MDX docs.'),
+  tsconfig: z.string().optional().describe('tsconfig used to resolve types and path aliases.'),
+  importPath: z
+    .string()
+    .optional()
+    .describe(
+      'Package name components are imported from, e.g. "@acme/ui", or a pattern for packages imported by path: "@acme/ui/{path}" is @acme/ui/primitives/button for primitives/button.tsx in the package. Default: inferred from package exports and tsconfig paths.',
+    ),
+  elements: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe('Extra native element → component mappings, e.g. { "a": "Link" }.'),
+  includeDesignSystem: z
+    .boolean()
+    .optional()
+    .describe(
+      "check: lint the design system's own component files too. Off by default: they implement the scale and primitives the rules enforce.",
+    ),
+  rules: z
+    .partialRecord(z.enum(RULE_IDS), ruleSettingSchema, { error: unknownKeys('rule', RULE_IDS) })
+    .optional()
+    .describe('Rule severities and options: "off" | "warn" | "error" | [severity, { allow }].'),
+};
+
+export const configSchema = z.strictObject(configShape, {
+  error: unknownKeys('config key', Object.keys(configShape)),
+});
 
 export type Config = z.input<typeof configSchema>;
 
@@ -217,6 +242,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     : configFile
       ? path.dirname(configFile)
       : cwd;
+  if (!isDirectory(root)) throw new ConfigError(`Project root not found: ${root}`);
 
   const rules = {} as Record<RuleId, ResolvedRule>;
   for (const id of RULE_IDS) {
@@ -238,6 +264,22 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
   // Without component globs, look for components.json or a design-system package.
   const componentsSet = Boolean(options.components?.length) || config.components !== undefined;
   const detection = componentsSet ? undefined : detectProject(root, tsconfig);
+
+  // A token file named outright (not a glob) that does not exist is a typo, not "no tokens".
+  const explicitTokens = options.tokens?.length
+    ? { paths: options.tokens, from: '--tokens' }
+    : config.tokens !== undefined
+      ? {
+          paths: toArray(config.tokens).map((t) => (typeof t === 'string' ? t : t.path)),
+          from: `"tokens" in ${configFile ?? 'the config'}`,
+        }
+      : undefined;
+  for (const file of explicitTokens?.paths ?? []) {
+    const absolute = path.resolve(root, slashGlob(file));
+    if (!/[*?[\]{}()!]/.test(file) && !fs.existsSync(absolute)) {
+      throw new ConfigError(`Token file not found: ${absolute} (from ${explicitTokens?.from})`);
+    }
+  }
 
   const tokenSources = options.tokens?.length
     ? options.tokens.map((p) => ({ path: p }))
@@ -295,6 +337,14 @@ async function readConfigFile(file: string): Promise<unknown> {
       ? ' TypeScript configs need Node.js 22.18+ (type stripping); use JSON or .mjs otherwise.'
       : '';
     throw new ConfigError(`Could not load ${file}: ${(error as Error).message}.${hint}`);
+  }
+}
+
+function isDirectory(dir: string): boolean {
+  try {
+    return fs.statSync(dir).isDirectory();
+  } catch {
+    return false;
   }
 }
 

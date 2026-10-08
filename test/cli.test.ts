@@ -21,14 +21,14 @@ describe('design-system-mcp check', () => {
     expect(code).toBe(1);
     expect(stdout).toContain('app/settings/danger-zone.tsx');
     expect(stdout).toContain('18:25  error  "danger" is not a valid variant for <Button>.');
-    expect(stdout).toContain('8 errors, 3 warnings in 2 files');
+    expect(stdout).toContain('8 errors, 3 warnings in 1 of 2 files checked');
     expect(stdout).not.toContain('members.tsx');
   });
 
   it('expands directories to the TSX/JSX files under them', async () => {
     const { code, stdout } = await run(['check', 'app', '--no-cache']);
     expect(code).toBe(1);
-    expect(stdout).toContain('in 2 files');
+    expect(stdout).toContain('in 1 of 2 files checked');
   });
 
   it('takes paths with glob characters literally (Next.js route groups and segments)', async () => {
@@ -116,10 +116,10 @@ describe("design-system-mcp check and the design system's own files", () => {
   it('skips them unless asked, and says so', async () => {
     const all = await run(['check', '.', '--no-cache']);
     expect(all.stdout.split('\n').at(-1)).toBe(
-      '8 errors, 3 warnings in 2 files (5 design-system files skipped)',
+      '8 errors, 3 warnings in 1 of 2 files checked (5 design-system files skipped)',
     );
     const included = await run(['check', '.', '--include-design-system', '--no-cache']);
-    expect(included.stdout).toContain('in 7 files');
+    expect(included.stdout).toContain('in 1 of 7 files checked');
   });
 
   it('exits 0 when only design-system files match, with [] for the hook', async () => {
@@ -154,6 +154,89 @@ describe("design-system-mcp check and the design system's own files", () => {
   });
 });
 
+describe('design-system-mcp without a design system', () => {
+  const plain = () =>
+    fixture({
+      'package.json': '{ "name": "plain" }',
+      'src/App.tsx': 'export const App = () => <button><svg /></button>',
+    });
+  const NOTICE =
+    'No design system found (no components or color tokens): only the accessibility rule ran. See https://github.com/dgesteves/design-system-mcp#configuration';
+
+  it('says that only the accessibility rule ran, in every format', async () => {
+    const root = plain();
+    const pretty = await run(['check', '.', '--no-cache'], root);
+    expect(pretty.code).toBe(1);
+    expect(pretty.stdout.split('\n').at(-1)).toBe(NOTICE);
+    const json = await run(['check', '.', '--format', 'json', '--no-cache'], root);
+    expect(JSON.parse(json.stdout)).toHaveLength(1);
+    expect(json.stderr).toBe(NOTICE);
+    const github = await run(['check', '.', '--format', 'github', '--no-cache'], root);
+    expect(github.stdout.split('\n').at(-1)).toBe(`::warning title=design-system-mcp::${NOTICE}`);
+  });
+
+  it('fails with --require-design-system, and names what is missing', async () => {
+    expect(await run(['check', '.', '--require-design-system', '--no-cache'], plain())).toEqual({
+      code: 2,
+      stdout: '',
+      stderr: `check --require-design-system: ${NOTICE}`,
+    });
+    const noColors = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/page.tsx': 'export default () => <p>Hi</p>',
+    });
+    const partial = await run(['check', 'app', '--require-design-system', '--no-cache'], noColors);
+    expect(partial.code).toBe(2);
+    expect(partial.stderr).toContain('No color tokens found: no-hardcoded-color did not run.');
+    expect(
+      (await run(['check', 'app', '--require-design-system', '--quiet-without-design-system']))
+        .code,
+    ).toBe(2);
+  });
+});
+
+describe('design-system-mcp errors and help', () => {
+  it('reports a missing root in one line with exit code 2, for check and inspect', async () => {
+    for (const args of [['check', '.'], ['inspect']]) {
+      const { code, stdout, stderr } = await run([...args, '--root', '/nope/not-here']);
+      expect({ code, stdout, stderr }).toEqual({
+        code: 2,
+        stdout: '',
+        stderr: 'Project root not found: /nope/not-here',
+      });
+    }
+  });
+
+  it('falls back from an unexpanded ${workspaceFolder} root to the working directory', async () => {
+    const { code, stderr } = await run([
+      'check',
+      'app/settings/members.tsx',
+      '--root',
+      '${workspaceFolder}',
+      '--no-cache',
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toBe(
+      '--root "${workspaceFolder}" holds a variable the client did not expand; using the working directory instead.',
+    );
+  });
+
+  it('names a missing token file', async () => {
+    const { code, stderr } = await run(['check', 'app', '--tokens', 'app/theme.css', '--no-cache']);
+    expect(code).toBe(2);
+    expect(stderr).toBe(
+      `Token file not found: ${path.join(DEMO_ROOT, 'app/theme.css')} (from --tokens)`,
+    );
+  });
+
+  it('prints help for `help` as for --help, with the detected component default', async () => {
+    const help = await run(['help']);
+    expect(help).toEqual({ ...(await run(['--help'])), code: 0 });
+    expect(help.stdout).toContain('found through\n                          components.json');
+  });
+});
+
 describe('design-system-mcp check with a baseline', () => {
   const BUTTON =
     'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }';
@@ -165,6 +248,7 @@ describe('design-system-mcp check with a baseline', () => {
       'app/a.tsx': 'export const A = () => <><button>One</button><button>Two</button></>',
       'app/b.tsx': 'export const B = () => <input />',
       'app/c.tsx': 'export const C = () => <p>Fine</p>',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
   const baselineOf = (root: string) =>
     JSON.parse(fs.readFileSync(path.join(root, 'design-system-mcp.baseline.json'), 'utf8')) as {
@@ -201,10 +285,12 @@ describe('design-system-mcp check with a baseline', () => {
     const added = await run(['check', 'app', '--no-cache'], root);
     expect(added.code).toBe(1);
     expect(added.stdout).toMatch(/app\/a\.tsx\n\s+3:46\s+error\s+Native <button>/);
-    expect(added.stdout).toContain('1 error, 0 warnings in 3 files (3 in the baseline)');
+    expect(added.stdout).toContain(
+      '1 error, 0 warnings in 1 of 3 files checked (3 in the baseline)',
+    );
 
     const all = await run(['check', 'app', '--no-cache', '--ignore-baseline'], root);
-    expect(all.stdout).toContain('4 errors, 0 warnings in 3 files\n'.trim());
+    expect(all.stdout).toContain('4 errors, 0 warnings in 2 of 3 files checked');
     expect(all.stdout).not.toContain('baseline');
   });
 
@@ -291,6 +377,7 @@ describe('design-system-mcp check with a baseline', () => {
         'export function Badge(props: { variant?: "default" | "outline" }) { return <span /> }',
       'app/p.tsx':
         'export const P = () => <><Badge toString constructor valueOf="x" hasOwnProperty __proto__ /></>\nimport { Badge } from "../components/ui/badge"',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
     const recorded = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
     expect(recorded.stdout).toMatch(/^Baseline: 5 findings in 1 file → /);
@@ -309,6 +396,7 @@ describe('design-system-mcp check with a baseline', () => {
         'export function Button(props: { variant?: "default" | "destructive" } & React.ComponentProps<"button">) { return <button {...props} /> }',
       'app/a.tsx':
         'import { Button } from "../components/ui/button"\nexport const A = () => <><button>x</button><Button variant="danger" /></>',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
     const link = `${root}-link`;
     fs.symlinkSync(root, link);
@@ -415,7 +503,7 @@ describe('design-system-mcp inspect, --help, --version', () => {
   });
 
   it('prints help and version', async () => {
-    expect((await run(['--help'])).stdout).toContain('design-system-mcp check <files...>');
+    expect((await run(['--help'])).stdout).toContain('design-system-mcp check <paths...>');
     expect((await run(['-v'])).stdout).toBe(VERSION);
   });
 });

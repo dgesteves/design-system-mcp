@@ -150,13 +150,13 @@ The server sends usage instructions during the MCP handshake. Clients that ignor
 
 All tools are read-only, have zod-validated input schemas with size limits (up to 1,000,000 characters of code for `check_ui`), and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
 
-| Tool                | Input                                           | Returns                                                                                                                  |
-| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                |
-| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples |
-| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                   |
-| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                |
-| `check_ui`          | `code` or `path`, `filename?`                   | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix                                          |
+| Tool                | Input                                           | Returns                                                                                                                                     |
+| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                                   |
+| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples                    |
+| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                                      |
+| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                   |
+| `check_ui`          | `code` or `path`, `filename?`                   | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix, and a notice when no components or color tokens were found |
 
 Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. Claude Code exposes it as `/mcp__design-system__build-with-design-system`.
 
@@ -221,7 +221,7 @@ Without a config file (or with one that leaves `components` unset), the server l
 
 1. **`components.json`** (shadcn/ui): the `ui` alias, resolved through tsconfig `paths` (`@/registry/new-york-v4/ui`) or a workspace package's `exports` (`@workspace/ui/components` in shadcn's monorepo templates), and `tailwind.css` for tokens.
 2. **The root is a design-system package**: its `package.json` `exports` point at three or more component files (`"./button": "./src/components/button.tsx"` or `"./components/*": "./src/components/*.tsx"`). Exported stylesheets that exist are read as tokens, else `src/globals.css` and the like.
-3. **A dependency named like a design system** (`@acme/ui`, `@acme/ui-kit`, `@acme/design-system`, `acme-ui`) that resolves to workspace sources, through a `node_modules` link or the workspace's package globs (pnpm, npm, Yarn and Bun). It is read the same way, or through its own `components.json`, and the app's own `components/ui` is kept alongside it.
+3. **A dependency named like a design system** (`@acme/ui`, `@acme/ui-kit`, `@acme/design-system`, `acme-ui`) that resolves to workspace sources, through a `node_modules` link or the workspace's package globs (pnpm, npm, Yarn and Bun). It is read the same way, or through its own `components.json`, and the app's own `components/ui` is kept alongside it. A package without `exports` that apps import by path, as Documenso imports `@documenso/ui/primitives/button`, is read from the files the app's code imports, each suggested with the specifier it uses, with a stylesheet imported from it as the theme.
 
 A candidate whose files cannot be found is skipped. Components found through `exports` are suggested with the specifier apps use (`import { Button } from "@acme/ui/button"`, or `@acme/ui` for a package that exports a barrel). Detected stylesheets replace the stylesheet guesses below, while `*.tokens.json` files are still read, and Markdown next to detected components counts as docs. While serving, edits to `components.json`, `package.json` or the tsconfig re-run detection, and workspace packages outside the root are watched like local folders.
 
@@ -246,14 +246,14 @@ A candidate whose files cannot be found is skipped. Components found through `ex
 }
 ```
 
-| Field                 | Default                                                                                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `components`          | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                           |
-| `tokens`              | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json` |
-| `docs`                | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                               |
-| `importPath`          | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`)                                                     |
-| `includeDesignSystem` | `false`: `check` skips the component files themselves ([CI](#ci))                                                                                           |
-| `tsconfig`            | `tsconfig.json` in the root                                                                                                                                 |
+| Field                 | Default                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `components`          | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                                        |
+| `tokens`              | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json`              |
+| `docs`                | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                                            |
+| `importPath`          | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`). `@acme/ui/{path}` suggests each file by its path in its package |
+| `includeDesignSystem` | `false`: `check` skips the component files themselves ([CI](#ci))                                                                                                        |
+| `tsconfig`            | `tsconfig.json` in the root                                                                                                                                              |
 
 Paths and globs are relative to the root and use forward slashes. Windows-style backslashes (`components\ui\**\*.tsx`, `.\tsconfig.app.json`) are read as separators, except in a pattern that already uses `/`, where `\` escapes glob syntax (`app/\(marketing\)/**`). A `tsconfig` that does not exist is a config error rather than a silent fallback.
 
@@ -274,6 +274,8 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 ```
 
 `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results.
+
+When no components or no color tokens are found, `check` and `check_ui` say which rules could not run and point here, so a clean result is not mistaken for a checked one. In CI, `--require-design-system` turns that into a failure (exit code 2), for when the design system moves and the globs stop matching.
 
 ### Adopting it in an existing codebase
 

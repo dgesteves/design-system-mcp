@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import ts from 'typescript';
@@ -913,14 +914,17 @@ function linkComposition(components: ComponentInfo[]): void {
 
 /**
  * The specifier an app would import this file with: the configured package
- * name, a tsconfig `paths` alias (`@/components/ui/button`), or a path
- * relative to the root.
+ * name (or `@acme/ui/{path}` pattern), a tsconfig `paths` alias
+ * (`@/components/ui/button`), or a path relative to the root.
  */
 function importPathFor(
   options: ExtractComponentsOptions,
   project: ProjectConfig,
   file: string,
 ): string {
+  if (options.importPath?.includes('{path}')) {
+    return options.importPath.replace('{path}', packagePath(file));
+  }
   if (options.importPath) return options.importPath;
   const fromExports = exportSpecifier(options.imports ?? [], relativePath(options.root, file));
   if (fromExports) return fromExports;
@@ -938,6 +942,15 @@ function importPathFor(
   }
   const rel = relativePath(options.root, withoutExt);
   return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/** `primitives/button` for `…/packages/ui/primitives/button.tsx`: the file within its package, without extension. */
+function packagePath(file: string): string {
+  const module = file.replace(/\.(tsx?|jsx?|mts|cts)$/, '').replace(/\/index$/, '');
+  for (let dir = path.dirname(file); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return toPosix(path.relative(dir, module));
+  }
+  return toPosix(path.basename(module));
 }
 
 /** `@midday/ui/button` for `…/src/components/button.tsx`, through an exact or `*` export. */

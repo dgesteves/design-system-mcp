@@ -126,6 +126,28 @@ export class DesignSystem {
     return [...found.values()];
   }
 
+  /**
+   * What the rules could not check, when it matters: without components the
+   * component rules find nothing, and without color tokens neither does
+   * no-hardcoded-color, so a clean result says little. Undefined when both exist.
+   */
+  notice(): string | undefined {
+    const components = this.model.components.length > 0;
+    const colors = this.tokenIndex.has('color');
+    if (components && colors) return undefined;
+    const see = `See ${CONFIGURATION_DOCS}`;
+    if (!components && !colors) {
+      const scale =
+        this.tokenIndex.has('spacing') || this.tokenIndex.has('radius')
+          ? ' and the spacing and radius rules'
+          : '';
+      return `No design system found (no components or color tokens): only the accessibility rule${scale} ran. ${see}`;
+    }
+    return components
+      ? `No color tokens found: no-hardcoded-color did not run. ${see}`
+      : `No design-system components found: the component rules did not run. ${see}`;
+  }
+
   check(code: string, filename?: string): CheckResult {
     return checkSource(code, this.lint, { filename, rules: this.config.rules });
   }
@@ -134,6 +156,8 @@ export class DesignSystem {
 function scoped(token: Token): boolean {
   return token.category === 'color' && scopedFamily(token) !== undefined;
 }
+
+const CONFIGURATION_DOCS = 'https://github.com/dgesteves/design-system-mcp#configuration';
 
 const COLOR_UTILITY =
   /^(?:bg|text|border(?:-[xytrblse])?|ring|ring-offset|outline|fill|stroke|from|via|to|divide|accent|caret|decoration|placeholder|shadow)-(.+)$/;
