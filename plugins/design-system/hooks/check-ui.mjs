@@ -21,7 +21,7 @@ import path from 'node:path';
 
 const PACKAGE = '@dgesteves/design-system-mcp';
 // This plugin's release line; scripts/sync-server-json.mjs moves it with each release.
-const RANGE = '^0.2.0';
+const RANGE = '^0.3.0';
 const UI_FILE = /\.[jt]sx$/i;
 const MAX_FINDINGS = 30;
 // Where the CLI looks for the design system: the nearest of these marks the project.

@@ -1,5 +1,45 @@
 # @dgesteves/design-system-mcp
 
+## 0.3.0
+
+### Minor Changes
+
+- [#13](https://github.com/dgesteves/design-system-mcp/pull/13) [`a7b5a90`](https://github.com/dgesteves/design-system-mcp/commit/a7b5a906a13ea57abb21eef8bfa2572b530fa4b0) Thanks [@dgesteves](https://github.com/dgesteves)! - Say when there is no design system to check against. When no components or no color tokens are found, `check` and `check_ui` now say which rules could not run and link to the configuration docs ("No design system found (no components or color tokens): only the accessibility rule ran."), so a clean result is not mistaken for a checked one. The notice goes after the summary in the terminal, to stderr with `--format json`, as a workflow warning with `--format github`, and into `check_ui`'s text and a `notice` field. `check --require-design-system` exits 2 in that case, for CI. `--quiet-without-design-system` still prints nothing; passing both is a usage error.
+
+- [#13](https://github.com/dgesteves/design-system-mcp/pull/13) [`80f9a79`](https://github.com/dgesteves/design-system-mcp/commit/80f9a79930207df55ea7f0c0fdcccc48fa7a4c98) Thanks [@dgesteves](https://github.com/dgesteves)! - Find a workspace UI package that apps import by path. A dependency named like a design system with no `exports`, such as Documenso's `@documenso/ui` (`main: ./index.ts` with `export {}`, imported as `@documenso/ui/primitives/button`), used to be skipped. Its components are now the files the app's code imports, each suggested with the specifier the app uses, a folder imported through its index counts as a barrel, and a stylesheet the app imports from the package is read as its theme. `importPath` also takes a pattern for such packages: `"@acme/ui/{path}"` suggests `primitives/button.tsx` as `@acme/ui/primitives/button`.
+
+- [#15](https://github.com/dgesteves/design-system-mcp/pull/15) [`323aaa2`](https://github.com/dgesteves/design-system-mcp/commit/323aaa28034b7c6d8c3c08921c29ea55009d14bf) Thanks [@dgesteves](https://github.com/dgesteves)! - `check` skips the design system's own component files, the ones `components` matches. They implement the scale and the primitives the rules enforce, so a fresh shadcn/ui project failed its first CI run on shadcn's own `p-[3px]`, `rounded-[2px]` and combobox buttons. The summary says how many were skipped, and a run that matches only design-system files exits 0 with "Nothing to check". `--include-design-system`, or `"includeDesignSystem": true` in the config, lints them too. The Claude Code hook follows suit: an edit to `components/ui/button.tsx` is not linted.
+
+- [#11](https://github.com/dgesteves/design-system-mcp/pull/11) [`99bc8f4`](https://github.com/dgesteves/design-system-mcp/commit/99bc8f4beef7592c5d7b882ba5758c1bb9c97690) Thanks [@dgesteves](https://github.com/dgesteves)! - Support Tailwind v3 color tokens, the format of every shadcn/ui project before Tailwind v4. Bare HSL channels such as `--border: 214.3 31.8% 91.4%` are now read as colors; they used to be filed under `other`, which turned color checks off or pointed every finding at the few tokens in another format. Class names come from the `colors` in `tailwind.config.*` (the one `components.json` names, else the root's) and the presets it imports from the project, read without running it, or from shadcn/ui's names when those cannot be read. Fixes are `bg-border` rather than `bg-[var(--border)]`, which is invalid CSS when the variable holds bare channels, and `hsl(var(--x))` where no class exists.
+
+### Patch Changes
+
+- [#13](https://github.com/dgesteves/design-system-mcp/pull/13) [`8eb2fb8`](https://github.com/dgesteves/design-system-mcp/commit/8eb2fb8abca231659d35935fc118efed5241783a) Thanks [@dgesteves](https://github.com/dgesteves)! - Clearer CLI errors and output.
+  
+  - A `--root` that does not exist is a one-line error with exit code 2 for `check` and `inspect`, instead of a stack trace with exit code 1 (or a successful `inspect` of nothing).
+  - A `--root` holding a variable the client did not expand, such as `${workspaceFolder}`, is reported and ignored: the server falls back to the client's workspace roots or the working directory.
+  - Config errors name what is wrong and the closest valid value: `Unknown rule "no-hardcoded-colors". Did you mean "no-hardcoded-color"?`, `Invalid severity "warning": use "off", "warn" or "error"`, and unknown keys and rule options likewise.
+  - A token file named outright (in `--tokens` or the config's `tokens`, not a glob) that does not exist is an error that names it, instead of silently disabling the color rules.
+  - `design-system-mcp help` works like `--help`, whose text now describes the detected `--components` default.
+  - The summary counts the files with findings: `8 errors, 3 warnings in 1 of 2 files checked`.
+
+- [#11](https://github.com/dgesteves/design-system-mcp/pull/11) [`0f35c3d`](https://github.com/dgesteves/design-system-mcp/commit/0f35c3dfae27d33cbef3552ca1ab7fb95d7c9c3c) Thanks [@dgesteves](https://github.com/dgesteves)! - Attach a CSS comment to the variable it describes. A comment after a declaration on the same line (`--background: 0 0% 100%; /* white */`) was read as the description of the next variable, so `foreground` was described as "white".
+
+- [#15](https://github.com/dgesteves/design-system-mcp/pull/15) [`fcc24f4`](https://github.com/dgesteves/design-system-mcp/commit/fcc24f4d904198939d4e6eb7711d6f3c9ebf7468) Thanks [@dgesteves](https://github.com/dgesteves)! - Fix false positives and missing hints found on fresh shadcn/ui projects and Inbox Zero.
+  
+  - `icon-button-accessible-name` judges a button passed as Base UI's `render` (`<Dialog.Close render={<Button size="icon" />}>`) by its host's children and label, and skips buttons that are `hidden` or `aria-hidden`, or inside hidden content.
+  - `no-hardcoded-color` reads `color` and similar attributes as colors on native and SVG elements. On components it skips props with known values and only reads hex and color functions, so `<Badge color="green">`, a cva variant, is no longer a hardcoded color.
+  - `no-unknown-prop` explains `asChild` on a Base UI component (compose with `render={<Link />}`) and `render` on a Radix one (compose with `asChild`), instead of a bare "no prop" or a rename that would not work.
+  - `prefer-design-system-component` prefers the component that renders the element, so `<select>` suggests `NativeSelect` rather than Radix's `Select` when the project has both.
+
+- [#11](https://github.com/dgesteves/design-system-mcp/pull/11) [`0f68acb`](https://github.com/dgesteves/design-system-mcp/commit/0f68acb033506a12796822d08044ba4115298057) Thanks [@dgesteves](https://github.com/dgesteves)! - Suggest the color token that fits, not just the nearest one. On a fresh shadcn/ui project, where many tokens share a value, `no-hardcoded-color` used to pick whichever came first: `text-gray-500` became `text-chart-2`, `bg-gray-100` became `bg-sidebar-accent`, and `bg-yellow-100` became a gray because it is 0.07 away.
+  
+  - Among the tokens close enough to swap in, the one made for the utility wins: `foreground` and `muted-foreground` for `text-*`, `fill-*` and `stroke-*`, surfaces such as `muted` for `bg-*`, and `border`, `input` and `ring` for `border-*` and `ring-*`.
+  - A fix is only offered for a token of the same hue, or a gray for a gray. Otherwise the message says no token has that hue and names the nearest one.
+  - `sidebar-*` and `chart-*` tokens are only suggested in a sidebar or a chart (by file name, enclosing component or classes), where they win ties.
+  - `dark:` classes are compared with the tokens' dark-mode values, so `dark:bg-zinc-900` becomes `dark:bg-card` rather than a token that is light in dark mode.
+  - `get_tokens` and `ds://tokens` list core tokens before `sidebar-*` and `chart-*`.
+
 ## 0.2.0
 
 ### Minor Changes
