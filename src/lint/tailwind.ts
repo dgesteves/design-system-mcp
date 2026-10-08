@@ -209,15 +209,30 @@ const PALETTE_CLASS = new RegExp(
   `^(${COLOR_PREFIXES.join('|')})-((?:${PALETTE_NAMES})-(?:50|[1-9]00|950))$`,
 );
 
-/** `bg-blue-500` → `{ prefix: 'bg', key: 'blue-500', value: 'oklch(...)' }`. */
+/** Tailwind's gray families; every other family is a hue, however pale its lightest shade. */
+const GRAY_FAMILIES = new Set([
+  'slate',
+  'gray',
+  'zinc',
+  'neutral',
+  'stone',
+  'mauve',
+  'olive',
+  'mist',
+  'taupe',
+]);
+
+/** `bg-blue-500` → `{ prefix: 'bg', key: 'blue-500', value: 'oklch(...)', gray: false }`. */
 export function paletteColor(
   base: string,
-): { prefix: string; key: string; value: string } | undefined {
+): { prefix: string; key: string; value: string; gray: boolean } | undefined {
   const match = PALETTE_CLASS.exec(base);
   if (!match?.[1] || !match[2]) return undefined;
   const [name = '', shade = ''] = match[2].split('-');
   const value = TAILWIND_PALETTE[name]?.[shade];
-  return value ? { prefix: match[1], key: match[2], value } : undefined;
+  return value
+    ? { prefix: match[1], key: match[2], value, gray: GRAY_FAMILIES.has(name) }
+    : undefined;
 }
 
 /** `style` properties that take colors → the Tailwind prefix to use instead. */

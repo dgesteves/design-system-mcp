@@ -60,6 +60,35 @@ export function findColorLiterals(text: string): ColorMatch[] {
   return matches;
 }
 
+/** Below this ΔE two colors are indistinguishable in practice. */
+export const SAME_COLOR = 0.02;
+/** Above this ΔE the nearest token is a different color, so no mechanical fix is offered. */
+export const CLOSE_COLOR = 0.1;
+/**
+ * Chroma from which a color reads as a hue rather than a gray. Tailwind's
+ * grays, slate to taupe, stay below 0.046; its colors pass 0.05 by shade 200.
+ */
+const TINT_CHROMA = 0.05;
+/** Hues further apart than this are different colors: red and orange are 22° apart, red and amber 45°. */
+const HUE_TOLERANCE = 30;
+
+export function isTinted(color: Oklch): boolean {
+  return color.c >= TINT_CHROMA;
+}
+
+/**
+ * Whether `token` can stand in for `color` without changing what it is: both
+ * grays, or both hues within HUE_TOLERANCE. ΔE alone does not say it: a pale
+ * yellow is 0.07 from a light gray. `tinted` overrides the chroma test for the
+ * source, so a pale `bg-sky-50` still counts as blue.
+ */
+export function sameHue(color: Oklch, token: Oklch, tinted = isTinted(color)): boolean {
+  if (tinted !== isTinted(token)) return false;
+  if (!tinted || color.h === undefined || token.h === undefined) return true;
+  const diff = Math.abs(color.h - token.h) % 360;
+  return Math.min(diff, 360 - diff) <= HUE_TOLERANCE;
+}
+
 /** Formats a ΔE value the way it reads best in a diagnostic. */
 export function formatDeltaE(deltaE: number): string {
   return deltaE < 0.0005 ? 'exact match' : `ΔE ${deltaE.toFixed(3)}`;

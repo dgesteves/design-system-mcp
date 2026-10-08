@@ -3,9 +3,10 @@ import path from 'node:path';
 
 import type { Token, TokenCategory } from '../types.js';
 import { relativePath } from '../util/paths.js';
-import { colorDistance, parseColor, type Oklch } from './color.js';
+import { CLOSE_COLOR, colorDistance, parseColor, sameHue, type Oklch } from './color.js';
 import { cssSheetTokens, readCssSheet, type CssSheet } from './css.js';
 import { parseDtcgTokens, type DtcgOptions } from './dtcg.js';
+import { roleFit, scopedFamily, type ColorRole, type RoleFit, type ScopedFamily } from './roles.js';
 import { evaluateLength, lengthToPx } from './units.js';
 
 export { parseCssTokens } from './css.js';
@@ -98,6 +99,8 @@ function themeKey(token: Token): string {
 export interface ColorCandidate {
   token: Token;
   color: Oklch;
+  /** Values in other theme modes (`dark`), where the token has one. */
+  modes?: Record<string, Oklch>;
 }
 
 export interface LengthCandidate {
@@ -110,6 +113,28 @@ export interface LengthCandidate {
 export interface Nearest<T> {
   candidate: T;
   distance: number;
+}
+
+export interface ColorQuery {
+  /** What the color paints: `text-*` is best served by a foreground, `bg-*` by a surface. */
+  role?: ColorRole | undefined;
+  /** The scoped families the code is in (`sidebar` in `app-sidebar.tsx`), whose tokens then compete like any other. */
+  scopes?: ReadonlySet<ScopedFamily> | undefined;
+  /** Whether the color is a hue rather than a gray. Default: from its chroma. */
+  tinted?: boolean | undefined;
+  /** The theme mode the color applies in (`dark` for `dark:bg-*`): tokens are compared by their value there. */
+  mode?: string | undefined;
+}
+
+export interface ColorSuggestion {
+  /** A token that can replace the color as is: close, of the same hue (or both gray), and not made for another role. */
+  match?: Nearest<ColorCandidate> | undefined;
+  /** The token to name: the match, else the nearest, preferring the same hue and the role. */
+  nearest: Nearest<ColorCandidate>;
+  /** Why the nearest token is no match: no token of its hue (or no gray), too far, or made for another role. */
+  reason?: 'far' | 'hue' | 'role' | undefined;
+  /** Other tokens with the nearest one's value. */
+  sameValue: Token[];
 }
 
 export interface NearestLength extends Nearest<LengthCandidate> {
@@ -159,7 +184,7 @@ export class TokenIndex {
     for (const token of tokens) {
       if (token.category === 'color') {
         const color = parseColor(token.value);
-        if (color) this.colors.push({ token, color });
+        if (color) this.colors.push({ token, color, ...colorModes(token) });
         if (token.tailwind) this.colorKeys.add(token.tailwind);
       } else if (token.category === 'spacing' || token.category === 'radius') {
         const px = evaluateLength(token.value, resolve);
@@ -201,6 +226,55 @@ export class TokenIndex {
         (a, b) => a.distance - b.distance || preferTailwind(a.candidate.token, b.candidate.token),
       )
       .slice(0, limit);
+  }
+
+  /**
+   * The token to suggest for a color. Perceptual distance alone picks badly:
+   * several tokens share a value (`muted`, `accent`, `sidebar-accent`,
+   * `chart-2`...), and a pale yellow sits 0.07 from a light gray. So among the
+   * tokens close enough to swap in, of the same hue, it prefers the ones made
+   * for the role (`muted-foreground` for `text-gray-500`), and sidebar and
+   * chart tokens only in a sidebar or a chart.
+   */
+  suggestColor(color: Oklch, query: ColorQuery = {}): ColorSuggestion | undefined {
+    const valueOf = (candidate: ColorCandidate) =>
+      (query.mode && candidate.modes?.[query.mode]) || candidate.color;
+    const scored: Scored[] = this.colors.map((candidate, index) => {
+      const family = scopedFamily(candidate.token);
+      return {
+        candidate,
+        distance: colorDistance(color, valueOf(candidate)),
+        hue: sameHue(color, valueOf(candidate), query.tinted),
+        fit: roleFit(candidate.token, query.role),
+        scoped: family !== undefined && !query.scopes?.has(family),
+        inScope: family !== undefined && query.scopes?.has(family) === true,
+        index,
+      };
+    });
+    // Scoped families stand in only for a design system made of nothing else.
+    const pool = scored.some((s) => !s.scoped) ? scored.filter((s) => !s.scoped) : scored;
+    const match = pool
+      .filter((s) => s.hue && s.fit.tier < 2 && s.distance < CLOSE_COLOR)
+      .sort((a, b) => a.fit.tier - b.fit.tier || byDistance(a, b))[0];
+    const named =
+      match ??
+      [...pool].sort(
+        (a, b) =>
+          Number(b.hue) - Number(a.hue) ||
+          Number(a.fit.tier === 2) - Number(b.fit.tier === 2) ||
+          byDistance(a, b),
+      )[0];
+    if (!named) return undefined;
+    const sameValue = pool
+      .filter(
+        (s) => s !== named && colorDistance(valueOf(s.candidate), valueOf(named.candidate)) < 1e-4,
+      )
+      .map((s) => s.candidate.token);
+    const nearest = { candidate: named.candidate, distance: named.distance };
+    if (match) return { match: nearest, nearest, sameValue };
+    // The nearest token of the same hue comes first, so another hue means the design system has none.
+    const reason = !named.hue ? 'hue' : named.distance >= CLOSE_COLOR ? 'far' : 'role';
+    return { nearest, reason, sameValue };
   }
 
   /** The step closest to the magnitude of `px`; callers keep the sign. */
@@ -260,6 +334,39 @@ export class TokenIndex {
   }
 }
 
+function colorModes(token: Token): { modes?: Record<string, Oklch> } {
+  const modes: Record<string, Oklch> = {};
+  for (const [mode, value] of Object.entries(token.modes ?? {})) {
+    const color = parseColor(value);
+    if (color) modes[mode] = color;
+  }
+  return Object.keys(modes).length ? { modes } : {};
+}
+
 function preferTailwind(a: Token, b: Token): number {
   return Number(b.tailwind !== undefined) - Number(a.tailwind !== undefined);
+}
+
+interface Scored extends Nearest<ColorCandidate> {
+  hue: boolean;
+  fit: RoleFit;
+  /** Of a scoped family the code is not in (a sidebar token outside the sidebar). */
+  scoped: boolean;
+  /** Of the scoped family the code is in. */
+  inScope: boolean;
+  index: number;
+}
+
+/**
+ * Nearest first; equal values by the family the code is in (`sidebar-accent`
+ * in a sidebar), the role's preference, Tailwind classes, then declaration order.
+ */
+function byDistance(a: Scored, b: Scored): number {
+  return (
+    Math.round(a.distance * 1e4) - Math.round(b.distance * 1e4) ||
+    Number(b.inScope) - Number(a.inScope) ||
+    a.fit.rank - b.fit.rank ||
+    preferTailwind(a.candidate.token, b.candidate.token) ||
+    a.index - b.index
+  );
 }

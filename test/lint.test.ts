@@ -43,13 +43,13 @@ describe('no-hardcoded-color', () => {
   });
 
   it("flags Tailwind's default palette and keeps variants and modifiers in the fix", () => {
-    const code = `<div className="hover:bg-red-600/90 text-gray-100" />`;
+    const code = `<div className="hover:bg-red-600/90 md:bg-gray-100" />`;
     const diagnostics = check(code, rule);
-    expect(diagnostics.map((d) => d.suggestion)).toEqual(['bg-destructive', 'text-secondary']);
+    expect(diagnostics.map((d) => d.suggestion)).toEqual(['bg-destructive', 'bg-muted']);
     expect(diagnostics[0]?.message).toContain('Matches token destructive (exact match)');
-    expect(diagnostics[1]?.message).toContain('same value as muted, accent');
+    expect(diagnostics[1]?.message).toContain('same value as secondary, accent');
     expect(applyFixes(code, diagnostics)).toBe(
-      `<div className="hover:bg-destructive/90 text-secondary" />`,
+      `<div className="hover:bg-destructive/90 md:bg-muted" />`,
     );
   });
 
@@ -91,7 +91,8 @@ describe('no-hardcoded-color', () => {
     expect(applyFixes(code, diagnostics.slice(0, 2))).toContain(
       'color: "var(--muted-foreground)", border: "1px solid var(--border)"',
     );
-    expect(diagnostics[2]?.suggestion).toBe('className="fill-primary"');
+    // #171717 is `primary`, but a fill is drawn like text: `foreground` is the text color.
+    expect(diagnostics[2]?.suggestion).toBe('className="fill-foreground"');
     expect(diagnostics[2]?.fix).toBeUndefined();
   });
 
@@ -122,8 +123,11 @@ describe('no-hardcoded-color', () => {
 
   it('declines to auto-fix when no token is close, and points at variants', () => {
     const [d] = check(`<div className="bg-[#2563eb]" />`, rule);
-    expect(d?.message).toContain('No close token');
+    expect(d?.message).toContain('No token has this hue; nearest is ring (ΔE 0.269), a gray.');
     expect(d?.fix).toBeUndefined();
+    const [far] = check(`<div className="bg-[#404040]" />`, rule);
+    expect(far?.message).toContain('No close token; nearest is primary (ΔE 0.166, same value as');
+    expect(far?.fix).toBeUndefined();
     const [onButton] = check(`${IMPORTS}<Button className="bg-blue-600">Save</Button>`, rule);
     expect(onButton?.message).toContain(
       '<Button> already sets bg-* through `variant`; prefer a variant over overriding it.',
@@ -177,6 +181,104 @@ const plain = clsx({ "p-4": "bg-red-500" })`;
       'text-gray-500',
       'bg-blue-500',
     ]);
+  });
+});
+
+describe('no-hardcoded-color on a stock shadcn/ui theme', () => {
+  const rule = 'no-hardcoded-color';
+  // `app/globals.css` from a fresh `shadcn init -d` (base-nova, neutral): many
+  // tokens share a value, and sidebar-* and chart-* come first in `@theme`.
+  const globals = fs.readFileSync(
+    path.join(import.meta.dirname, 'fixtures/shadcn-neutral/globals.css'),
+    'utf8',
+  );
+  let shadcn: DesignSystem;
+  beforeAll(async () => {
+    shadcn = await load(fixture({ 'app/globals.css': globals }));
+  });
+  const suggest = (code: string, file = 'app/page.tsx') =>
+    shadcn.check(code, file).diagnostics.filter((d) => d.ruleId === rule);
+
+  it('picks the token whose role fits the utility, never a sidebar or chart token', () => {
+    const cases: [string, string | undefined][] = [
+      ['text-gray-500', 'text-muted-foreground'],
+      ['text-gray-900', 'text-foreground'],
+      ['bg-gray-100', 'bg-muted'],
+      ['border-gray-200', 'border-border'],
+      ['bg-zinc-900', 'bg-primary'],
+      ['text-zinc-50', 'text-primary-foreground'],
+      ['hover:bg-slate-50', 'hover:bg-muted'],
+      // A pale yellow is 0.07 from a light gray, but it is no gray.
+      ['bg-yellow-100', undefined],
+      // chart-3 is an exact match, but it belongs in a chart; muted-foreground is too far.
+      ['text-neutral-600', undefined],
+    ];
+    for (const [cls, fixed] of cases) {
+      const [d] = suggest(`<p className="${cls}" />`);
+      expect([cls, d?.fix?.[0]?.text]).toEqual([cls, fixed]);
+      expect(d?.message).not.toMatch(/\b(?:sidebar|chart)-/);
+    }
+    expect(suggest(`<p className="bg-yellow-100" />`)[0]?.message).toContain(
+      'No token has this hue; nearest is muted (ΔE 0.071, same value as accent, secondary), a gray.',
+    );
+  });
+
+  it('names the role’s token for color attributes and styles', () => {
+    const [stroke, style] = suggest(`<svg stroke="#000"><p style={{ color: "#6b7280" }} /></svg>`);
+    expect(stroke?.message).toContain('No close token; nearest is foreground (ΔE 0.145');
+    expect(stroke?.suggestion).toBeUndefined();
+    expect(style?.suggestion).toBe('text-muted-foreground');
+  });
+
+  it('never swaps a hue for a gray token, or a gray for a tinted one', async () => {
+    expect(suggest(`<div className="bg-[#fef3c7] bg-sky-50" />`).map((d) => d.fix)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    const tinted = await load(
+      fixture({
+        'app/globals.css': `@import "tailwindcss";
+@theme inline { --color-brand: var(--brand); }
+:root { --brand: oklch(0.56 0.06 264); }`,
+      }),
+    );
+    const [d] = tinted.check(`<p className="text-gray-500" />`).diagnostics;
+    expect(d?.message).toContain(
+      'No gray token is close; nearest is brand (ΔE 0.034), which is tinted.',
+    );
+    expect(d?.fix).toBeUndefined();
+  });
+
+  it('compares dark: classes with the dark-mode values', () => {
+    const diagnostics = suggest(`<p className="dark:bg-zinc-900 dark:text-zinc-50" />`);
+    expect(diagnostics.map((d) => d.fix?.[0]?.text)).toEqual([
+      'dark:bg-card',
+      'dark:text-foreground',
+    ]);
+    expect(diagnostics[0]?.message).toContain('Matches token card in dark mode (ΔE 0.008');
+  });
+
+  it('uses sidebar and chart tokens inside a sidebar or a chart', () => {
+    expect(
+      suggest(`<div className="bg-gray-100" />`, 'components/app-sidebar.tsx')[0]?.suggestion,
+    ).toBe('bg-sidebar-accent');
+    const inMenu = `import { SidebarMenuButton } from "@/components/ui/sidebar"
+<SidebarMenuButton><span className="text-gray-900">Inbox</span></SidebarMenuButton>`;
+    expect(suggest(inMenu)[0]?.suggestion).toBe('text-sidebar-foreground');
+    expect(
+      suggest(`<path className="fill-neutral-600" />`, 'components/charts/revenue.tsx')[0]
+        ?.suggestion,
+    ).toBe('fill-chart-3');
+    // A page laid out next to the sidebar is not in it.
+    const inset = `<SidebarInset><div className="bg-gray-100" /></SidebarInset>`;
+    expect(suggest(inset)[0]?.suggestion).toBe('bg-muted');
+  });
+
+  it('lists core tokens before sidebar and chart tokens', () => {
+    const names = shadcn.getTokens({ category: 'color' }).map((t) => t.name);
+    const firstScoped = names.findIndex((n) => /^(?:sidebar|chart)/.test(n));
+    expect(names.slice(0, 3)).toEqual(['ring', 'input', 'border']);
+    expect(names.slice(firstScoped).every((n) => /^(?:sidebar|chart)/.test(n))).toBe(true);
   });
 });
 

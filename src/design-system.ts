@@ -19,6 +19,7 @@ import {
   type SearchHit,
 } from './search/index.js';
 import { loadTokens, type TokenIndex } from './tokens/index.js';
+import { scopedFamily } from './tokens/roles.js';
 import type {
   CheckResult,
   ComponentInfo,
@@ -85,18 +86,21 @@ export class DesignSystem {
     return searchComponents(this.searchIndex, query, limit);
   }
 
+  /** Tokens, core ones first: `sidebar-*` and `chart-*` follow the rest, which an agent should reach for. */
   getTokens(
     filter: { category?: TokenCategory | undefined; query?: string | undefined } = {},
   ): Token[] {
     const query = filter.query?.toLowerCase();
-    return this.model.tokens.filter(
-      (t) =>
-        (!filter.category || t.category === filter.category) &&
-        (!query ||
-          t.name.toLowerCase().includes(query) ||
-          (t.description ?? '').toLowerCase().includes(query) ||
-          t.usage.some((u) => u.toLowerCase().includes(query))),
-    );
+    return this.model.tokens
+      .filter(
+        (t) =>
+          (!filter.category || t.category === filter.category) &&
+          (!query ||
+            t.name.toLowerCase().includes(query) ||
+            (t.description ?? '').toLowerCase().includes(query) ||
+            t.usage.some((u) => u.toLowerCase().includes(query))),
+      )
+      .sort((a, b) => Number(scoped(a)) - Number(scoped(b)));
   }
 
   /** Tokens a component's classes and CSS variables reference, e.g. `bg-primary` → `primary`. */
@@ -123,6 +127,10 @@ export class DesignSystem {
   check(code: string, filename?: string): CheckResult {
     return checkSource(code, this.lint, { filename, rules: this.config.rules });
   }
+}
+
+function scoped(token: Token): boolean {
+  return token.category === 'color' && scopedFamily(token) !== undefined;
 }
 
 const COLOR_UTILITY =

@@ -71,12 +71,12 @@ The plugin bundles the server, a skill that tells Claude to look components and 
 ```text
 ⏺ Write(app/promo/page.tsx)
   ⎿  PostToolUse hook: app/promo/page.tsx breaks the project's design system
-     1:66 error [no-hardcoded-color] Hardcoded color `bg-[#fef3c7]` → `bg-secondary`.
-     1:81 error [prefer-design-system-component] Native <button> where the design system has <Button>.
+     1:58 error [no-hardcoded-color] Hardcoded color `bg-[#f5f5f5]` → `bg-muted`.
+     1:77 error [prefer-design-system-component] Native <button> where the design system has <Button>.
      …
 ⏺ The hook flagged five issues. Looking up Button and the color tokens before fixing.
 ⏺ design-system - get_component (MCP)(name: "Button")
-⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-secondary, hook passes
+⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-muted, hook passes
 ```
 
 The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without a design system, so installing the plugin for every project is safe. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx`, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove design-system`) to avoid two copies of the tools.
@@ -192,8 +192,8 @@ snippet.tsx: 2 errors, 1 warning
 1:17 error [no-unknown-variant] "primary" is not a valid variant for <Button>.
      Allowed: default, destructive, outline, secondary, ghost, link. Did you mean "default"?
 1:38 error [no-hardcoded-color] `bg-blue-600` is Tailwind's default palette, not a design-system
-     color. No close token; nearest is muted-foreground (ΔE 0.245). Pick the semantic token that
-     fits. <Button> already sets bg-* through `variant`; prefer a variant over overriding it.
+     color. No token has this hue; nearest is ring (ΔE 0.294), a gray. Pick the semantic token
+     that fits. <Button> already sets bg-* through `variant`; prefer a variant over overriding it.
 1:50 warning [no-hardcoded-spacing] `px-[18px]` is 18px, which is on the spacing scale: use
      `px-4.5`.
 ```
@@ -202,7 +202,7 @@ snippet.tsx: 2 errors, 1 warning
 
 | Rule                             | Default | Catches                                                                                                                                              | Suggests                                                                                                                                                    |
 | -------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `no-hardcoded-color`             | error   | Hex/rgb/hsl/oklch literals in classes (`bg-[#ef4444]`, `[color:red]`), styles and color attributes; Tailwind default-palette classes (`bg-gray-100`) | Nearest token by OKLCH distance (`bg-destructive`, `var(--muted-foreground)`), or the variant that already applies it                                       |
+| `no-hardcoded-color`             | error   | Hex/rgb/hsl/oklch literals in classes (`bg-[#ef4444]`, `[color:red]`), styles and color attributes; Tailwind default-palette classes (`bg-gray-100`) | The nearest token of the same hue whose role fits the utility (`text-gray-500` → `text-muted-foreground`), or the variant that already applies it           |
 | `no-hardcoded-spacing`           | warn    | Arbitrary padding, margin and gap (`p-[13px]`, `style={{ marginTop: 6 }}`)                                                                           | Nearest step on the spacing scale, keeping the sign; with Tailwind v4, any whole or half step of `--spacing` (`p-3`, `p-4.5`, `p-13`) or `p-px`             |
 | `no-hardcoded-radius`            | warn    | Arbitrary radius (`rounded-[7px]`, `borderRadius: 14`)                                                                                               | Nearest radius token (`rounded-sm`), including Tailwind's default keys; `rounded-full` (or a pill token) for values far above the scale (`rounded-[999px]`) |
 | `prefer-design-system-component` | error   | Native elements a component wraps (`<button>`, `<input>`, `<dialog>`), inferred from each component's props and markup                               | The root component and its import; the rename is auto-fixed when it renders that element, takes its attributes or is mapped in `elements`                   |
@@ -211,7 +211,7 @@ snippet.tsx: 2 errors, 1 warning
 | `no-unknown-variant`             | error   | Values outside a cva variant or literal union (`variant="danger"`)                                                                                   | Allowed values and a synonym match (`danger` → `destructive`, `small` → `sm`)                                                                               |
 | `icon-button-accessible-name`    | error   | Buttons whose only content is an icon, with no `aria-label`, `aria-labelledby`, `title` or visually hidden text                                      | `aria-label`, guessed from the icon (`Trash2` → "Delete")                                                                                                   |
 
-Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offered; beyond that the message names the nearest token but leaves the choice to the agent. Likewise, a spacing or radius step that is off by more than half the value (and more than 4px) is suggested but not auto-fixed. Rules that need tokens are skipped when the design system defines none of that category; a stylesheet that imports `tailwindcss` brings Tailwind's default spacing unit and radius scale, unless the theme resets that namespace (`--spacing-*: initial`, `--radius-*: initial`), in which case only the project's own steps are suggested. Syntax errors are reported as `syntax`.
+Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offered; beyond that the message names the nearest token but leaves the choice to the agent. A fix is only offered for a token of the same hue, or a gray for a gray, so a pale yellow is never swapped for a light gray that happens to be close. Among the tokens that qualify, the one made for the utility wins: `foreground` and `muted-foreground` for `text-*`, `fill-*` and `stroke-*`; surfaces such as `muted` for `bg-*`; `border`, `input` and `ring` for `border-*` and `ring-*`. `sidebar-*` and `chart-*` tokens are only suggested in a sidebar or a chart (by file, enclosing component or classes), and `dark:` classes are compared with dark-mode values. Likewise, a spacing or radius step that is off by more than half the value (and more than 4px) is suggested but not auto-fixed. Rules that need tokens are skipped when the design system defines none of that category; a stylesheet that imports `tailwindcss` brings Tailwind's default spacing unit and radius scale, unless the theme resets that namespace (`--spacing-*: initial`, `--radius-*: initial`), in which case only the project's own steps are suggested. Syntax errors are reported as `syntax`.
 
 ## Configuration
 

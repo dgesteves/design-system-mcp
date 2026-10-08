@@ -365,7 +365,11 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       const ds = await getDesignSystem();
       return {
         contents: [
-          { uri: uri.href, mimeType: 'application/json', text: JSON.stringify(ds.tokens, null, 2) },
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(ds.getTokens(), null, 2),
+          },
         ],
       };
     },
