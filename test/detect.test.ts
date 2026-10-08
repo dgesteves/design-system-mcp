@@ -1,0 +1,391 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { loadConfig } from '../src/config.js';
+import { DesignSystemHost } from '../src/design-system.js';
+import { detectProject, isDesignSystemName, pnpmPackages } from '../src/detect.js';
+import { fixture, load, TSCONFIG } from './helpers.js';
+
+const BUTTON = `import * as React from "react"
+export function Button(props: { variant?: "default" | "outline"; children?: React.ReactNode }) { return <button>{props.children}</button> }
+`;
+const CARD = `export function Card(props: { children?: unknown }) { return <div /> }
+export function CardHeader(props: { children?: unknown }) { return <div /> }
+`;
+const INPUT = `export function Input(props: { value?: string }) { return <input /> }
+`;
+const ICONS = `export const Icons = { Add: () => <svg />, Close: () => <svg /> }
+`;
+const THEME = `@import "tailwindcss";
+:root { --primary: oklch(0.2 0 0); }
+@theme inline { --color-primary: var(--primary); }
+`;
+
+const json = (value: unknown) => JSON.stringify(value, null, 2);
+
+describe('detectProject: components.json', () => {
+  it('follows a custom ui alias through tsconfig paths and reads tailwind.css', async () => {
+    const root = fixture({
+      'tsconfig.json': TSCONFIG,
+      'components.json': json({
+        tailwind: { css: 'styles/app.css' },
+        aliases: { components: '@/components', ui: '@/registry/new-york/ui' },
+      }),
+      'registry/new-york/ui/button.tsx': BUTTON,
+      'styles/app.css': THEME,
+    });
+    const config = await loadConfig({ root });
+    expect(config.detected).toBe(
+      'components.json (ui: @/registry/new-york/ui → registry/new-york/ui)',
+    );
+    expect(config.components).toEqual(['registry/new-york/ui/**/*.{tsx,jsx}']);
+    // The stylesheet replaces the guesses; DTCG files are still read.
+    expect(config.tokens).toEqual([{ path: 'styles/app.css' }, { path: '**/*.tokens.json' }]);
+
+    const ds = await load(root);
+    expect(ds.getComponent('Button')?.importPath).toBe('@/registry/new-york/ui/button');
+    expect(ds.tokens.map((t) => t.name)).toContain('primary');
+  });
+
+  it('defaults ui to the components alias plus /ui and escapes glob syntax in folders', () => {
+    const root = fixture({
+      'tsconfig.json': TSCONFIG,
+      'components.json': json({ aliases: { components: '@/app/(shared)/components' } }),
+      'app/(shared)/components/ui/button.tsx': BUTTON,
+    });
+    expect(detectProject(root)?.components).toEqual([
+      'app/\\(shared\\)/components/ui/**/*.{tsx,jsx}',
+    ]);
+  });
+
+  it('finds the ui package of a shadcn monorepo through the workspace and its exports', async () => {
+    const workspace = fixture({
+      'pnpm-workspace.yaml': `packages:\n  - "apps/*"   # apps\n  - 'packages/*'\n`,
+      'packages/ui/package.json': json({
+        name: '@workspace/ui',
+        exports: {
+          './globals.css': './src/styles/globals.css',
+          './components/*': './src/components/*.tsx',
+          './lib/*': './src/lib/*.ts',
+        },
+      }),
+      'packages/ui/src/components/button.tsx': BUTTON,
+      'packages/ui/src/components/button.stories.tsx': `export const Primary = () => <button />\n`,
+      'packages/ui/src/components/button.test.tsx': `export function TestThing() { return <div /> }\n`,
+      'packages/ui/src/components/node_modules/x/index.tsx': `export function FromNodeModules() { return <div /> }\n`,
+      'packages/ui/src/components/form/input.tsx': INPUT,
+      'packages/ui/src/styles/globals.css': THEME,
+      'apps/web/package.json': json({
+        name: 'web',
+        dependencies: { '@workspace/ui': 'workspace:*' },
+      }),
+      'apps/web/tsconfig.json': TSCONFIG,
+      'apps/web/components.json': json({
+        tailwind: { css: '../../packages/ui/src/styles/globals.css' },
+        aliases: { components: '@/components', ui: '@workspace/ui/components' },
+      }),
+    });
+    const root = path.join(workspace, 'apps/web');
+    const config = await loadConfig({ root });
+    expect(config.detected).toBe(
+      'components.json (ui: @workspace/ui/components → ../../packages/ui/src/components)',
+    );
+    expect(config.tokens[0]).toEqual({ path: '../../packages/ui/src/styles/globals.css' });
+
+    const ds = await load(root);
+    // The default excludes apply outside the root too.
+    expect(ds.components.map((c) => c.name).sort()).toEqual(['Button', 'Input']);
+    expect(ds.getComponent('Button')?.importPath).toBe('@workspace/ui/components/button');
+    // `*` in an export spans folders.
+    expect(ds.getComponent('Input')?.importPath).toBe('@workspace/ui/components/form/input');
+    expect(
+      ds
+        .check(
+          `import { Button } from "@workspace/ui/components/button"\n<Button variant="danger" />`,
+          'app/page.tsx',
+        )
+        .diagnostics.map((d) => d.ruleId),
+    ).toEqual(['no-unknown-variant']);
+  });
+});
+
+describe('detectProject: design-system packages', () => {
+  const uiPackage = {
+    'packages/ui/package.json': json({
+      name: '@acme/ui',
+      exports: {
+        './button': './src/components/button.tsx',
+        './card': { types: './src/components/card.d.ts', default: './src/components/card.tsx' },
+        './icons': './src/components/icons.tsx',
+        './input': './src/components/input.tsx',
+        './globals.css': './src/globals.css',
+        './cn': './src/utils/cn.ts',
+      },
+    }),
+    'packages/ui/tsconfig.json': TSCONFIG,
+    'packages/ui/src/components/button.tsx': BUTTON,
+    'packages/ui/src/components/card.tsx': CARD,
+    'packages/ui/src/components/icons.tsx': ICONS,
+    'packages/ui/src/components/input.tsx': INPUT,
+    'packages/ui/src/globals.css': THEME,
+    'packages/ui/src/utils/cn.ts': 'export const cn = (...c: string[]) => c.join(" ")\n',
+  };
+
+  it('reads a package whose exports point at components, run from inside it', async () => {
+    const workspace = fixture(uiPackage);
+    const root = path.join(workspace, 'packages/ui');
+    const config = await loadConfig({ root });
+    expect(config.detected).toBe('package.json exports of @acme/ui');
+    expect(config.components).toEqual([
+      'src/components/button.tsx',
+      'src/components/card.tsx',
+      'src/components/icons.tsx',
+      'src/components/input.tsx',
+    ]);
+    expect(config.tokens[0]).toEqual({ path: 'src/globals.css' });
+    expect((await load(root)).getComponent('CardHeader')?.importPath).toBe('@acme/ui/card');
+  });
+
+  it('finds a workspace dependency named like a UI package, without components.json', async () => {
+    const workspace = fixture({
+      ...uiPackage,
+      'package.json': json({ name: 'acme', private: true, workspaces: ['apps/*', 'packages/*'] }),
+      'packages/emails/package.json': json({
+        name: '@acme/emails',
+        exports: { './a': './a.tsx', './b': './b.tsx', './c': './c.tsx' },
+      }),
+      'apps/dashboard/package.json': json({
+        name: 'dashboard',
+        // npm and Yarn classic link workspace packages by plain version ranges.
+        dependencies: { '@acme/ui': '*', '@acme/emails': '*', react: '^19' },
+      }),
+      'apps/dashboard/tsconfig.json': TSCONFIG,
+    });
+    const root = path.join(workspace, 'apps/dashboard');
+    const config = await loadConfig({ root });
+    // `@acme/emails` exports components too, but is not named like a design system.
+    expect(config.detected).toBe('workspace package @acme/ui');
+
+    const ds = await load(root);
+    expect(ds.getComponent('Button')?.importPath).toBe('@acme/ui/button');
+    const code = `import { Button } from "@acme/ui/button"
+import { Icons } from "@acme/ui/icons"
+import { Stack } from "@acme/ui/stack"
+export default () => <><button>Save</button><Button aria-label="Add"><Icons.Add /></Button><Stack /></>`;
+    const diagnostics = ds.check(code, 'app/page.tsx').diagnostics;
+    expect(diagnostics.map((d) => [d.ruleId, d.source])).toEqual([
+      ['prefer-design-system-component', 'button'],
+      ['no-unknown-component', 'Stack'],
+    ]);
+    expect(diagnostics[0]?.message).toContain('import { Button } from "@acme/ui/button"');
+  });
+
+  it("keeps an app's own components next to the workspace package's", async () => {
+    const workspace = fixture({
+      ...uiPackage,
+      'pnpm-workspace.yaml': 'packages:\n  - apps/*\n  - packages/*\n',
+      'apps/web/package.json': json({ name: 'web', dependencies: { '@acme/ui': 'workspace:*' } }),
+      'apps/web/tsconfig.json': TSCONFIG,
+      'apps/web/components/ui/sheet.tsx': `export function Sheet(props: { children?: unknown }) { return <div /> }\n`,
+    });
+    const ds = await load(path.join(workspace, 'apps/web'));
+    expect(ds.getComponent('Sheet')?.importPath).toBe('@/components/ui/sheet');
+    expect(ds.getComponent('Button')?.importPath).toBe('@acme/ui/button');
+  });
+
+  it('imports from the package name when a workspace package has its own components.json', async () => {
+    const workspace = fixture({
+      'pnpm-workspace.yaml': 'packages: [apps/*, packages/*]\n',
+      'packages/ui/package.json': json({ name: '@acme/ui', exports: { '.': './src/index.ts' } }),
+      'packages/ui/tsconfig.json': TSCONFIG,
+      'packages/ui/components.json': json({ aliases: { ui: '@/components/ui' } }),
+      'packages/ui/components/ui/button.tsx': BUTTON,
+      'packages/ui/src/index.ts': 'export * from "../components/ui/button"\n',
+      'apps/web/package.json': json({ name: 'web', dependencies: { '@acme/ui': 'workspace:*' } }),
+    });
+    const root = path.join(workspace, 'apps/web');
+    expect((await loadConfig({ root })).detected).toBe(
+      'workspace package @acme/ui (components.json ui: @/components/ui → ../../packages/ui/components/ui)',
+    );
+    expect((await load(root)).getComponent('Button')?.importPath).toBe('@acme/ui');
+  });
+
+  it('handles * inside a file name, unbuilt stylesheets, and globs that match nothing', async () => {
+    const root = fixture({
+      'package.json': json({
+        name: '@acme/ui',
+        exports: { './*': './src/ui-*.tsx', './styles.css': './dist/styles.css' },
+      }),
+      'src/ui-button.tsx': BUTTON,
+      'src/globals.css': THEME,
+    });
+    const config = await loadConfig({ root });
+    expect(config.components).toEqual(['src/ui-*.tsx']);
+    // dist/styles.css is not built: fall back to the source stylesheet.
+    expect(config.tokens[0]).toEqual({ path: 'src/globals.css' });
+    expect((await load(root)).getComponent('Button')?.importPath).toBe('@acme/ui/button');
+
+    // components.json pointing at an empty folder: keep the defaults.
+    const empty = fixture({
+      'tsconfig.json': TSCONFIG,
+      'components.json': json({ aliases: { ui: '@/ui' } }),
+      'ui/.gitkeep': '',
+      'components/ui/button.tsx': BUTTON,
+    });
+    const fallback = await loadConfig({ root: empty });
+    expect(fallback.detected).toBeUndefined();
+    expect((await load(empty)).getComponent('Button')).toBeDefined();
+  });
+
+  it('reads tsconfig paths declared in an extended config, relative to that config', async () => {
+    const workspace = fixture({
+      'tsconfig.base.json': json({
+        compilerOptions: { jsx: 'react-jsx', paths: { '@ui/*': ['./libs/ui/src/*'] } },
+      }),
+      'libs/ui/src/components/button.tsx': BUTTON,
+      'apps/web/tsconfig.json': json({ extends: '../../tsconfig.base.json' }),
+      'apps/web/components.json': json({ aliases: { ui: '@ui/components' } }),
+    });
+    const root = path.join(workspace, 'apps/web');
+    expect((await loadConfig({ root })).components).toEqual([
+      '../../libs/ui/src/components/**/*.{tsx,jsx}',
+    ]);
+    expect((await load(root)).getComponent('Button')?.importPath).toBe('@ui/components/button');
+  });
+
+  it('finds docs next to detected components', async () => {
+    const root = fixture({
+      'tsconfig.json': TSCONFIG,
+      'components.json': json({ aliases: { ui: '@/registry/ui' } }),
+      'registry/ui/button.tsx': BUTTON,
+      'registry/ui/button.md': '# Button\n\nThe primary action.\n',
+    });
+    expect((await load(root)).getComponent('Button')?.docs?.file).toBe('registry/ui/button.md');
+  });
+
+  it('re-runs detection when components.json changes while watching', async () => {
+    const root = fixture({
+      'tsconfig.json': TSCONFIG,
+      'components.json': json({ aliases: { ui: '@/one' } }),
+      'one/button.tsx': BUTTON,
+      'two/card.tsx': CARD,
+    });
+    const host = new DesignSystemHost(await loadConfig({ root }), { cache: false });
+    expect((await host.get()).getComponent('Button')).toBeDefined();
+    const changed = new Promise<boolean>((resolve) => {
+      host.onChange((ds) => {
+        if (ds.getComponent('Card')) resolve(true);
+      });
+    });
+    host.watch();
+    await new Promise((r) => setTimeout(r, 100));
+    fs.writeFileSync(path.join(root, 'components.json'), json({ aliases: { ui: '@/two' } }));
+    await expect(changed).resolves.toBe(true);
+    host.close();
+  }, 15_000);
+
+  it('watches a workspace package outside the root', async () => {
+    const workspace = fixture({
+      ...uiPackage,
+      'pnpm-workspace.yaml': 'packages:\n  - apps/*\n  - packages/*\n',
+      'packages/ui/package.json': json({
+        name: '@acme/ui',
+        exports: { './*': './src/components/*.tsx' },
+      }),
+      'apps/web/package.json': json({ name: 'web', dependencies: { '@acme/ui': 'workspace:*' } }),
+    });
+    const host = new DesignSystemHost(
+      await loadConfig({ root: path.join(workspace, 'apps/web') }),
+      { cache: false },
+    );
+    await host.get();
+    const changed = new Promise<boolean>((resolve) => {
+      host.onChange((ds) => {
+        if (ds.getComponent('Chip')) resolve(true);
+      });
+    });
+    host.watch();
+    await new Promise((r) => setTimeout(r, 100));
+    fs.writeFileSync(
+      path.join(workspace, 'packages/ui/src/components/chip.tsx'),
+      'export function Chip() { return <span /> }\n',
+    );
+    await expect(changed).resolves.toBe(true);
+    host.close();
+  }, 15_000);
+
+  it('follows node_modules links to workspace sources, but not to installed packages', () => {
+    const workspace = fixture({
+      ...uiPackage,
+      'pnpm-workspace.yaml': 'packages:\n  - apps/*\n',
+      'apps/web/package.json': json({
+        name: 'web',
+        dependencies: { '@acme/ui': 'workspace:*', '@vendor/ui': 'workspace:*' },
+      }),
+      'apps/web/node_modules/@vendor/ui/package.json': json({
+        name: '@vendor/ui',
+        exports: { './a': './a.tsx', './b': './b.tsx', './c': './c.tsx' },
+      }),
+    });
+    const root = path.join(workspace, 'apps/web');
+    // Not in the workspace globs: reachable only through the link.
+    fs.mkdirSync(path.join(root, 'node_modules/@acme'), { recursive: true });
+    fs.symlinkSync(path.join(workspace, 'packages/ui'), path.join(root, 'node_modules/@acme/ui'));
+    const detection = detectProject(root);
+    expect(detection?.source).toBe('workspace package @acme/ui');
+    expect(detection?.components).toContain('../../packages/ui/src/components/button.tsx');
+  });
+
+  it('ignores packages with one or two component exports, and explicit component globs', async () => {
+    const root = fixture({
+      'package.json': json({ name: 'widget', exports: { '.': './src/widget.tsx' } }),
+      'src/widget.tsx': BUTTON,
+    });
+    expect(detectProject(root)).toBeUndefined();
+
+    const workspace = fixture({
+      ...uiPackage,
+      'packages/ui/design-system-mcp.config.json': json({
+        components: ['src/components/button.tsx'],
+      }),
+    });
+    const config = await loadConfig({ root: path.join(workspace, 'packages/ui') });
+    expect(config.detected).toBeUndefined();
+    expect(config.components).toEqual(['src/components/button.tsx']);
+  });
+});
+
+describe('workspace helpers', () => {
+  it('reads block and flow package lists from pnpm-workspace.yaml', () => {
+    expect(
+      pnpmPackages(`packages:\n  - "apps/*"   # apps\n  - 'packages/*'\ncatalog:\n  react: ^19\n`),
+    ).toEqual(['apps/*', 'packages/*']);
+    expect(pnpmPackages('packages: [apps/*, "packages/*"]\n')).toEqual(['apps/*', 'packages/*']);
+    expect(
+      pnpmPackages(
+        'packages: # all of them\n# a comment\n- apps/*\n  # another\n- tools/*\nonlyBuiltDependencies: []\n',
+      ),
+    ).toEqual(['apps/*', 'tools/*']);
+    expect(pnpmPackages('catalog:\n  react: ^19\n')).toEqual([]);
+  });
+
+  it('recognises design-system package names', () => {
+    for (const name of [
+      '@acme/ui',
+      '@repo/ui',
+      '@acme/ui-kit',
+      '@acme/uikit',
+      '@acme/design-system',
+      'acme-ui',
+      '@acme/primitives',
+      '@acme/components',
+    ]) {
+      expect([name, isDesignSystemName(name)]).toEqual([name, true]);
+    }
+    for (const name of ['@acme/email-components', '@acme/utils', 'react', '@acme/build', 'tui']) {
+      expect([name, isDesignSystemName(name)]).toEqual([name, false]);
+    }
+  });
+});

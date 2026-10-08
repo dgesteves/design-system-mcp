@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import ts from 'typescript';
 
+import type { ImportMapping } from '../detect.js';
 import type {
   ComponentInfo,
   ExampleInfo,
@@ -28,6 +29,8 @@ export interface ExtractComponentsOptions {
   tsconfig?: string | undefined;
   /** Package name the design system is imported from; overrides tsconfig path inference. */
   importPath?: string | undefined;
+  /** Specifiers from the `exports` of the package that holds the components; checked before tsconfig paths. */
+  imports?: ImportMapping[] | undefined;
   /** Previous program, to let TypeScript reuse unchanged source files when watching. */
   oldProgram?: ts.Program | undefined;
 }
@@ -919,6 +922,8 @@ function importPathFor(
   file: string,
 ): string {
   if (options.importPath) return options.importPath;
+  const fromExports = exportSpecifier(options.imports ?? [], relativePath(options.root, file));
+  if (fromExports) return fromExports;
   const withoutExt = file.replace(/\.(tsx?|jsx?|mts|cts)$/, '').replace(/\/index$/, '');
   for (const [pattern, targets] of Object.entries(project.paths)) {
     if (!pattern.endsWith('/*')) continue;
@@ -933,6 +938,27 @@ function importPathFor(
   }
   const rel = relativePath(options.root, withoutExt);
   return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/** `@midday/ui/button` for `…/src/components/button.tsx`, through an exact or `*` export. */
+function exportSpecifier(imports: ImportMapping[], file: string): string | undefined {
+  for (const { specifier, target } of imports) {
+    const star = target.indexOf('*');
+    if (star === -1) {
+      if (target === file) return specifier;
+      continue;
+    }
+    const before = target.slice(0, star);
+    const after = target.slice(star + 1);
+    if (
+      file.length >= before.length + after.length &&
+      file.startsWith(before) &&
+      file.endsWith(after)
+    ) {
+      return specifier.replace('*', file.slice(before.length, file.length - after.length));
+    }
+  }
+  return undefined;
 }
 
 /** Names a module exports as values (types cannot be JSX tags), without `default`. */

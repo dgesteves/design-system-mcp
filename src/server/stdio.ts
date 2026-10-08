@@ -42,6 +42,7 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   const start = async (root: string | undefined) => {
     try {
       const config = await loadConfig({ ...options, root });
+      if (config.detected) logger.info(`found the design system through ${config.detected}`);
       const host = new DesignSystemHost(config, {
         cache: options.cache,
         logger,

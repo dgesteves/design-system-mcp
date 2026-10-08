@@ -210,6 +210,7 @@ async function inspect(
   const lines: string[] = [
     `root     ${model.root}`,
     `config   ${config.configFile ? displayPath(io.cwd, config.configFile) : '(defaults)'}`,
+    ...(config.detected ? [`detected ${config.detected}`] : []),
     `files    ${plural(model.stats.files.components, 'component file')}, ${plural(model.stats.files.tokens, 'token file')}, ${plural(model.stats.files.docs, 'doc')}`,
     `time     ${model.stats.durationMs}ms${model.stats.fromCache ? ' (cache)' : ''}`,
     '',

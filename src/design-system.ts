@@ -158,7 +158,8 @@ interface ResolvedFiles {
 async function find(config: ResolvedConfig, patterns: string[]): Promise<string[]> {
   const options = { cwd: config.root, absolute: true, dot: false };
   const named = patterns.filter((p) => p.includes('node_modules'));
-  const rest = patterns.filter((p) => !p.includes('node_modules'));
+  const outside = patterns.filter((p) => !p.includes('node_modules') && p.startsWith('../'));
+  const rest = patterns.filter((p) => !p.includes('node_modules') && !p.startsWith('../'));
   const found = await Promise.all([
     rest.length
       ? glob(rest, { ...options, ignore: unique(['**/node_modules/**', ...config.exclude]) })
@@ -169,6 +170,22 @@ async function find(config: ResolvedConfig, patterns: string[]): Promise<string[
           ignore: config.exclude.filter((e) => !e.includes('node_modules')),
         })
       : [],
+    // A workspace package next to the root (`../../packages/ui/...`): `**/` ignore
+    // patterns do not match paths that leave the cwd, so glob from the pattern's own
+    // base, with the excludes that apply there.
+    ...outside.map((pattern) => {
+      const base = globBase(pattern);
+      const prefix = `${base}/`;
+      return glob(pattern.slice(prefix.length) || pattern, {
+        ...options,
+        cwd: path.resolve(config.root, base),
+        ignore: unique([
+          '**/node_modules/**',
+          ...config.exclude.filter((e) => e.startsWith('**/')),
+          ...config.exclude.filter((e) => e.startsWith(prefix)).map((e) => e.slice(prefix.length)),
+        ]),
+      });
+    }),
   ]);
   return unique(found.flat()).sort();
 }
@@ -312,6 +329,7 @@ export async function buildModel(
     files: files.components,
     tsconfig: config.tsconfig,
     importPath: config.importPath,
+    imports: config.imports,
     oldProgram: options.oldProgram,
   });
   const docs: ParsedDoc[] = [];
@@ -391,6 +409,9 @@ export interface HostOptions extends LoadOptions {
   loadConfig?: () => Promise<ResolvedConfig>;
 }
 
+/** Files zero-config detection reads in the root. */
+const DETECTION_FILES = ['components.json', 'package.json'];
+
 export class DesignSystemHost {
   private current?: Promise<DesignSystem>;
   private program?: ts.Program | undefined;
@@ -445,7 +466,9 @@ export class DesignSystemHost {
       ...this.config.tokens.map((t) => t.path),
     ]) {
       const base = path.resolve(root, globBase(pattern));
-      if (isInside(root, base) && fs.existsSync(base)) dirs.add(base);
+      // Outside the root is fine (a workspace package); an ancestor would watch the whole repository.
+      const ancestor = base !== root && isInside(base, root);
+      if (!ancestor && fs.existsSync(base)) dirs.add(base);
     }
     // Skip dirs nested inside another watched dir.
     this.watchedRoots = [...dirs].filter((d) => ![...dirs].some((o) => o !== d && isInside(o, d)));
@@ -468,6 +491,8 @@ export class DesignSystemHost {
     const { root, configFile, tsconfig } = this.config;
     const files = [
       configFile,
+      // Zero-config detection reads these; a change re-runs it.
+      ...DETECTION_FILES.map((f) => path.join(root, f)),
       path.resolve(root, tsconfig ?? 'tsconfig.json'),
       // Installed bases (`@tsconfig/next`) change with the lockfile, which the fingerprint covers.
       ...readProjectConfig(root, tsconfig).configFiles.filter(isProjectFile),
@@ -487,7 +512,17 @@ export class DesignSystemHost {
   }
 
   private changed(file: string | undefined): void {
-    if (file === undefined || file === this.config.configFile) this.configChanged = true;
+    // Without component globs in the config, the design system was detected from
+    // components.json, package.json and tsconfig paths: re-read the config so detection runs again.
+    const { root, configFile, detected } = this.config;
+    if (
+      file === undefined ||
+      file === configFile ||
+      (path.dirname(file) === root && DETECTION_FILES.includes(path.basename(file))) ||
+      (detected !== undefined && this.watchedFiles.has(file))
+    ) {
+      this.configChanged = true;
+    }
     this.schedule();
   }
 
