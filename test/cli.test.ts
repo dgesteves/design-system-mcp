@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -108,6 +109,201 @@ describe('design-system-mcp check', () => {
     expect((await run(['check', 'x.tsx', '--format', 'xml'])).code).toBe(2);
     expect((await run(['frobnicate'])).code).toBe(2);
     expect((await run(['--bogus'])).code).toBe(2);
+  });
+});
+
+describe('design-system-mcp check with a baseline', () => {
+  const BUTTON =
+    'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }';
+  const project = () =>
+    fixture({
+      'components/ui/button.tsx': BUTTON,
+      'components/ui/input.tsx':
+        'export function Input(props: React.ComponentProps<"input">) { return <input {...props} /> }',
+      'app/a.tsx': 'export const A = () => <><button>One</button><button>Two</button></>',
+      'app/b.tsx': 'export const B = () => <input />',
+      'app/c.tsx': 'export const C = () => <p>Fine</p>',
+    });
+  const baselineOf = (root: string) =>
+    JSON.parse(fs.readFileSync(path.join(root, 'design-system-mcp.baseline.json'), 'utf8')) as {
+      files: Record<string, Record<string, Record<string, number>>>;
+    };
+
+  it('records the current findings, keyed from the root, and then reports only new ones', async () => {
+    const root = project();
+    // Run from a subdirectory: keys stay relative to the root.
+    const recorded = await run(
+      ['check', '.', '--update-baseline', '--root', '..', '--no-cache'],
+      path.join(root, 'app'),
+    );
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toBe(
+      `Baseline: 3 findings in 2 files → ${path.join(root, 'design-system-mcp.baseline.json')}`,
+    );
+    expect(baselineOf(root).files).toEqual({
+      'app/a.tsx': { 'prefer-design-system-component': { button: 2 } },
+      'app/b.tsx': { 'prefer-design-system-component': { input: 1 } },
+    });
+
+    const clean = await run(['check', 'app', '--no-cache'], root);
+    expect(clean).toMatchObject({
+      code: 0,
+      stdout: 'No new problems in 3 files (3 in the baseline).',
+    });
+
+    // A third <button> exceeds the count for that source; the rest still match after moving lines.
+    fs.writeFileSync(
+      path.join(root, 'app/a.tsx'),
+      'export const A = () => (\n  <>\n    <button>One</button><button>Two</button><button>Three</button>\n  </>\n)',
+    );
+    const added = await run(['check', 'app', '--no-cache'], root);
+    expect(added.code).toBe(1);
+    expect(added.stdout).toMatch(/app\/a\.tsx\n\s+3:46\s+error\s+Native <button>/);
+    expect(added.stdout).toContain('1 error, 0 warnings in 3 files (3 in the baseline)');
+
+    const all = await run(['check', 'app', '--no-cache', '--ignore-baseline'], root);
+    expect(all.stdout).toContain('4 errors, 0 warnings in 3 files\n'.trim());
+    expect(all.stdout).not.toContain('baseline');
+  });
+
+  it('points out fixed findings and drops them, and deleted files, on update', async () => {
+    const root = project();
+    await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+    fs.writeFileSync(path.join(root, 'app/a.tsx'), 'export const A = () => <button>One</button>');
+    fs.rmSync(path.join(root, 'app/b.tsx'));
+
+    const { code, stdout } = await run(['check', 'app/a.tsx', '--no-cache'], root);
+    expect(code).toBe(0);
+    expect(stdout.split('\n')).toEqual([
+      'No new problems in 1 file (1 in the baseline).',
+      '1 baseline finding no longer occurs: run `check app/a.tsx --update-baseline` to drop it.',
+    ]);
+    const github = await run(['check', 'app/a.tsx', '--no-cache', '--format', 'github'], root);
+    expect(github.stdout).toBe(
+      '::notice title=design-system-mcp baseline::1 baseline finding no longer occurs: run `check app/a.tsx --update-baseline` to drop it.',
+    );
+
+    // Only a.tsx is checked: its entry shrinks, b.tsx is gone from disk and is dropped.
+    await run(['check', 'app/a.tsx', '--update-baseline', '--no-cache'], root);
+    expect(baselineOf(root).files).toEqual({
+      'app/a.tsx': { 'prefer-design-system-component': { button: 1 } },
+    });
+  });
+
+  it('keeps entries of files a partial update does not check, and filters JSON output', async () => {
+    const root = project();
+    await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+    await run(['check', 'app/c.tsx', '--update-baseline', '--no-cache'], root);
+    expect(Object.keys(baselineOf(root).files)).toEqual(['app/a.tsx', 'app/b.tsx']);
+
+    const { stdout } = await run(['check', 'app', '--no-cache', '--format', 'json'], root);
+    const results = JSON.parse(stdout) as {
+      file: string;
+      diagnostics: unknown[];
+      baselined: number;
+    }[];
+    expect(results.map((r) => [r.file, r.diagnostics.length, r.baselined])).toEqual([
+      ['app/a.tsx', 0, 2],
+      ['app/b.tsx', 0, 1],
+      ['app/c.tsx', 0, 0],
+    ]);
+  });
+
+  it('rejects a missing or malformed baseline file', async () => {
+    const root = project();
+    const missing = await run(['check', 'app', '--baseline', 'nope.json', '--no-cache'], root);
+    expect(missing).toMatchObject({ code: 2, stderr: 'check: baseline not found: nope.json' });
+    fs.writeFileSync(path.join(root, 'design-system-mcp.baseline.json'), '{"files": []}');
+    const malformed = await run(['check', 'app', '--no-cache'], root);
+    expect(malformed.code).toBe(2);
+    expect(malformed.stderr).toContain('is not a valid design-system-mcp baseline');
+
+    // Every level is checked, and an update refuses to overwrite what it cannot read.
+    for (const files of [
+      { 'app/a.tsx': { 'prefer-design-system-component': null } },
+      { 'app/a.tsx': { 'prefer-design-system-component': { button: '1' } } },
+      { 'app/a.tsx': { 'prefer-design-system-component': { button: 0.5 } } },
+    ]) {
+      fs.writeFileSync(
+        path.join(root, 'design-system-mcp.baseline.json'),
+        JSON.stringify({ version: 1, files }),
+      );
+      for (const extra of [[], ['--update-baseline']]) {
+        const run_ = await run(['check', 'app', '--no-cache', ...extra], root);
+        expect(run_.code).toBe(2);
+        expect(run_.stderr).toContain('is not a valid design-system-mcp baseline');
+      }
+    }
+
+    const unwritable = await run(
+      ['check', 'app', '--no-cache', '--update-baseline', '--baseline', 'missing/dir/b.json'],
+      root,
+    );
+    expect(unwritable.code).toBe(2);
+    expect(unwritable.stderr).toContain('Could not write baseline');
+  });
+
+  it('keeps keys that look like Object.prototype members as plain entries', async () => {
+    const root = fixture({
+      'components/ui/badge.tsx':
+        'export function Badge(props: { variant?: "default" | "outline" }) { return <span /> }',
+      'app/p.tsx':
+        'export const P = () => <><Badge toString constructor valueOf="x" hasOwnProperty __proto__ /></>\nimport { Badge } from "../components/ui/badge"',
+    });
+    const recorded = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+    expect(recorded.stdout).toMatch(/^Baseline: 5 findings in 1 file → /);
+    expect(baselineOf(root).files['app/p.tsx']?.['no-unknown-prop']).toEqual(
+      JSON.parse('{"__proto__":1,"constructor":1,"hasOwnProperty":1,"toString":1,"valueOf":1}'),
+    );
+    expect(await run(['check', 'app', '--no-cache'], root)).toMatchObject({
+      code: 0,
+      stdout: 'No new problems in 1 file (5 in the baseline).',
+    });
+  });
+
+  it('matches through a linked root, keeps entries of disabled rules, and ignores quote style', async () => {
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: { variant?: "default" | "destructive" } & React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/a.tsx':
+        'import { Button } from "../components/ui/button"\nexport const A = () => <><button>x</button><Button variant="danger" /></>',
+    });
+    const link = `${root}-link`;
+    fs.symlinkSync(root, link);
+    try {
+      await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+      // Through the link, from a cwd elsewhere: the same keys.
+      const linked = await run(
+        ['check', path.join(link, 'app'), '--root', link, '--no-cache'],
+        '/',
+      );
+      expect(linked).toMatchObject({
+        code: 0,
+        stdout: 'No new problems in 1 file (2 in the baseline).',
+      });
+
+      fs.writeFileSync(
+        path.join(root, 'app/a.tsx'),
+        fs.readFileSync(path.join(root, 'app/a.tsx'), 'utf8').replace('"danger"', "'danger'"),
+      );
+      expect((await run(['check', 'app', '--no-cache'], root)).code).toBe(0);
+
+      fs.writeFileSync(
+        path.join(root, 'design-system-mcp.config.json'),
+        JSON.stringify({ rules: { 'prefer-design-system-component': 'off' } }),
+      );
+      // Off is not fixed: no hint, and an update keeps the entry for when the rule returns.
+      expect((await run(['check', 'app', '--no-cache'], root)).stdout).toBe(
+        'No new problems in 1 file (1 in the baseline).',
+      );
+      await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+      expect(baselineOf(root).files['app/a.tsx']).toEqual({
+        'no-unknown-variant': { danger: 1 },
+        'prefer-design-system-component': { button: 1 },
+      });
+    } finally {
+      fs.rmSync(link);
+    }
   });
 });
 

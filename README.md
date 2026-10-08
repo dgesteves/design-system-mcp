@@ -225,6 +225,17 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 
 `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results.
 
+### Adopting it in an existing codebase
+
+An established app can start with hundreds of findings (midday's dashboard has about 1,300). Record them once and commit the file:
+
+```sh
+npx @dgesteves/design-system-mcp check "src/**/*.tsx" --update-baseline
+# Baseline: 1,307 findings in 275 files → design-system-mcp.baseline.json
+```
+
+From then on, `check` reads `design-system-mcp.baseline.json` from the root whenever it exists and fails only on new findings: `No new problems in 504 files (1,307 in the baseline).` Entries are keyed by file, rule and the offending text with a count, not by line, so edits elsewhere in a file do not invalidate them, while a second `bg-[#f7f7f7]` where the baseline accepts one is reported. When findings get fixed, `check` says so and prints the command that drops them, which locks in the progress. Entries of a rule you turn off are kept rather than reported as fixed, a malformed baseline (a bad merge, say) is an error rather than something to overwrite, and paths are matched by their real spelling, so `APP/` on macOS or a linked checkout finds the same entries. `--ignore-baseline` shows everything, and `--baseline <file>` uses another path. The baseline applies to the CLI only: `check_ui` still shows an agent every finding in the file it is editing.
+
 ## How it works
 
 <p align="center">

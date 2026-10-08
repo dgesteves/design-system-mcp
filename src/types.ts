@@ -191,4 +191,6 @@ export interface CheckResult {
   diagnostics: Diagnostic[];
   errorCount: number;
   warningCount: number;
+  /** With a baseline: findings it accepted, left out of `diagnostics` and the counts. */
+  baselined?: number;
 }
