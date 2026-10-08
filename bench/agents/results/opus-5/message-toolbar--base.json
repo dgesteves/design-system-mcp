@@ -1,0 +1,18 @@
+{
+  "task": "message-toolbar",
+  "condition": "base",
+  "model": "claude-opus-5[1m]",
+  "created": true,
+  "changed": [
+    "components/chat/message-toolbar.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.9438359999999998,
+  "turns": 16,
+  "seconds": 104,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

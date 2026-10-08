@@ -5,7 +5,14 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  globalIgnores(['dist', 'coverage', 'examples', 'test/fixtures', 'schema.json']),
+  globalIgnores([
+    'dist',
+    'coverage',
+    'examples',
+    'test/fixtures',
+    'schema.json',
+    'bench/agents/output',
+  ]),
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   {

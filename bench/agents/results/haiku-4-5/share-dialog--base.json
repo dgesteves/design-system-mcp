@@ -1,0 +1,33 @@
+{
+  "task": "share-dialog",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/share-chat-dialog.tsx"
+  ],
+  "errors": 1,
+  "warnings": 0,
+  "byRule": {
+    "prefer-design-system-component": 1
+  },
+  "findings": [
+    {
+      "file": "components/chat/share-chat-dialog.tsx",
+      "ruleId": "prefer-design-system-component",
+      "severity": "error",
+      "message": "Native <label> where the design system has <Label>. Use <Label> (import { Label } from \"@/components/ui/label\"); it may not take the attributes of a <label>, so check its props and parts with get_component.",
+      "line": 64,
+      "column": 14,
+      "endLine": 64,
+      "endColumn": 19,
+      "source": "label",
+      "suggestion": "<Label>"
+    }
+  ],
+  "cost": 0.1257401,
+  "turns": 14,
+  "seconds": 46,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

@@ -1,0 +1,75 @@
+{
+  "task": "settings-card",
+  "condition": "base",
+  "model": "claude-opus-5[1m]",
+  "created": true,
+  "changed": [
+    "components/chat/model-settings-card.tsx"
+  ],
+  "errors": 4,
+  "warnings": 0,
+  "byRule": {
+    "no-hardcoded-color": 4
+  },
+  "findings": [
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`bg-emerald-500/15` is Tailwind's default palette, not a design-system color. No close token; nearest is chart-2 (ΔE 0.122). Pick the semantic token that fits. <Badge> already sets bg-* through `variant`; prefer a variant over overriding it.",
+      "line": 49,
+      "column": 41,
+      "endLine": 49,
+      "endColumn": 58,
+      "source": "bg-emerald-500/15"
+    },
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`text-emerald-700` is Tailwind's default palette, not a design-system color. Nearest token chart-2 (ΔE 0.100) → `text-chart-2`. <Badge> already sets text-* through `variant`; prefer a variant over overriding it.",
+      "line": 49,
+      "column": 59,
+      "endLine": 49,
+      "endColumn": 75,
+      "source": "text-emerald-700",
+      "suggestion": "text-chart-2",
+      "fix": [
+        {
+          "range": [
+            1471,
+            1487
+          ],
+          "text": "text-chart-2"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`dark:text-emerald-300` is Tailwind's default palette, not a design-system color. No close token; nearest is sidebar-border (ΔE 0.147). Pick the semantic token that fits. <Badge> already sets text-* through `variant`; prefer a variant over overriding it.",
+      "line": 49,
+      "column": 76,
+      "endLine": 49,
+      "endColumn": 97,
+      "source": "dark:text-emerald-300"
+    },
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`bg-emerald-500` is Tailwind's default palette, not a design-system color. No close token; nearest is chart-2 (ΔE 0.122). Pick the semantic token that fits.",
+      "line": 54,
+      "column": 48,
+      "endLine": 54,
+      "endColumn": 62,
+      "source": "bg-emerald-500"
+    }
+  ],
+  "cost": 1.0122855,
+  "turns": 21,
+  "seconds": 153,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}
