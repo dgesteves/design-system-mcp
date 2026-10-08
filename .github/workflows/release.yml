@@ -7,9 +7,10 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
-  contents: write
-  pull-requests: write
-  id-token: write # npm provenance
+  contents: write # the version commit, tags and GitHub releases
+  pull-requests: write # the version pull request
+  id-token: write # npm trusted publishing (with provenance) and the MCP Registry login
+  actions: write # starting CI on the version pull request
 
 jobs:
   release:
@@ -18,18 +19,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
+      # No registry-url and no token: npm trusted publishing authenticates this workflow with
+      # OIDC, so there is no secret to leak or rotate.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - uses: changesets/action@v2
+      # With pending changesets this opens or updates the release pull request. Once that is
+      # merged, it publishes to npm and creates the GitHub release.
+      - id: changesets
+        uses: changesets/action@v2.1.2
         with:
           version-script: pnpm version-packages
           publish-script: pnpm release
           commit-message: 'chore: release'
           pr-title: 'chore: release'
+      # The release pull request is pushed with this workflow's token, and pushes made with it
+      # start no workflows, so start CI on it here: main only accepts pull requests that pass.
+      - name: Run CI on the release pull request
+        if: steps.changesets.outputs.has-changesets == 'true'
+        run: gh workflow run ci.yml --ref changeset-release/main
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          GH_TOKEN: ${{ github.token }}
+      # The registry entry points at the npm package, and the plugin pins its version: both follow
+      # the npm publish above, in the same run.
+      - name: Publish to the MCP Registry
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          curl -fsSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
