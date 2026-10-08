@@ -99,9 +99,9 @@ export class LintTarget {
       for (const element of [fromName, fromElement]) {
         if (!element) continue;
         const existing = this.elements.get(element);
-        // Prefer the component named after the element (`Button` over `IconButton` for <button>).
-        if (!existing || component.name.toLowerCase() === element)
+        if (!existing || fit(component, element) > fit(existing, element)) {
           this.elements.set(element, component);
+        }
       }
     }
     for (const [element, name] of Object.entries(config.elements)) {
@@ -192,6 +192,17 @@ export class LintTarget {
   names(): string[] {
     return [...this.components.keys()];
   }
+}
+
+/**
+ * How well a component replaces a native element: rendering it counts most
+ * (`NativeSelect` over Radix's `Select` for <select>), then being named after
+ * it (`Button` over `IconButton` for <button>).
+ */
+function fit(component: ComponentInfo, element: string): number {
+  return (
+    (component.element === element ? 2 : 0) + (component.name.toLowerCase() === element ? 1 : 0)
+  );
 }
 
 function stripExtension(file: string): string {

@@ -181,6 +181,21 @@ const PROP_SYNONYMS: Record<string, string[]> = {
   asChild: ['as', 'component', 'render'],
 };
 
+/**
+ * Radix composes with `asChild` and a child element, Base UI with a `render`
+ * element; shadcn/ui ships both, and agents mix them up. Renaming the prop is
+ * not enough, so this explains the other way instead of offering a fix.
+ */
+function compositionHint(name: string, known: Set<string>, tag: string): string | undefined {
+  if (name === 'asChild' && known.has('render')) {
+    return `Base UI components compose with render instead: <${tag} render={<Link href="…" />}>…</${tag}>.`;
+  }
+  if (name === 'render' && known.has('asChild')) {
+    return `Radix components compose with asChild and a single child instead: <${tag} asChild><Link href="…">…</Link></${tag}>.`;
+  }
+  return undefined;
+}
+
 export const noUnknownProp: Rule = {
   id: 'no-unknown-prop',
   description: 'Props must exist on the component (own props or the HTML attributes it forwards).',
@@ -204,6 +219,16 @@ export const noUnknownProp: Rule = {
           name.includes('-') ||
           name.includes(':')
         ) {
+          continue;
+        }
+        const composition = compositionHint(name, known, element.tag);
+        if (composition) {
+          context.report({
+            start: attribute.name.getStart(context.sourceFile),
+            end: attribute.name.end,
+            message: `<${element.tag}> has no prop "${name}". ${composition}`,
+            suggestion: name === 'asChild' ? 'render' : 'asChild',
+          });
           continue;
         }
         const synonym = Object.entries(PROP_SYNONYMS).find(
@@ -385,6 +410,72 @@ function classify(children: readonly ts.Node[], context: RuleContext, icons: str
   return result;
 }
 
+/** A button, native or a design-system component that renders or is named like one. */
+function isButton(context: RuleContext, element: JsxNode): boolean {
+  const resolution = context.resolve(element);
+  return (
+    (resolution.kind === 'intrinsic' && resolution.tag === 'button') ||
+    (resolution.kind === 'component' &&
+      (resolution.component.element === 'button' || /Button$/.test(resolution.component.name)))
+  );
+}
+
+/** `aria-label`, `aria-labelledby` or `title` with a value that is not blank. */
+function hasLabel(attributes: readonly ts.JsxAttribute[]): boolean {
+  return attributes.some((attribute) => {
+    if (!/^(?:aria-label|aria-labelledby|title)$/.test(attributeName(attribute))) return false;
+    const values = literalValues(attribute);
+    return !values.length || values.some((v) => v.text.trim());
+  });
+}
+
+/**
+ * The element whose `render` prop this one is, as in Base UI's
+ * `<Dialog.Close render={<Button size="icon" />}><XIcon /></Dialog.Close>`:
+ * the rendered button takes the host's children and attributes.
+ */
+function renderHost(context: RuleContext, element: JsxNode): JsxNode | undefined {
+  const expression = element.node.parent;
+  const attribute = ts.isJsxExpression(expression) ? expression.parent : undefined;
+  if (!attribute || !ts.isJsxAttribute(attribute) || attributeName(attribute) !== 'render') {
+    return undefined;
+  }
+  const opening = attribute.parent.parent;
+  const node = ts.isJsxOpeningElement(opening) ? opening.parent : opening;
+  return context.analysis.elements.find((e) => e.node === node);
+}
+
+/** `hidden`, `aria-hidden`, `aria-hidden="true"` or `{true}`: not an element anyone reads or clicks. */
+function hiddenBy(attributes: ts.JsxAttributes): boolean {
+  return attributes.properties.some((attribute) => {
+    if (!ts.isJsxAttribute(attribute)) return false;
+    const name = attributeName(attribute);
+    if (name !== 'hidden' && name !== 'aria-hidden') return false;
+    const init = attribute.initializer;
+    if (!init) return true;
+    const value = ts.isJsxExpression(init) ? init.expression : init;
+    if (value?.kind === ts.SyntaxKind.TrueKeyword) return true;
+    return (
+      value !== undefined &&
+      ts.isStringLiteralLike(value) &&
+      (name === 'hidden' || value.text === 'true')
+    );
+  });
+}
+
+/** The element or one around it is hidden. */
+function isHidden(element: JsxNode): boolean {
+  const hidden = ts.findAncestor(element.node, (node) => {
+    const opening = ts.isJsxElement(node)
+      ? node.openingElement
+      : ts.isJsxSelfClosingElement(node)
+        ? node
+        : undefined;
+    return opening !== undefined && hiddenBy(opening.attributes);
+  });
+  return hidden !== undefined;
+}
+
 export const iconButtonAccessibleName: Rule = {
   id: 'icon-button-accessible-name',
   description:
@@ -392,21 +483,15 @@ export const iconButtonAccessibleName: Rule = {
   run(context) {
     for (const element of context.analysis.elements) {
       const resolution = context.resolve(element);
-      const isButton =
-        (resolution.kind === 'intrinsic' && resolution.tag === 'button') ||
-        (resolution.kind === 'component' &&
-          (resolution.component.element === 'button' || /Button$/.test(resolution.component.name)));
-      if (!isButton || element.hasSpread) continue;
-      if (findAttribute(element, 'asChild')) continue;
-      const labelled = ['aria-label', 'aria-labelledby', 'title'].some((name) => {
-        const attribute = findAttribute(element, name);
-        if (!attribute) return false;
-        const values = literalValues(attribute);
-        return !values.length || values.some((v) => v.text.trim());
-      });
-      if (labelled) continue;
+      if (!isButton(context, element) || element.hasSpread) continue;
+      if (findAttribute(element, 'asChild') || isHidden(element)) continue;
+      // A button passed as `render` is judged by its host's children and label;
+      // a host that is a button itself is checked on its own.
+      const host = renderHost(context, element);
+      if (host && (isButton(context, host) || host.hasSpread)) continue;
+      if (hasLabel(element.attributes) || (host && hasLabel(host.attributes))) continue;
       const icons: string[] = [];
-      const content = classify(element.children, context, icons);
+      const content = classify((host ?? element).children, context, icons);
       const sizeIcon = attributeLiterals(element, 'size').some((v) => v.text.includes('icon'));
       if (
         content === 'text' ||
