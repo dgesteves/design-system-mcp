@@ -35,6 +35,8 @@ export interface ExtractComponentsOptions {
 export interface ExtractComponentsResult {
   components: ComponentInfo[];
   propSets: Record<string, string[]>;
+  /** Every value the component files export, components or not (`Icons`, `buttonVariants`). */
+  exports: string[];
   warnings: string[];
   program: ts.Program;
   /** Project files extraction depends on: the tsconfig chain and every module the components import. */
@@ -54,6 +56,7 @@ export function extractComponents(options: ExtractComponentsOptions): ExtractCom
   const propSets = new Map<string, string[]>();
   const warnings: string[] = [];
   const components: ComponentInfo[] = [];
+  const exports = new Set<string>();
   const seen = new Set<ts.Node>();
 
   for (const file of options.files) {
@@ -63,6 +66,7 @@ export function extractComponents(options: ExtractComponentsOptions): ExtractCom
       warnings.push(`${rel}: could not be read by TypeScript`);
       continue;
     }
+    for (const name of valueExports(checker, sourceFile)) exports.add(name);
     const context: FileContext = {
       checker,
       sourceFile,
@@ -84,6 +88,7 @@ export function extractComponents(options: ExtractComponentsOptions): ExtractCom
   return {
     components,
     propSets: Object.fromEntries(propSets),
+    exports: [...exports].sort(),
     warnings,
     program,
     dependencies: unique([...project.configFiles.filter(isProjectFile), ...projectFiles(program)]),
@@ -489,7 +494,7 @@ function extractProps(
     types = typeNode ? constituents(context, typeNode).filter((t) => !isAny(t)) : [];
   } else {
     types = type.isUnion() ? type.types : [type];
-    if (typeNode && constituents(context, typeNode).some(isAny)) openProps = true;
+    if (typeNode && hasUnresolvedPart(context.checker, typeNode)) openProps = true;
   }
 
   const own = new Map<string, { symbol: ts.Symbol; requiredIn: number; origin: string }>();
@@ -554,8 +559,7 @@ function constituents(context: FileContext, typeNode: ts.TypeNode, depth = 0): t
     if (alias && alias.getSourceFile() === context.sourceFile && !alias.typeParameters) {
       return constituents(context, alias.type, depth + 1);
     }
-    // A local interface: its own members plus whatever it extends, so an
-    // unresolved `extends React.ButtonHTMLAttributes<...>` is noticed.
+    // A local interface: its own members plus whatever it extends.
     const iface = symbol?.declarations?.find(ts.isInterfaceDeclaration);
     if (iface && iface.getSourceFile() === context.sourceFile) {
       const bases = (iface.heritageClauses ?? []).flatMap((clause) =>
@@ -565,6 +569,49 @@ function constituents(context: FileContext, typeNode: ts.TypeNode, depth = 0): t
     }
   }
   return [checker.getTypeFromTypeNode(typeNode)];
+}
+
+/**
+ * Whether part of a props type does not resolve (e.g. React types not
+ * installed), looking through intersections and unions, type arguments
+ * (`Omit<ButtonProps, "type">`), and the aliases and interfaces of any project
+ * file, including what those interfaces extend. Such props are open: the
+ * linter cannot see them, so it must not report them as unknown.
+ */
+function hasUnresolvedPart(
+  checker: ts.TypeChecker,
+  typeNode: ts.TypeNode,
+  seen = new Set<ts.Node>(),
+  depth = 0,
+): boolean {
+  if (depth > 16) return false;
+  if (isAny(checker.getTypeFromTypeNode(typeNode))) return true;
+  const next = (node: ts.TypeNode) => hasUnresolvedPart(checker, node, seen, depth + 1);
+  if (ts.isIntersectionTypeNode(typeNode) || ts.isUnionTypeNode(typeNode)) {
+    return typeNode.types.some(next);
+  }
+  if (ts.isParenthesizedTypeNode(typeNode)) return next(typeNode.type);
+  if (!ts.isTypeReferenceNode(typeNode) && !ts.isExpressionWithTypeArguments(typeNode)) {
+    return false;
+  }
+  if (typeNode.typeArguments?.some(next)) return true;
+  const symbol = checker.getSymbolAtLocation(
+    ts.isTypeReferenceNode(typeNode) ? typeNode.typeName : typeNode.expression,
+  );
+  const declared =
+    symbol && symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  for (const declaration of declared?.declarations ?? []) {
+    if (seen.has(declaration) || !isProjectFile(declaration.getSourceFile().fileName)) continue;
+    seen.add(declaration);
+    if (ts.isTypeAliasDeclaration(declaration) && next(declaration.type)) return true;
+    if (
+      ts.isInterfaceDeclaration(declaration) &&
+      (declaration.heritageClauses ?? []).some((clause) => clause.types.some(next))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Where a prop is declared: the project, React's DOM typings, or another package. */
@@ -886,4 +933,22 @@ function importPathFor(
   }
   const rel = relativePath(options.root, withoutExt);
   return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/** Names a module exports as values (types cannot be JSX tags), without `default`. */
+function valueExports(checker: ts.TypeChecker, sourceFile: ts.SourceFile): string[] {
+  const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
+  if (!moduleSymbol) return [];
+  return checker
+    .getExportsOfModule(moduleSymbol)
+    .filter((symbol) => {
+      if (symbol.name === 'default') return false;
+      // A re-export that does not resolve (missing node_modules) comes back as the
+      // checker's `unknown` property symbol, so it counts as a value: better to
+      // trust it than to report it as invented.
+      const target =
+        symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      return (target.flags & ts.SymbolFlags.Value) !== 0;
+    })
+    .map((symbol) => symbol.name);
 }

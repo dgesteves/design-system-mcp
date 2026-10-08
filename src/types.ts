@@ -146,6 +146,11 @@ export interface DesignSystemModel {
   tokens: Token[];
   /** Shared inherited prop-name lists, deduplicated across components. */
   propSets: Record<string, string[]>;
+  /**
+   * Every value the component files export, components or not (`Icons`,
+   * `buttonVariants`), so the linter tells an invented name from a real export.
+   */
+  exports: string[];
   /** Non-fatal problems found while extracting (unparseable files, unmatched docs). */
   warnings: string[];
   stats: {

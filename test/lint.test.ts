@@ -547,6 +547,35 @@ export default () => <Link href="/"><Trash2 /><Local /></Link>`;
   });
 });
 
+describe('no-unknown-component: real exports that are not components', () => {
+  const rule = 'no-unknown-component';
+
+  it('leaves icon maps and other exported values alone, but not invented names', async () => {
+    const system = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/button.tsx': `export function Button(props: { children?: unknown }) { return <button /> }\n`,
+        'components/ui/icons.tsx': `export const Icons = { Add: () => <svg />, Close: () => <svg /> }\nexport type IconName = keyof typeof Icons\n`,
+      }),
+    );
+    const code = `import { Button } from "@/components/ui/button"
+import { Icons, Iconz } from "@/components/ui/icons"
+import * as UI from "@/components/ui/icons"
+export default () => <Button><Icons.Add /><UI.Icons.Close /><Iconz.Add /><UI.Icon /><Icons /><UI.Icons /></Button>`;
+    // A bare <Icons /> renders the object itself, which is never right.
+    expect(check(code, rule, system).map((d) => d.source)).toEqual([
+      'Iconz.Add',
+      'UI.Icon',
+      'Icons',
+      'UI.Icons',
+    ]);
+    // A component's missing member is still reported through a namespace import.
+    expect(
+      check(`import * as UI from "@/components/ui/button"\n<UI.Button.Header />`, rule, system),
+    ).toHaveLength(1);
+  });
+});
+
 describe('design-system imports', () => {
   const rule = 'no-unknown-component';
 

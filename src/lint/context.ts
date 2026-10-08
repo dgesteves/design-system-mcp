@@ -68,9 +68,14 @@ export function resolveElement(
     if (!target.isDesignSystemImport(binding.source, file)) return { kind: 'external' };
     const name = rest.join('.');
     const component = target.components.get(name);
-    return component
-      ? { kind: 'component', component }
-      : { kind: 'missing-export', name, source: binding.source };
+    if (component) return { kind: 'component', component };
+    // `UI.Icons.Add`: a member of a real export that is not a component (an
+    // icon map). A bare `<UI.Icons />` renders an object, so it stays reported.
+    const member = rest[0] ?? '';
+    if (rest.length > 1 && target.exports.has(member) && !target.components.has(member)) {
+      return { kind: 'external' };
+    }
+    return { kind: 'missing-export', name, source: binding.source };
   }
 
   let owner: ComponentInfo | undefined;
@@ -81,7 +86,12 @@ export function resolveElement(
         ? (target.defaultExport(binding.source, file)?.name ?? head)
         : binding.imported;
     owner = target.components.get(imported);
-    if (!owner) return { kind: 'missing-export', name: imported, source: binding.source };
+    if (!owner) {
+      // `<Icons.Add />` from `@acme/ui/icons`: a member of an export that is
+      // not a component. A bare `<Icons />` renders an object, so it stays reported.
+      if (rest.length && target.exports.has(imported)) return { kind: 'external' };
+      return { kind: 'missing-export', name: imported, source: binding.source };
+    }
   } else if (analysis.declared.has(head)) {
     return { kind: 'external' };
   } else {
