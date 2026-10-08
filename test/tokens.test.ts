@@ -199,6 +199,40 @@ describe('CSS custom-property tokens', () => {
     expect(byName(themed, 'gap').value).toBe('4px');
   });
 
+  it('describes each variable with its own comment, after it on the line or above it', () => {
+    const { tokens } = parseCssTokens(
+      `:root {
+  --background: 0 0% 100%; /* white */
+  --foreground: 222.2 47.4% 11.2%; /* slate-900 */
+  --muted: 210 40% 96.1%;
+  /* Heavier rule weight than --border,
+     for column dividers. */
+  --border-strong: 212.7 26.8% 83.9%; /* slate-300 */
+  --ring: 215 20.2% 65.1%;
+}`,
+      'globals.css',
+    );
+    expect(tokens.map((t) => [t.name, t.description])).toEqual([
+      ['background', 'white'],
+      ['foreground', 'slate-900'],
+      ['muted', undefined],
+      ['border-strong', 'slate-300'],
+      ['ring', undefined],
+    ]);
+    const above = parseCssTokens(
+      `:root {
+  --muted: 210 40% 96.1%;
+  /* Heavier rule weight than --border. */
+  --border-strong: 212.7 26.8% 83.9%;
+}`,
+      'globals.css',
+    ).tokens;
+    expect(above.map((t) => t.description)).toEqual([
+      undefined,
+      'Heavier rule weight than --border.',
+    ]);
+  });
+
   it('skips theme sub-properties and categorises text shadows as shadows', () => {
     const { tokens: theme } = parseCssTokens(
       `@theme {

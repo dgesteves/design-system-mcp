@@ -1,4 +1,11 @@
-import postcss, { type AtRule, type Container, type Declaration, type Rule } from 'postcss';
+import postcss, {
+  type AtRule,
+  type ChildNode,
+  type Comment,
+  type Container,
+  type Declaration,
+  type Rule,
+} from 'postcss';
 
 import type { Token, TokenCategory } from '../types.js';
 import { parseColor } from './color.js';
@@ -395,11 +402,26 @@ function modeOf(decl: Declaration): string | undefined {
   return undefined;
 }
 
+/**
+ * The comment that describes a declaration: one that follows it on the same
+ * line, else one on the lines before it. A comment on the line where the
+ * previous declaration ends describes that declaration, not this one.
+ */
 function withComment(decl: Declaration): { comment?: string } {
+  const line = decl.source?.end?.line;
+  const next = decl.next();
+  const trailing =
+    next?.type === 'comment' && line !== undefined && next.source?.start?.line === line
+      ? next
+      : undefined;
   const prev = decl.prev();
-  if (prev?.type === 'comment') {
-    const text = prev.text.trim();
-    if (text) return { comment: text };
-  }
-  return {};
+  const leading = prev?.type === 'comment' && !trails(prev, prev.prev()) ? prev : undefined;
+  const text = (trailing ?? leading)?.text.trim();
+  return text ? { comment: text } : {};
+}
+
+/** True when `comment` sits on the line where `before` ends. */
+function trails(comment: Comment, before: ChildNode | undefined): boolean {
+  const line = before?.source?.end?.line;
+  return line !== undefined && comment.source?.start?.line === line;
 }
