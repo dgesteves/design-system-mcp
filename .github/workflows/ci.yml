@@ -63,6 +63,7 @@ jobs:
       # The site renders data generated from the built library, the demo and the benchmark.
       - run: pnpm build
       - run: pnpm --filter site generate
+      - run: pnpm --filter site test
       - run: pnpm --filter site typecheck
       - run: pnpm --filter site lint
       - run: pnpm --filter site build
