@@ -1,0 +1,17 @@
+{
+  "description": "Lint every .tsx/.jsx file Claude writes or edits against the project's design system, and hand the findings back to Claude.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/check-ui.mjs\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

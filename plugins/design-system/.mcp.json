@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "design-system": {
+      "command": "npx",
+      "args": ["-y", "@dgesteves/design-system-mcp@^0.2.0"]
+    }
+  }
+}
