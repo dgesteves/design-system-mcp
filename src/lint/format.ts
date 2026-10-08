@@ -19,19 +19,27 @@ const bold = (text: string, enabled: boolean) => (enabled ? `\u001b[1m${text}\u0
 export function formatDiagnostics(
   results: CheckResult[],
   format: OutputFormat,
-  options: { color?: boolean } = {},
+  options: {
+    color?: boolean;
+    /** Findings a baseline accepted; set when a baseline was applied. */
+    baselined?: number | undefined;
+    /** Says that baseline entries no longer occur, and how to drop them. */
+    fixedHint?: string | undefined;
+  } = {},
 ): string {
+  const { fixedHint } = options;
   if (format === 'json') return JSON.stringify(results, null, 2);
   if (format === 'github') {
-    return results
-      .flatMap((result) =>
-        result.diagnostics.map((d) => {
-          const level = d.severity === 'error' ? 'error' : 'warning';
-          const props = `file=${escapeProperty(result.file)},line=${d.line},col=${d.column},endLine=${d.endLine},endColumn=${d.endColumn},title=${escapeProperty(d.ruleId)}`;
-          return `::${level} ${props}::${escapeData(d.message)}`;
-        }),
-      )
-      .join('\n');
+    const lines = results.flatMap((result) =>
+      result.diagnostics.map((d) => {
+        const level = d.severity === 'error' ? 'error' : 'warning';
+        const props = `file=${escapeProperty(result.file)},line=${d.line},col=${d.column},endLine=${d.endLine},endColumn=${d.endColumn},title=${escapeProperty(d.ruleId)}`;
+        return `::${level} ${props}::${escapeData(d.message)}`;
+      }),
+    );
+    if (fixedHint)
+      lines.push(`::notice title=design-system-mcp baseline::${escapeData(fixedHint)}`);
+    return lines.join('\n');
   }
 
   const useColor = options.color ?? false;
@@ -53,11 +61,16 @@ export function formatDiagnostics(
     lines.push('');
   }
   const total = errors + warnings;
+  const inBaseline =
+    options.baselined === undefined
+      ? ''
+      : ` (${options.baselined.toLocaleString('en-US')} in the baseline)`;
   lines.push(
     total
-      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${plural(results.length, 'file')}`
-      : `No problems in ${plural(results.length, 'file')}.`,
+      ? `${errors ? red(plural(errors, 'error'), useColor) : '0 errors'}, ${warnings ? yellow(plural(warnings, 'warning'), useColor) : '0 warnings'} in ${plural(results.length, 'file')}${inBaseline}`
+      : `${options.baselined === undefined ? 'No problems' : 'No new problems'} in ${plural(results.length, 'file')}${inBaseline}.`,
   );
+  if (fixedHint) lines.push(dim(fixedHint, useColor));
   return lines.join('\n');
 }
 

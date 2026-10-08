@@ -5,11 +5,19 @@ import { parseArgs } from 'node:util';
 
 import { escapePath, glob } from 'tinyglobby';
 
+import {
+  applyBaseline,
+  BASELINE_FILE,
+  countBaseline,
+  readBaseline,
+  updateBaseline,
+  writeBaseline,
+} from './baseline.js';
 import { ConfigError, loadConfig } from './config.js';
 import { loadDesignSystem } from './design-system.js';
 import { formatDiagnostics, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
-import type { CheckResult } from './types.js';
+import type { CheckResult, Diagnostic } from './types.js';
 import { stderrLogger, silentLogger } from './util/log.js';
 import { relativePath, toPosix } from './util/paths.js';
 import { plural } from './util/strings.js';
@@ -35,12 +43,17 @@ Options
   --no-watch              serve: do not reload when files change
   --format <format>       check: pretty | json | github (default: pretty)
   --max-warnings <n>      check: exit 1 when there are more than n warnings
+  --update-baseline       check: record the current findings as accepted, and exit 0
+  --baseline <file>       check: baseline file (default: ${BASELINE_FILE} in the root,
+                          used whenever it exists)
+  --ignore-baseline       check: report every finding, baseline or not
   -h, --help              Show this help
   -v, --version           Show the version
 
 Examples
   claude mcp add design-system -- npx -y ${NAME}
   npx ${NAME} check "app/**/*.tsx" --format github
+  npx ${NAME} check "src/**/*.tsx" --update-baseline   # adopt in an existing codebase
 `;
 
 export interface Io {
@@ -75,6 +88,9 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         watch: { type: 'boolean', default: true },
         format: { type: 'string', default: 'pretty' },
         'max-warnings': { type: 'string' },
+        baseline: { type: 'string' },
+        'update-baseline': { type: 'boolean', default: false },
+        'ignore-baseline': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -133,7 +149,14 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
 async function check(
   patterns: string[],
   configOptions: Parameters<typeof loadConfig>[0],
-  values: { cache: boolean; format: string; 'max-warnings'?: string | undefined },
+  values: {
+    cache: boolean;
+    format: string;
+    'max-warnings'?: string | undefined;
+    baseline?: string | undefined;
+    'update-baseline': boolean;
+    'ignore-baseline': boolean;
+  },
   io: Io,
 ): Promise<number> {
   if (!patterns.length) {
@@ -176,13 +199,63 @@ async function check(
     return 2;
   }
 
+  const update = values['update-baseline'];
+  const baselineFile = values.baseline
+    ? path.resolve(io.cwd, values.baseline)
+    : path.join(ds.root, BASELINE_FILE);
+  // Read before an update too: a baseline mangled by a merge conflict must not be overwritten silently.
+  const baseline = values['ignore-baseline'] ? undefined : readBaseline(baselineFile);
+  if (values.baseline && !update && !values['ignore-baseline'] && !baseline) {
+    io.stderr(`check: baseline not found: ${displayPath(io.cwd, baselineFile)}`);
+    return 2;
+  }
+  // Entries of rules that are off are kept, not reported as fixed.
+  const disabled = new Set(
+    Object.entries(ds.config.rules)
+      .filter(([, rule]) => rule.severity === 'off')
+      .map(([id]) => id),
+  );
+  // Keys are relative to the real root, with the on-disk spelling of each path and
+  // NFC names, so `APP/`, a linked root or a decomposed `café.tsx` find the same entry.
+  const realRoot = fs.realpathSync.native(ds.root);
+  const baselineKey = (file: string) =>
+    relativePath(realRoot, fs.realpathSync.native(file)).normalize('NFC');
+
   const results: CheckResult[] = [];
+  const checked = new Map<string, Diagnostic[]>();
+  let baselined = 0;
+  let fixed = 0;
   for (const file of files) {
     const code = await fsp.readFile(file, 'utf8');
-    const result = ds.check(code, relativePath(ds.root, file));
+    let result = ds.check(code, relativePath(ds.root, file));
+    const key = baselineKey(file);
+    if (update) checked.set(key, result.diagnostics);
+    if (baseline && !update) {
+      const match = applyBaseline(baseline, key, result, disabled);
+      result = { ...match.result, baselined: match.baselined };
+      baselined += match.baselined;
+      fixed += match.fixed;
+    }
     results.push({ ...result, file: relativePath(io.cwd, file) });
   }
-  const output = formatDiagnostics(results, format, { color: io.color });
+
+  if (update) {
+    const next = updateBaseline(baseline, checked, realRoot, disabled);
+    writeBaseline(baselineFile, next);
+    const counts = countBaseline(next);
+    io.stdout(
+      `Baseline: ${count(counts.findings, 'finding')} in ${count(counts.files, 'file')} → ${displayPath(io.cwd, baselineFile)}`,
+    );
+    return 0;
+  }
+
+  const output = formatDiagnostics(results, format, {
+    color: io.color,
+    baselined: baseline ? baselined : undefined,
+    fixedHint: fixed
+      ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
+      : undefined,
+  });
   if (output) io.stdout(output);
 
   const errors = results.reduce((n, r) => n + r.errorCount, 0);
@@ -238,6 +311,16 @@ async function inspect(
   }
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+/** `1,307 findings`. */
+function count(n: number, word: string): string {
+  return `${n.toLocaleString('en-US')} ${n === 1 ? word : `${word}s`}`;
+}
+
+/** Quotes a pattern for the hint when the shell would expand or split it. */
+function shellQuote(pattern: string): string {
+  return /^[\w./@-]+$/.test(pattern) ? pattern : `"${pattern.replace(/(["\\$`])/g, '\\$1')}"`;
 }
 
 /** Relative to cwd when the file is below it, absolute otherwise. */
