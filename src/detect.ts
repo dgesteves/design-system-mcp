@@ -60,7 +60,9 @@ const STYLESHEETS = [
  *    `paths` or a workspace package, and `tailwind.css`.
  * 2. The root is a design-system package: its `exports` map to component files.
  * 3. Dependencies named like a design system (`@acme/ui`) that resolve to
- *    workspace sources, read the same way or through their own `components.json`.
+ *    workspace sources, read the same way or through their own `components.json`,
+ *    or, for a package without `exports` that apps import by path
+ *    (`@acme/ui/primitives/button`), from the files the root's code imports.
  *
  * A candidate whose globs match no file is skipped. Returns undefined when
  * nothing applies, so the shadcn defaults stay in force.
@@ -89,14 +91,20 @@ export function detectProject(root: string, tsconfig?: string): Detection | unde
   }
 
   const found: Found[] = [];
-  const names = Object.keys({ ...asRecord(own?.dependencies), ...asRecord(own?.devDependencies) });
-  for (const name of names.filter(isDesignSystemName)) {
+  const names = Object.keys({
+    ...asRecord(own?.dependencies),
+    ...asRecord(own?.devDependencies),
+  }).filter(isDesignSystemName);
+  let imported: Map<string, Set<string>> | undefined;
+  for (const name of names) {
     // Only workspace sources: a package installed from the registry is compiled.
     const dir = packages.find(name);
     const pkg = dir ? readJson(path.join(dir, 'package.json')) : undefined;
     if (!dir || !pkg) continue;
     const candidate =
-      fromPackage(root, dir, pkg) ?? fromPackageComponentsJson(root, dir, pkg, packages);
+      fromPackage(root, dir, pkg) ??
+      fromPackageComponentsJson(root, dir, pkg, packages) ??
+      fromImports(root, dir, name, (imported ??= importedSubpaths(root, names)).get(name));
     if (candidate && matchesAny(root, candidate)) found.push(candidate);
   }
   if (!found.length) return undefined;
@@ -237,6 +245,86 @@ function fromPackage(root: string, dir: string, pkg: Record<string, unknown>): F
     ),
     source: typeof pkg.name === 'string' ? pkg.name : relativePath(root, dir),
   };
+}
+
+/**
+ * A package without `exports` that apps import by path, the way Documenso
+ * imports `@documenso/ui/primitives/button`: its components are the files the
+ * root's code imports, each suggested with the specifier it uses, and a
+ * stylesheet imported from it (`@documenso/ui/styles/theme.css`) is the theme.
+ * A folder imported through its index is a barrel for the files in it.
+ */
+function fromImports(
+  root: string,
+  dir: string,
+  name: string,
+  subpaths: ReadonlySet<string> | undefined,
+): Found | undefined {
+  const files: ImportMapping[] = [];
+  const barrels: ImportMapping[] = [];
+  const stylesheets: string[] = [];
+  const seen = new Set<string>();
+  for (const subpath of [...(subpaths ?? [])].sort()) {
+    const file = moduleFile(path.join(dir, subpath));
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    const specifier = `${name}/${subpath}`;
+    if (/[\\/]index\.[cm]?[jt]sx?$/.test(file)) {
+      barrels.push({ specifier, target: `${relativePath(root, path.dirname(file))}/*` });
+    } else if (COMPONENT_FILE.test(file)) {
+      files.push({ specifier, target: relativePath(root, file) });
+    } else if (file.endsWith('.css')) {
+      stylesheets.push(relativePath(root, file));
+    }
+  }
+  if (!files.length && !barrels.length) return undefined;
+  return {
+    components: [
+      ...files.map((m) => escapePath(m.target)),
+      ...barrels.map((m) => `${escapePath(m.target.slice(0, -1))}**/*.{tsx,jsx}`),
+    ],
+    tokens: stylesheets.map((f) => escapePath(f)),
+    // A file imported directly is suggested with its own path, not its folder's barrel.
+    imports: [...files, ...barrels],
+    dirs: unique(
+      [...files, ...barrels].map((m) => path.resolve(root, path.posix.dirname(m.target))),
+    ),
+    source: `${name}, imported by path`,
+  };
+}
+
+/** Enough source to see which modules an app imports, without reading a whole monorepo. */
+const MAX_SCANNED_FILES = 5000;
+
+/**
+ * The subpaths of each package that the root's code and stylesheets import:
+ * `@acme/ui/primitives/button` → `primitives/button` under `@acme/ui`.
+ */
+function importedSubpaths(root: string, names: string[]): Map<string, Set<string>> {
+  const found = new Map(names.map((name) => [name, new Set<string>()]));
+  const alternatives = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const specifier = new RegExp(
+    `(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*["'](${alternatives})/([^"'\\s]+)["']`,
+    'g',
+  );
+  const files = globSync('**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,css}', {
+    cwd: root,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**', '**/*.d.ts'],
+  }).slice(0, MAX_SCANNED_FILES);
+  for (const file of files) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    if (!names.some((name) => text.includes(`${name}/`))) continue;
+    for (const match of text.matchAll(specifier)) {
+      if (match[1] && match[2]) found.get(match[1])?.add(match[2]);
+    }
+  }
+  return found;
 }
 
 /** `exports` subpaths with a source target, as specifiers relative to `root`. */

@@ -114,9 +114,11 @@ export class LintTarget {
     this.importPaths = new Set(model.components.map((c) => c.importPath));
     // A path alias names a directory (`@/components/ui/`), so any module under it
     // belongs to the design system. A configured package name is a single
-    // module: `@acme/ui` says nothing about `@acme/icons`.
+    // module: `@acme/ui` says nothing about `@acme/icons`. A pattern
+    // (`@acme/ui/{path}`) covers what comes before `{path}`.
+    const pattern = config.importPath?.indexOf('{path}') ?? -1;
     this.importPrefixes = config.importPath
-      ? [`${config.importPath}/`]
+      ? [pattern === -1 ? `${config.importPath}/` : config.importPath.slice(0, pattern)]
       : unique(
           [...this.importPaths]
             .filter((p) => !p.startsWith('.'))
@@ -177,7 +179,8 @@ export class LintTarget {
         c.exportName === 'default' &&
         (resolved === undefined
           ? // With a package name every component shares it, so it says nothing about the file.
-            !this.config.importPath && c.importPath === specifier
+            (!this.config.importPath || this.config.importPath.includes('{path}')) &&
+            c.importPath === specifier
           : modulePaths(c.source.file).includes(resolved)),
     );
     return matches.length === 1 ? matches[0] : undefined;

@@ -97,7 +97,7 @@ const configShape = {
     .string()
     .optional()
     .describe(
-      'Package name components are imported from, e.g. "@acme/ui". Default: inferred from tsconfig paths.',
+      'Package name components are imported from, e.g. "@acme/ui", or a pattern for packages imported by path: "@acme/ui/{path}" is @acme/ui/primitives/button for primitives/button.tsx in the package. Default: inferred from package exports and tsconfig paths.',
     ),
   elements: z
     .record(z.string(), z.string())

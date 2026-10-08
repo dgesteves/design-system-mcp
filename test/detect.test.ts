@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig } from '../src/config.js';
+import { DEFAULT_COMPONENTS, loadConfig } from '../src/config.js';
 import { DesignSystemHost } from '../src/design-system.js';
 import { detectProject, isDesignSystemName, pnpmPackages } from '../src/detect.js';
 import { fixture, load, TSCONFIG } from './helpers.js';
@@ -354,6 +354,80 @@ export default () => <><button>Save</button><Button aria-label="Add"><Icons.Add 
     const config = await loadConfig({ root: path.join(workspace, 'packages/ui') });
     expect(config.detected).toBeUndefined();
     expect(config.components).toEqual(['src/components/button.tsx']);
+  });
+});
+
+describe('detectProject: packages imported by path', () => {
+  // Documenso's layout: `@acme/ui` has no `exports` (`main` is an empty
+  // index), and the app imports `@acme/ui/primitives/button` and the like.
+  const workspace = () =>
+    fixture({
+      'package.json': json({ name: 'acme', private: true, workspaces: ['apps/*', 'packages/*'] }),
+      'packages/ui/package.json': json({ name: '@acme/ui', main: './index.ts' }),
+      'packages/ui/index.ts': 'export {};\n',
+      'packages/ui/primitives/button.tsx': BUTTON,
+      'packages/ui/primitives/input.tsx': INPUT,
+      'packages/ui/primitives/dialog/index.tsx': 'export * from "./dialog";\n',
+      'packages/ui/primitives/dialog/dialog.tsx': `export function Dialog(props: { open?: boolean }) { return <div /> }\n`,
+      'packages/ui/styles/theme.css': THEME,
+      'packages/ui/lib/utils.ts': 'export const cn = (...c: string[]) => c.join(" ");\n',
+      'apps/web/package.json': json({ name: 'web', dependencies: { '@acme/ui': '*' } }),
+      'apps/web/tsconfig.json': TSCONFIG,
+      'apps/web/app/root.tsx': `import "@acme/ui/styles/theme.css"
+import { cn } from "@acme/ui/lib/utils"
+import { Button } from "@acme/ui/primitives/button"
+import { Dialog } from '@acme/ui/primitives/dialog'
+export default () => <Dialog><Button className={cn("x")}>Go</Button></Dialog>
+`,
+    });
+
+  it('takes the components and the theme the app imports, with the specifiers it uses', async () => {
+    const root = path.join(workspace(), 'apps/web');
+    const config = await loadConfig({ root });
+    expect(config.detected).toBe('workspace package @acme/ui, imported by path');
+    expect(config.components).toEqual([
+      ...DEFAULT_COMPONENTS,
+      '../../packages/ui/primitives/button.tsx',
+      '../../packages/ui/primitives/dialog/**/*.{tsx,jsx}',
+    ]);
+    expect(config.tokens[0]).toEqual({ path: '../../packages/ui/styles/theme.css' });
+
+    const ds = await load(root);
+    // Input is in the package, but the app does not import it.
+    expect(ds.roots().map((c) => [c.name, c.importPath])).toEqual([
+      ['Button', '@acme/ui/primitives/button'],
+      ['Dialog', '@acme/ui/primitives/dialog'],
+    ]);
+    const code = `import { Button } from "@acme/ui/primitives/button"
+export default () => <><Button variant="danger">Delete</Button><button>Cancel</button></>`;
+    const diagnostics = ds.check(code, 'app/page.tsx').diagnostics;
+    expect(diagnostics.map((d) => [d.ruleId, d.source])).toEqual([
+      ['no-unknown-variant', '"danger"'],
+      ['prefer-design-system-component', 'button'],
+    ]);
+    expect(diagnostics[1]?.message).toContain(
+      'import { Button } from "@acme/ui/primitives/button"',
+    );
+    expect(ds.tokenIndex.has('color')).toBe(true);
+  });
+
+  it('reads an importPath pattern from the config', async () => {
+    const root = path.join(workspace(), 'apps/web');
+    fs.writeFileSync(
+      path.join(root, 'design-system-mcp.config.json'),
+      json({
+        components: ['../../packages/ui/primitives/**/*.tsx'],
+        importPath: '@acme/ui/{path}',
+      }),
+    );
+    const ds = await load(root);
+    expect(ds.roots().map((c) => [c.name, c.importPath])).toEqual([
+      ['Button', '@acme/ui/primitives/button'],
+      ['Dialog', '@acme/ui/primitives/dialog/dialog'],
+      ['Input', '@acme/ui/primitives/input'],
+    ]);
+    expect(ds.lint.isDesignSystemImport('@acme/ui/primitives/input')).toBe(true);
+    expect(ds.lint.isDesignSystemImport('@acme/icons')).toBe(false);
   });
 });
 
