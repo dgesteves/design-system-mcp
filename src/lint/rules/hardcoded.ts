@@ -126,21 +126,33 @@ export const noHardcodedColor: Rule = {
           where: `style.${name}`,
           prefix: STYLE_COLOR_PROPERTIES[name],
           place: 'style',
+          named: true,
           allow,
         });
       }
     }
 
     for (const element of context.analysis.elements) {
+      // On native and SVG elements `color` and `fill` are colors. On a component
+      // they are props, often a variant (`<Badge color="green">`): skip props with
+      // known values, and read only hex and color functions as colors.
+      const resolution = context.resolve(element);
       for (const attribute of element.attributes) {
         const name = attributeName(attribute);
         if (!isColorAttribute(name)) continue;
+        if (
+          resolution.kind === 'component' &&
+          resolution.component.props.some((p) => p.name === name && p.values?.length)
+        ) {
+          continue;
+        }
         const prefix = name === 'fill' || name === 'stroke' ? name : 'text';
         for (const literal of literalValues(attribute)) {
           reportLiteralColors(context, literal, element, {
             where: `${name}="…"`,
             prefix,
             place: 'attribute',
+            named: resolution.kind === 'intrinsic',
             allow,
           });
         }
@@ -157,6 +169,8 @@ function reportLiteralColors(
     where: string;
     prefix: string | undefined;
     place: 'style' | 'attribute';
+    /** Whether a named color (`red`) counts, as it does in CSS but not in a component's prop. */
+    named: boolean;
     allow: Set<string>;
   },
 ): void {
@@ -165,7 +179,7 @@ function reportLiteralColors(
   const text = context.text.slice(start, literal.end - 1);
   const matches = findColorLiterals(text);
   const trimmed = text.trim();
-  if (!matches.length && isNamedColor(trimmed)) {
+  if (!matches.length && options.named && isNamedColor(trimmed)) {
     const color = parseColor(trimmed);
     if (color) matches.push({ text: trimmed, index: text.indexOf(trimmed), color });
   }

@@ -19,6 +19,32 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 `;
 
+/** A shadcn/ui project on Base UI: `render` instead of `asChild`, a native select next to a custom one. */
+const BASE_UI = {
+  'tsconfig.json': TSCONFIG,
+  'components/ui/button.tsx': `import * as React from "react"
+export function Button({ render, nativeButton, ...props }: React.ComponentProps<"button"> & {
+  render?: React.ReactElement
+  nativeButton?: boolean
+  size?: "default" | "icon"
+}) {
+  return <button {...props} />
+}`,
+  'components/ui/tag.tsx': `import * as React from "react"
+export function Tag(props: Omit<React.ComponentProps<"span">, "color"> & { color?: "red" | "green" }) {
+  return <span {...props} />
+}`,
+  'components/ui/select.tsx': `import * as React from "react"
+/** A listbox popup, not a drop-in for <select>. */
+export function Select(props: { value?: string; onValueChange?: (value: string) => void; children?: React.ReactNode }) {
+  return <div role="listbox">{props.children}</div>
+}`,
+  'components/ui/native-select.tsx': `import * as React from "react"
+export function NativeSelect(props: React.ComponentProps<"select">) {
+  return <div><select {...props} /></div>
+}`,
+};
+
 function check(code: string, rule?: string, system = ds): Diagnostic[] {
   const { diagnostics } = system.check(code, 'snippet.tsx');
   return rule ? diagnostics.filter((d) => d.ruleId === rule) : diagnostics;
@@ -132,6 +158,21 @@ describe('no-hardcoded-color', () => {
     expect(onButton?.message).toContain(
       '<Button> already sets bg-* through `variant`; prefer a variant over overriding it.',
     );
+  });
+
+  it("reads a component's color prop as a color only when it can be one", async () => {
+    // An app's own Badge with a cva `color` variant: "green" is a value, not CSS.
+    expect(
+      check(`import { Badge } from "@/components/Badge"\n<Badge color="green">New</Badge>`, rule),
+    ).toEqual([]);
+    expect(
+      check(`import { Trash2 } from "lucide-react"\n<Trash2 color="#ef4444" />`, rule)[0]
+        ?.suggestion,
+    ).toBe('className="text-destructive"');
+    expect(check(`<svg fill="red" />`, rule)).toHaveLength(1);
+    const base = await load(fixture(BASE_UI, { nodeModules: true }));
+    const tag = `import { Tag } from "@/components/ui/tag"\n<Tag color="red">Overdue</Tag>`;
+    expect(base.check(tag).diagnostics).toEqual([]);
   });
 
   it('ignores tokens, keywords, black/white and allowed values', () => {
@@ -658,6 +699,20 @@ export function TextLink(props: { href: string; children?: React.ReactNode }) {
     expect(applyFixes(code, diagnostics)).toBe(`<TextLink href="/docs">Docs</TextLink>`);
   });
 
+  it('prefers the component that renders the element: NativeSelect over a custom Select', async () => {
+    const base = await load(fixture(BASE_UI, { nodeModules: true }));
+    const code = `<select name="plan"><option>Free</option></select>`;
+    const [d] = base
+      .check(code)
+      .diagnostics.filter((x) => x.ruleId === 'prefer-design-system-component');
+    expect(d?.message).toBe(
+      'Native <select> where the design system has <NativeSelect>. Use <NativeSelect> (import { NativeSelect } from "@/components/ui/native-select").',
+    );
+    expect(applyFixes(code, d ? [d] : [])).toBe(
+      `<NativeSelect name="plan"><option>Free</option></NativeSelect>`,
+    );
+  });
+
   it('never suggests a part of another component', async () => {
     const system = await load(
       fixture({
@@ -887,6 +942,23 @@ describe('no-unknown-prop', () => {
     expect(d?.fix).toBeUndefined();
   });
 
+  it('explains asChild and render, how Radix and Base UI compose, without a rename', async () => {
+    const base = await load(fixture(BASE_UI, { nodeModules: true }));
+    const code = `import { Button } from "@/components/ui/button"
+import Link from "next/link"
+<Button asChild><Link href="/docs">Docs</Link></Button>`;
+    const [d] = base.check(code).diagnostics.filter((x) => x.ruleId === rule);
+    expect(d?.message).toBe(
+      '<Button> has no prop "asChild". Base UI components compose with render instead: <Button render={<Link href="…" />}>…</Button>.',
+    );
+    expect(d?.fix).toBeUndefined();
+    const [radix] = check(`${IMPORTS}<Button render={<a href="/docs" />}>Docs</Button>`, rule);
+    expect(radix?.message).toBe(
+      '<Button> has no prop "render". Radix components compose with asChild and a single child instead: <Button asChild><Link href="…">…</Link></Button>.',
+    );
+    expect(radix?.fix).toBeUndefined();
+  });
+
   it('suggests close matches for typos', () => {
     expect(check(`${IMPORTS}<Button varient="ghost" />`, rule)[0]?.suggestion).toBe('variant');
     expect(check(`${IMPORTS}<Button isDisabled />`, rule)[0]?.suggestion).toBe('disabled');
@@ -967,6 +1039,28 @@ describe('icon-button-accessible-name', () => {
       `<Button><Trans i18nKey="save" /></Button>`,
     ];
     for (const code of ok) expect(check(`${IMPORTS}${code}`, rule), code).toEqual([]);
+  });
+
+  it('judges a button passed as render by its host’s children and label', () => {
+    const close = (children: string, label = '') =>
+      `${IMPORTS}import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+<DialogPrimitive.Close render={<Button variant="ghost" size="icon" />}${label}>${children}</DialogPrimitive.Close>`;
+    expect(check(close('<XIcon /><span className="sr-only">Close</span>'), rule)).toEqual([]);
+    expect(check(close('<XIcon />', ' aria-label="Close"'), rule)).toEqual([]);
+    expect(check(close('<XIcon />'), rule)[0]?.message).toBe(
+      'Icon-only <Button> has no accessible name. Add aria-label="Close" describing the action, or visually hidden text.',
+    );
+  });
+
+  it('skips hidden buttons and buttons in hidden content', () => {
+    const hidden = [
+      `<button hidden><svg /></button>`,
+      `<button aria-hidden="true"><svg /></button>`,
+      `<Button size="icon" aria-hidden={true}><Trash2 /></Button>`,
+      `<div aria-hidden><button><svg /></button></div>`,
+    ];
+    for (const code of hidden) expect(check(`${IMPORTS}${code}`, rule), code).toEqual([]);
+    expect(check(`<button aria-hidden="false"><svg /></button>`, rule)).toHaveLength(1);
   });
 
   it('still flags an empty aria-label', () => {
