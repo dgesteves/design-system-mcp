@@ -20,6 +20,9 @@ describe('Claude Code plugin manifests', () => {
       plugins: { name: string; source: string }[];
     };
     const plugin = readJson('plugins/design-system/.claude-plugin/plugin.json');
+    const pkg = readJson('package.json') as { name: string; version: string };
+    // Claude Code updates installed plugins when `version` changes: it ships with each release.
+    expect(plugin.version).toBe(pkg.version);
     expect(marketplace.name).toBe('dgesteves');
     expect(marketplace.plugins).toEqual([
       expect.objectContaining({ name: plugin.name, source: './plugins/design-system' }),
@@ -28,10 +31,11 @@ describe('Claude Code plugin manifests', () => {
     const mcp = readJson('plugins/design-system/.mcp.json') as {
       mcpServers: Record<string, { command: string; args: string[] }>;
     };
-    const pkg = readJson('package.json') as { name: string };
-    expect(mcp.mcpServers['design-system']?.args).toContain(`${pkg.name}@^0.2.0`);
-    // The hook pins the same release.
-    expect(fs.readFileSync(HOOK, 'utf8')).toContain("const RANGE = '^0.2.0';");
+    const [major, minor] = pkg.version.split('.');
+    const range = `^${major}.${minor}.0`;
+    expect(mcp.mcpServers['design-system']?.args).toContain(`${pkg.name}@${range}`);
+    // The hook runs the same release line.
+    expect(fs.readFileSync(HOOK, 'utf8')).toContain(`const RANGE = '${range}';`);
 
     const hooks = readJson('plugins/design-system/hooks/hooks.json') as {
       hooks: { PostToolUse: { matcher: string; hooks: { command: string }[] }[] };
