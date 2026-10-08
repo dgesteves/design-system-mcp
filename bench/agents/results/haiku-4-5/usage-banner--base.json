@@ -1,0 +1,42 @@
+{
+  "task": "usage-banner",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/usage-banner.tsx"
+  ],
+  "errors": 1,
+  "warnings": 0,
+  "byRule": {
+    "icon-button-accessible-name": 1
+  },
+  "findings": [
+    {
+      "file": "components/chat/usage-banner.tsx",
+      "ruleId": "icon-button-accessible-name",
+      "severity": "error",
+      "message": "Icon-only <Button> has no accessible name. Add aria-label=\"Close\" describing the action, or visually hidden text.",
+      "line": 35,
+      "column": 8,
+      "endLine": 35,
+      "endColumn": 14,
+      "source": "Button",
+      "suggestion": "aria-label=\"Close\"",
+      "fix": [
+        {
+          "range": [
+            862,
+            862
+          ],
+          "text": " aria-label=\"Close\""
+        }
+      ]
+    }
+  ],
+  "cost": 0.17778910000000006,
+  "turns": 14,
+  "seconds": 43,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

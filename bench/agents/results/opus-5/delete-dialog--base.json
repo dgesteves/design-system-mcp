@@ -1,0 +1,18 @@
+{
+  "task": "delete-dialog",
+  "condition": "base",
+  "model": "claude-opus-5[1m]",
+  "created": true,
+  "changed": [
+    "components/chat/delete-all-chats-dialog.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.587431,
+  "turns": 12,
+  "seconds": 80,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

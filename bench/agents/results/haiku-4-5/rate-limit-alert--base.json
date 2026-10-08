@@ -1,0 +1,200 @@
+{
+  "task": "rate-limit-alert",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/rate-limit-alert.tsx"
+  ],
+  "errors": 9,
+  "warnings": 0,
+  "byRule": {
+    "no-hardcoded-color": 9
+  },
+  "findings": [
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`border-red-500/50` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.065) → `border-chart-1/50`.",
+      "line": 55,
+      "column": 39,
+      "endLine": 55,
+      "endColumn": 56,
+      "source": "border-red-500/50",
+      "suggestion": "border-chart-1",
+      "fix": [
+        {
+          "range": [
+            1344,
+            1361
+          ],
+          "text": "border-chart-1/50"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`bg-red-50` is Tailwind's default palette, not a design-system color. Matches token sidebar (ΔE 0.013) → `bg-sidebar`.",
+      "line": 55,
+      "column": 57,
+      "endLine": 55,
+      "endColumn": 66,
+      "source": "bg-red-50",
+      "suggestion": "bg-sidebar",
+      "fix": [
+        {
+          "range": [
+            1362,
+            1371
+          ],
+          "text": "bg-sidebar"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`dark:bg-red-950/30` is Tailwind's default palette, not a design-system color. No close token; nearest is secondary-foreground (ΔE 0.153, same value as sidebar-foreground). Pick the semantic token that fits.",
+      "line": 55,
+      "column": 71,
+      "endLine": 55,
+      "endColumn": 89,
+      "source": "dark:bg-red-950/30"
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`text-red-600` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.092) → `text-chart-1`.",
+      "line": 59,
+      "column": 56,
+      "endLine": 59,
+      "endColumn": 68,
+      "source": "text-red-600",
+      "suggestion": "text-chart-1",
+      "fix": [
+        {
+          "range": [
+            1485,
+            1497
+          ],
+          "text": "text-chart-1"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`dark:text-red-500` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.065) → `dark:text-chart-1`.",
+      "line": 59,
+      "column": 69,
+      "endLine": 59,
+      "endColumn": 86,
+      "source": "dark:text-red-500",
+      "suggestion": "text-chart-1",
+      "fix": [
+        {
+          "range": [
+            1498,
+            1515
+          ],
+          "text": "dark:text-chart-1"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`text-red-700` is Tailwind's default palette, not a design-system color. Nearest token destructive (ΔE 0.078) → `text-destructive`.",
+      "line": 63,
+      "column": 43,
+      "endLine": 63,
+      "endColumn": 55,
+      "source": "text-red-700",
+      "suggestion": "text-destructive",
+      "fix": [
+        {
+          "range": [
+            1658,
+            1670
+          ],
+          "text": "text-destructive"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`dark:text-red-400` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.094) → `dark:text-chart-1`.",
+      "line": 63,
+      "column": 56,
+      "endLine": 63,
+      "endColumn": 73,
+      "source": "dark:text-red-400",
+      "suggestion": "text-chart-1",
+      "fix": [
+        {
+          "range": [
+            1671,
+            1688
+          ],
+          "text": "dark:text-chart-1"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`text-red-600` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.092) → `text-chart-1`.",
+      "line": 66,
+      "column": 31,
+      "endLine": 66,
+      "endColumn": 43,
+      "source": "text-red-600",
+      "suggestion": "text-chart-1",
+      "fix": [
+        {
+          "range": [
+            1757,
+            1769
+          ],
+          "text": "text-chart-1"
+        }
+      ]
+    },
+    {
+      "file": "components/chat/rate-limit-alert.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`dark:text-red-500` is Tailwind's default palette, not a design-system color. Nearest token chart-1 (ΔE 0.065) → `dark:text-chart-1`.",
+      "line": 66,
+      "column": 44,
+      "endLine": 66,
+      "endColumn": 61,
+      "source": "dark:text-red-500",
+      "suggestion": "text-chart-1",
+      "fix": [
+        {
+          "range": [
+            1770,
+            1787
+          ],
+          "text": "dark:text-chart-1"
+        }
+      ]
+    }
+  ],
+  "cost": 0.12220900000000001,
+  "turns": 15,
+  "seconds": 54,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

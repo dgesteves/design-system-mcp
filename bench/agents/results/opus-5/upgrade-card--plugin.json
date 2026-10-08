@@ -1,0 +1,18 @@
+{
+  "task": "upgrade-card",
+  "condition": "plugin",
+  "model": "claude-opus-5[1m]",
+  "created": true,
+  "changed": [
+    "components/chat/upgrade-card.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.7634920000000001,
+  "turns": 17,
+  "seconds": 106,
+  "hookBlocks": 0,
+  "mcpCalls": 7
+}

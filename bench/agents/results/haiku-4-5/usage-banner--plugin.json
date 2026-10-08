@@ -1,0 +1,18 @@
+{
+  "task": "usage-banner",
+  "condition": "plugin",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/usage-banner.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.14519479999999998,
+  "turns": 17,
+  "seconds": 34,
+  "hookBlocks": 0,
+  "mcpCalls": 10
+}

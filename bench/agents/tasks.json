@@ -1,0 +1,52 @@
+[
+  {
+    "id": "usage-banner",
+    "file": "components/chat/usage-banner.tsx",
+    "prompt": "Create components/chat/usage-banner.tsx exporting UsageBanner: a dismissible warning banner shown when the user is close to their monthly message limit (\"You've used 90% of your messages this month\"), with an Upgrade button and an icon-only close button."
+  },
+  {
+    "id": "delete-dialog",
+    "file": "components/chat/delete-all-chats-dialog.tsx",
+    "prompt": "Create components/chat/delete-all-chats-dialog.tsx exporting DeleteAllChatsDialog: a confirmation dialog for deleting all chats, with a Cancel action and a red, destructive confirm action."
+  },
+  {
+    "id": "settings-card",
+    "file": "components/chat/model-settings-card.tsx",
+    "prompt": "Create components/chat/model-settings-card.tsx exporting ModelSettingsCard: a card with a title, a description, an API key text input, a Save button and a small green 'Connected' status label."
+  },
+  {
+    "id": "empty-history",
+    "file": "components/chat/empty-history.tsx",
+    "prompt": "Create components/chat/empty-history.tsx exporting EmptyHistory: an empty state for the chat history sidebar with an icon, a short message and a 'New chat' button."
+  },
+  {
+    "id": "message-toolbar",
+    "file": "components/chat/message-toolbar.tsx",
+    "prompt": "Create components/chat/message-toolbar.tsx exporting MessageToolbar: a row of icon-only buttons under an assistant message: copy, regenerate, thumbs up and thumbs down."
+  },
+  {
+    "id": "upgrade-card",
+    "file": "components/chat/upgrade-card.tsx",
+    "prompt": "Create components/chat/upgrade-card.tsx exporting UpgradeCard: a pricing card for the Pro plan with the price, a list of four features with check icons, a 'Most popular' label and an 'Upgrade to Pro' button."
+  },
+  {
+    "id": "rate-limit-alert",
+    "file": "components/chat/rate-limit-alert.tsx",
+    "prompt": "Create components/chat/rate-limit-alert.tsx exporting RateLimitAlert: an inline red error alert telling the user they were rate limited, showing when they can retry, with a 'Try again' button."
+  },
+  {
+    "id": "share-dialog",
+    "file": "components/chat/share-chat-dialog.tsx",
+    "prompt": "Create components/chat/share-chat-dialog.tsx exporting ShareChatDialog: a dialog showing the share link in a read-only input, with an icon-only copy button next to it and a secondary 'Make private' action."
+  },
+  {
+    "id": "profile-card",
+    "file": "components/chat/profile-card.tsx",
+    "prompt": "Create components/chat/profile-card.tsx exporting ProfileCard: a small card with the user's avatar initials in a colored circle, their name and email, a 'Free plan' label and a 'Sign out' button."
+  },
+  {
+    "id": "shortcuts-dialog",
+    "file": "components/chat/shortcuts-dialog.tsx",
+    "prompt": "Create components/chat/shortcuts-dialog.tsx exporting ShortcutsDialog: a dialog listing keyboard shortcuts (New chat ⌘K, Toggle sidebar ⌘B, Copy last answer ⌘⇧C) in two columns, with styled key labels."
+  }
+]

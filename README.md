@@ -22,6 +22,27 @@ The agent cannot see your Storybook or docs site, and TypeScript only catches pa
 
 `design-system-mcp` reads your components, tokens and docs, and serves them to the agent over [MCP](https://modelcontextprotocol.io): what exists, which props and variant values are valid, which token to use. It also gives the agent `check_ui`, a linter it calls on its own output. Every finding has a rule id, a location and a concrete fix, so the agent can correct itself before you review anything.
 
+## Does it help?
+
+Claude Code built the same ten components for [vercel/ai-chatbot](https://github.com/vercel/ai-chatbot) with and without the [plugin](#claude-code-plugin), and `check` scored what it wrote:
+
+| Model            | Clean without | Clean with the plugin | Design-system errors | Cost |
+| ---------------- | ------------: | --------------------: | -------------------: | ---: |
+| Claude Haiku 4.5 |        6 / 10 |           **10 / 10** |               13 → 0 | −11% |
+| Claude Opus 5    |        8 / 10 |           **10 / 10** |                5 → 0 |  +7% |
+
+The misses were raw colors for things the prompt described ("a red alert", "a green label"), a native `<label>` where the project has `Label`, and an icon button nobody could name with a screen reader. With the plugin, the agent looked components and tokens up before writing, and every run came out clean. It is one project and forty runs, so read it as a direction. The [method, per-run results and every generated file](bench/agents) are in the repository.
+
+## On real codebases
+
+Run as is, with no config, on public apps. These counts are not a judgement of the teams: hardcoded values and unlabeled icon buttons slip through review everywhere, and agents copy what they see.
+
+| Project                                                                   | Found with zero config                         | `check` findings                                                                                                                             |
+| ------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [vercel/ai-chatbot](https://github.com/vercel/ai-chatbot) `c2f8235`       | `components.json` → 23 components, 52 tokens   | 77 in `app/` and `components/`: 41 raw colors, 20 native elements the design system wraps, 11 icon-only buttons without an accessible name   |
+| [midday](https://github.com/midday-ai/midday) `5158731`, `apps/dashboard` | workspace package `@midday/ui` → 78 components | 1,237 in `src/`, including 105 icon-only buttons without an accessible name. Adopted with a [baseline](#adopting-it-in-an-existing-codebase) |
+| [shadcn/ui](https://github.com/shadcn-ui/ui) website `0132174`            | custom `ui` alias → 66 components              | 115 in `app/` and `components/`, mostly raw colors                                                                                           |
+
 ## Quickstart
 
 No config is needed in a shadcn/ui project, a monorepo whose components live in a workspace package, or the design-system package itself ([how it finds them](#zero-config)). Give your agent the tools, check what was extracted, and run the same rules from the terminal:
@@ -275,6 +296,20 @@ From then on, `check` reads `design-system-mcp.baseline.json` from the root when
 3. **Composition.** Flat parts (`CardHeader` next to `Card` in `card.tsx`), static members (`Card.Header = CardHeader`) and `Object.assign(Root, { List })` become parent/part relationships. The wrapped native element comes from `ComponentProps<"button">`, `ButtonHTMLAttributes<HTMLButtonElement>`, the `forwardRef` element type, or the rendered JSX (including `const Comp = asChild ? Slot : "button"`).
 4. **Model.** Components, tokens and docs form one JSON model, cached in `node_modules/.cache/design-system-mcp` and keyed on the sizes and mtimes of the component, token and docs files, the project files the components import and the tsconfig chain, plus the lockfile, the config and the package version. The server answers the MCP handshake immediately and loads in the background; requests wait for the load. File changes trigger a rebuild that reuses the previous TypeScript program, an edited config file is read again, and clients are notified that resources changed.
 5. **Lint.** `check_ui` parses the snippet on its own (no type-checking), resolves each JSX tag through its imports (named, default, namespace, relative, and barrels such as `@/components/ui` or `../components/ui`) to a design-system component, and runs the rules against the model. Fixes are text edits with offsets, so an agent or a tool can apply them mechanically.
+
+## How it compares
+
+These tools work at different layers, and several combine well:
+
+|                                                                | What it knows                                                                    | Checks what the agent wrote                                                                                                                         | Needs                                                                                     |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **design-system-mcp**                                          | Your components' props, `cva` variants, parts, tokens and docs, read from source | Invented components, props and variants; native elements the design system wraps; hardcoded colors, spacing and radius; icon buttons without a name | Nothing to run or write: zero config for shadcn-style projects and design-system packages |
+| [@shadcn/lint](https://github.com/shadcn-ui/lint)              | Rules you write per component                                                    | Tailwind classes: raw colors, arbitrary values, restyling a component                                                                               | ESLint or Oxlint, Tailwind v4                                                             |
+| [Storybook MCP](https://storybook.js.org/docs/ai/mcp/overview) | Stories and a component manifest                                                 | Runs component tests, including accessibility checks if set up                                                                                      | A running Storybook (10.6, preview)                                                       |
+| [shadcn MCP](https://ui.shadcn.com/docs/mcp)                   | Registries: what you can install                                                 | —                                                                                                                                                   | —                                                                                         |
+| [Figma MCP](https://github.com/figma/mcp-server-guide)         | The design: frames, variables, Code Connect                                      | —                                                                                                                                                   | Figma                                                                                     |
+
+@shadcn/lint polices which classes a component may take; design-system-mcp tells the agent what exists and catches what does not, without Storybook or a design file. Running both in CI is a sensible setup.
 
 ## Design decisions
 

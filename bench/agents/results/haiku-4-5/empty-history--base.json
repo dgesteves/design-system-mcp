@@ -1,0 +1,18 @@
+{
+  "task": "empty-history",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/empty-history.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.1501648,
+  "turns": 18,
+  "seconds": 59,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

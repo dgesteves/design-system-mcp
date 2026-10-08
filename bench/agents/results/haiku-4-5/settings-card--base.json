@@ -1,0 +1,43 @@
+{
+  "task": "settings-card",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/model-settings-card.tsx"
+  ],
+  "errors": 2,
+  "warnings": 0,
+  "byRule": {
+    "no-hardcoded-color": 2
+  },
+  "findings": [
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`bg-green-600` is Tailwind's default palette, not a design-system color. No close token; nearest is chart-2 (ΔE 0.123). Pick the semantic token that fits. <Badge> already sets bg-* through `variant`; prefer a variant over overriding it.",
+      "line": 40,
+      "column": 61,
+      "endLine": 40,
+      "endColumn": 73,
+      "source": "bg-green-600"
+    },
+    {
+      "file": "components/chat/model-settings-card.tsx",
+      "ruleId": "no-hardcoded-color",
+      "severity": "error",
+      "message": "`hover:bg-green-700` is Tailwind's default palette, not a design-system color. No close token; nearest is chart-2 (ΔE 0.114). Pick the semantic token that fits. <Badge> already sets bg-* through `variant`; prefer a variant over overriding it.",
+      "line": 40,
+      "column": 85,
+      "endLine": 40,
+      "endColumn": 103,
+      "source": "hover:bg-green-700"
+    }
+  ],
+  "cost": 0.08652879999999999,
+  "turns": 11,
+  "seconds": 33,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}

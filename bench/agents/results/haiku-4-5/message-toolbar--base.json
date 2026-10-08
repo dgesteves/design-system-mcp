@@ -1,0 +1,18 @@
+{
+  "task": "message-toolbar",
+  "condition": "base",
+  "model": "claude-haiku-4-5-20251001",
+  "created": true,
+  "changed": [
+    "components/chat/message-toolbar.tsx"
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "byRule": {},
+  "findings": [],
+  "cost": 0.2462643,
+  "turns": 12,
+  "seconds": 55,
+  "hookBlocks": 0,
+  "mcpCalls": 0
+}
