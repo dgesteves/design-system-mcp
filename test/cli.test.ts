@@ -307,6 +307,60 @@ describe('design-system-mcp check with a baseline', () => {
   });
 });
 
+describe('design-system-mcp check --quiet-without-design-system', () => {
+  const page =
+    'export default () => <div className="p-[13px] rounded-[7px] bg-[#ef4444]"><button>Go</button></div>';
+
+  it('stays quiet in a React app with no design system, even with Tailwind', async () => {
+    const root = fixture({ 'app/globals.css': '@import "tailwindcss";\n', 'app/page.tsx': page });
+    // Without the flag, Tailwind's default scale alone still produces findings.
+    expect((await run(['check', 'app', '--no-cache'], root)).stdout).toContain(
+      'no-hardcoded-spacing',
+    );
+    expect(
+      await run(['check', 'app', '--no-cache', '--quiet-without-design-system'], root),
+    ).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
+    expect(
+      (
+        await run(
+          ['check', 'app', '--no-cache', '--quiet-without-design-system', '--format', 'json'],
+          root,
+        )
+      ).stdout,
+    ).toBe('[]');
+  });
+
+  it('still checks projects with components, their own tokens, or a config', async () => {
+    const withComponents = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/page.tsx': page,
+    });
+    const withTokens = fixture({
+      'app/globals.css':
+        '@import "tailwindcss";\n:root { --primary: oklch(0.6 0.2 25); }\n@theme inline { --color-primary: var(--primary); }\n',
+      'app/page.tsx': page,
+    });
+    const withConfig = fixture({
+      'design-system-mcp.config.json': JSON.stringify({ tokens: ['app/globals.css'] }),
+      'app/globals.css': '@import "tailwindcss";\n',
+      'app/page.tsx': page,
+    });
+    for (const root of [withComponents, withTokens, withConfig]) {
+      const { stdout } = await run(
+        ['check', 'app', '--no-cache', '--quiet-without-design-system'],
+        root,
+      );
+      // The config only names Tailwind's defaults: warnings, but still reported.
+      expect(stdout).toMatch(/\d+ errors?, \d+ warnings? in 1 file/);
+    }
+  });
+});
+
 describe('design-system-mcp inspect, --help, --version', () => {
   it('summarises what was extracted', async () => {
     const { code, stdout } = await run(['inspect', '--no-cache']);
