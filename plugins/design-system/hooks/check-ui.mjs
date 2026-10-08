@@ -20,7 +20,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 const PACKAGE = '@dgesteves/design-system-mcp';
-// The release with --quiet-without-design-system and the baseline.
+// This plugin's release line; scripts/sync-server-json.mjs moves it with each release.
 const RANGE = '^0.2.0';
 const UI_FILE = /\.[jt]sx$/i;
 const MAX_FINDINGS = 30;

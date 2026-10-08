@@ -1,0 +1,59 @@
+name: Bug report
+description: A wrong finding or fix, something missed, a component or token not found, or a crash.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: A minimal snippet and the `inspect` output make most bugs quick to fix. Remove anything private before pasting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: For a lint finding, paste the message and say what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Minimal snippet
+      description: The smallest code that shows it, plus the component or token it involves if that matters.
+      render: tsx
+    validations:
+      required: true
+  - type: textarea
+    id: inspect
+    attributes:
+      label: inspect output
+      description: Run `npx -y @dgesteves/design-system-mcp inspect` in the project root and paste what it prints.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `npx -y @dgesteves/design-system-mcp --version`, or the version in your lockfile.
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - Claude Code plugin
+        - Claude Code (MCP server only)
+        - Cursor
+        - VS Code
+        - Claude Desktop
+        - Codex CLI
+        - Zed
+        - Gemini CLI
+        - CLI only (check, inspect)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Node.js version and OS
+      placeholder: Node 24.1, macOS 15

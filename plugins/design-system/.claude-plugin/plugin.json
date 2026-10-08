@@ -1,5 +1,6 @@
 {
   "name": "design-system",
+  "version": "0.2.0",
   "description": "Your React design system as ground truth for Claude: components, props, variants and tokens over MCP, and a hook that lints every UI file Claude writes against them.",
   "author": {
     "name": "Diogo Esteves",

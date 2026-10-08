@@ -1,0 +1,23 @@
+name: Feature request
+description: A rule, a design-system layout or token format to support, or a client to document.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The project layout or the code an agent writes, and what goes wrong or is missing today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
+      description: The finding, suggestion or output you would like to see. A before/after snippet is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds you tried
+      description: Config, a baseline, another tool.
