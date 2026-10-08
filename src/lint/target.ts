@@ -66,6 +66,8 @@ export class LintTarget {
   /** The `elements` entries the config sets explicitly. */
   private readonly configured = new Map<string, ComponentInfo>();
   readonly componentFiles: Set<string>;
+  /** Every value the component files export, components or not (`Icons`, `buttonVariants`). */
+  readonly exports: Set<string>;
   private readonly importPaths: Set<string>;
   private readonly importPrefixes: string[];
   /** Component files relative to the root, without extension (`components/ui/button`). */
@@ -82,6 +84,7 @@ export class LintTarget {
     }
     this.tokens = new TokenIndex(model.tokens);
     this.componentFiles = new Set(model.components.map((c) => c.source.file));
+    this.exports = new Set(model.exports);
 
     // Root components only: `BreadcrumbLink` is an `a`, but `<a>` should not become a breadcrumb part.
     for (const component of model.components) {

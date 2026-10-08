@@ -340,6 +340,7 @@ export async function buildModel(
     components: extracted.components,
     tokens: tokens.tokens,
     propSets: extracted.propSets,
+    exports: extracted.exports,
     warnings,
     stats: {
       files: {

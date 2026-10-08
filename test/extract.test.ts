@@ -98,6 +98,85 @@ describe('extraction from a shadcn/ui-style system (types resolved)', () => {
   });
 });
 
+describe('props that extend an imported interface', () => {
+  const files = {
+    'tsconfig.json': TSCONFIG,
+    'components/ui/button.tsx': `import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+const buttonVariants = cva("", { variants: { variant: { default: "", outline: "" } } })
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> { asChild?: boolean }
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => <button ref={ref} {...props} />)
+`,
+    'components/ui/submit-button.tsx': `import { Button, type ButtonProps } from "./button"
+export function SubmitButton({ isSubmitting, ...props }: { isSubmitting: boolean } & ButtonProps) {
+  return <Button disabled={isSubmitting} {...props} />
+}
+`,
+  };
+  const code = `import { SubmitButton } from "@/components/ui/submit-button"
+export const A = () => <SubmitButton isSubmitting variant="outline" className="w-full" onClick={() => {}} />`;
+
+  it('marks the props open when that interface extends types that do not resolve', async () => {
+    const ds = await load(fixture(files));
+    expect(component(ds, 'SubmitButton').openProps).toBe(true);
+    expect(ds.check(code, 'app/a.tsx').diagnostics).toEqual([]);
+  });
+
+  it('sees through type arguments, aliases in other files and long interface chains', async () => {
+    const chain = Array.from(
+      { length: 8 },
+      (_, i) => `export interface P${i} extends ${i === 7 ? 'ButtonProps' : `P${i + 1}`} {}`,
+    ).join('\n');
+    const ds = await load(
+      fixture({
+        ...files,
+        'components/ui/types.ts': `import type { ButtonProps } from "./button"\nexport type Props = ButtonProps\n${chain}\n`,
+        'components/ui/omit.tsx': `import { Button, type ButtonProps } from "./button"
+export function OmitButton(props: { label: string } & Omit<ButtonProps, "type">) { return <Button {...props} /> }
+`,
+        'components/ui/aliased.tsx': `import type { Props } from "./types"
+export function AliasedButton(props: { label: string } & Props) { return <button {...props} /> }
+`,
+        'components/ui/chained.tsx': `import type { P0 } from "./types"
+export function ChainedButton(props: { label: string } & P0) { return <button {...props} /> }
+`,
+        'components/ui/closed.tsx': `export interface Base { tone?: "a" | "b" }
+export interface Closed extends Base { size?: "sm" }
+export function ClosedBadge(props: { label: string } & Closed) { return <span /> }
+`,
+      }),
+    );
+    for (const name of ['OmitButton', 'AliasedButton', 'ChainedButton']) {
+      expect([name, component(ds, name).openProps]).toEqual([name, true]);
+    }
+    // A chain that resolves stays closed, so unknown props are still caught.
+    expect(component(ds, 'ClosedBadge').openProps).toBe(false);
+    expect(
+      ds
+        .check(
+          `import { ClosedBadge } from "@/components/ui/closed"\n<ClosedBadge label="x" tone="a" bogus />`,
+          'app/a.tsx',
+        )
+        .diagnostics.map((d) => d.message),
+    ).toEqual(['<ClosedBadge> has no prop "bogus".']);
+  });
+
+  it('resolves them fully when the types are installed', async () => {
+    const ds = await load(fixture(files, { nodeModules: true }));
+    const submit = component(ds, 'SubmitButton');
+    expect(submit.openProps).toBe(false);
+    expect(submit.props.map((p) => p.name)).toEqual(
+      expect.arrayContaining(['isSubmitting', 'variant']),
+    );
+    expect(ds.check(code, 'app/a.tsx').diagnostics).toEqual([]);
+    expect(
+      ds
+        .check(code.replace('variant="outline"', 'variant="danger"'), 'app/a.tsx')
+        .diagnostics.map((d) => d.ruleId),
+    ).toEqual(['no-unknown-variant']);
+  });
+});
+
 describe('extraction without node_modules (fixture)', () => {
   let ds: DesignSystem;
   beforeAll(async () => {
