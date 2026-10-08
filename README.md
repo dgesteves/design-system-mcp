@@ -6,6 +6,10 @@ An MCP server that gives coding agents ground truth about your React design syst
 [![npm](https://img.shields.io/npm/v/@dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](https://www.npmjs.com/package/@dgesteves/design-system-mcp)
 [![License: MIT](https://img.shields.io/github/license/dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](LICENSE)
 
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=design-system&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBkZ2VzdGV2ZXMvZGVzaWduLXN5c3RlbS1tY3AiLCItLXJvb3QiLCIke3dvcmtzcGFjZUZvbGRlcn0iXX0%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=design-system&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40dgesteves%2Fdesign-system-mcp%22%5D%7D)
+[![Claude Code plugin](https://img.shields.io/badge/Claude_Code-Plugin-d97757?style=flat-square&logo=claude&logoColor=white)](#claude-code-plugin)
+
 <p align="center">
   <img src=".github/assets/hero.svg" width="100%" alt="An agent writes app/settings/danger-zone.tsx, calls check_ui, gets 8 errors and 3 warnings with fixes such as border-[#ef4444] to border-destructive and variant=danger to variant=destructive, applies them, and check_ui reports no problems.">
 </p>
@@ -34,8 +38,32 @@ Other layouts take a [config file](#configuration). Requires Node.js 22.18 or la
 
 The server speaks MCP over stdio. It finds the project from `--root`, a config file in the working directory, or the workspace roots the client reports.
 
+### Claude Code plugin
+
+The plugin bundles the server, a skill that tells Claude to look components and tokens up before writing UI, and a hook that runs `check` on every `.tsx`/`.jsx` file Claude writes or edits and hands the errors back, so they get fixed in the same turn instead of in review:
+
+```sh
+/plugin marketplace add dgesteves/design-system-mcp
+/plugin install design-system@dgesteves
+```
+
+```text
+⏺ Write(app/promo/page.tsx)
+  ⎿  PostToolUse hook: app/promo/page.tsx breaks the project's design system
+     1:66 error [no-hardcoded-color] Hardcoded color `bg-[#fef3c7]` → `bg-secondary`.
+     1:81 error [prefer-design-system-component] Native <button> where the design system has <Button>.
+     …
+⏺ The hook flagged five issues. Looking up Button and the color tokens before fixing.
+⏺ design-system - get_component (MCP)(name: "Button")
+⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-secondary, hook passes
+```
+
+The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without a design system, so installing the plugin for every project is safe. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx`, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove design-system`) to avoid two copies of the tools.
+
+### Other clients
+
 <details open>
-<summary><strong>Claude Code</strong></summary>
+<summary><strong>Claude Code (server only)</strong></summary>
 
 ```sh
 claude mcp add design-system -- npx -y @dgesteves/design-system-mcp

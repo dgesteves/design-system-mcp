@@ -1,0 +1,15 @@
+{
+  "name": "dgesteves",
+  "description": "Claude Code plugins by Diogo Esteves: design-system ground truth and UI linting for React projects.",
+  "owner": {
+    "name": "Diogo Esteves",
+    "url": "https://github.com/dgesteves"
+  },
+  "plugins": [
+    {
+      "name": "design-system",
+      "source": "./plugins/design-system",
+      "description": "Your React design system as ground truth for Claude: components, props, variants and tokens over MCP, and a hook that lints every UI file Claude writes against them."
+    }
+  ]
+}
