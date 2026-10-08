@@ -47,6 +47,10 @@ Options
   --baseline <file>       check: baseline file (default: ${BASELINE_FILE} in the root,
                           used whenever it exists)
   --ignore-baseline       check: report every finding, baseline or not
+  --quiet-without-design-system
+                          check: print nothing and exit 0 when the project has no
+                          design system (no components, no tokens of its own, no
+                          config), for hooks installed across many projects
   -h, --help              Show this help
   -v, --version           Show the version
 
@@ -91,6 +95,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         baseline: { type: 'string' },
         'update-baseline': { type: 'boolean', default: false },
         'ignore-baseline': { type: 'boolean', default: false },
+        'quiet-without-design-system': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -156,6 +161,7 @@ async function check(
     baseline?: string | undefined;
     'update-baseline': boolean;
     'ignore-baseline': boolean;
+    'quiet-without-design-system': boolean;
   },
   io: Io,
 ): Promise<number> {
@@ -197,6 +203,18 @@ async function check(
   if (!files.length) {
     io.stderr(`check: no files match ${patterns.join(' ')}`);
     return 2;
+  }
+
+  // A hook installed for every project should not lint React apps that have no
+  // design system: Tailwind's default scale alone is not one.
+  if (
+    values['quiet-without-design-system'] &&
+    !config.configFile &&
+    !ds.components.length &&
+    ds.tokens.every((t) => t.origin === 'tailwind-default')
+  ) {
+    if (format === 'json') io.stdout('[]');
+    return 0;
   }
 
   const update = values['update-baseline'];
