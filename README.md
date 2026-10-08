@@ -2,6 +2,8 @@
 
 An MCP server that gives coding agents ground truth about your React design system, and a linter they can run on their own UI.
 
+**Website:** [design-system-mcp-demo.vercel.app](https://design-system-mcp-demo.vercel.app), with the loop on a demo design system and the benchmark.
+
 [![CI](https://img.shields.io/github/actions/workflow/status/dgesteves/design-system-mcp/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0d0f12)](https://github.com/dgesteves/design-system-mcp/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](https://www.npmjs.com/package/@dgesteves/design-system-mcp)
 [![License: MIT](https://img.shields.io/github/license/dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](LICENSE)
