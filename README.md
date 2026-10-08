@@ -355,7 +355,7 @@ pnpm demo:check    # the CLI on examples/shadcn-demo (exits 1: the draft has err
 pnpm assets        # regenerates the images in .github/assets from real check output
 ```
 
-Releases use [Changesets](https://github.com/changesets/changesets): add one with `pnpm changeset`.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the checks CI runs, how to add a lint rule with a fixture, and releases, which use [Changesets](https://github.com/changesets/changesets): add one with `pnpm changeset`. Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 
