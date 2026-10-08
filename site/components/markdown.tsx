@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 
-import { readmeLink, repoLink } from '@/lib/site';
+import { docsHref, repoLink } from '@/lib/site';
 
 /** Where a README link points from the site: anchors and relative paths go to GitHub. */
 export function resolveReadmeHref(href: string): string {
-  if (/^https?:\/\//.test(href)) return href;
-  if (href.startsWith('#')) return readmeLink(href.slice(1));
+  if (/^https?:\/\//.test(href) || href.startsWith('/')) return href;
+  if (href.startsWith('#')) return docsHref(href.slice(1));
   return repoLink(href.replace(/^\.\//, ''), /\.[a-z]+$/i.test(href) ? 'blob' : 'tree');
 }
 
@@ -15,7 +15,7 @@ export function resolveReadmeHref(href: string): string {
  */
 export function InlineMarkdown({ text }: { text: string }): ReactNode {
   const parts: ReactNode[] = [];
-  const pattern = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|(?<!\w)_([^_]+)_(?!\w)/g;
+  const pattern = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|(?<!\w)_(\S.*?)_(?!\w)/g;
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     const index = match.index;

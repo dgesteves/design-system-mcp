@@ -318,16 +318,6 @@ write('tools.json', {
   samples,
 });
 
-// ─── Rules ──────────────────────────────────────────────────────────────────
-
-write('rules.json', {
-  rules: RULES.map((rule) => ({
-    id: rule.id,
-    description: rule.description,
-    severity: config.rules[rule.id].severity,
-  })),
-});
-
 // ─── The demo design system, as the agent sees it ───────────────────────────
 
 write('design-system.json', {
@@ -403,14 +393,29 @@ write('bench.json', {
 
 const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8');
 
-/** The body of a `## heading` section, up to the next heading of the same or higher level. */
+/**
+ * The body of a `## heading` section, up to the next heading of the same or a higher level.
+ * Lines inside code fences are not headings (`# Baseline: …` in a shell block).
+ */
 function section(heading) {
-  const start = readme.indexOf(`\n${heading}\n`);
-  assert.ok(start !== -1, `README section "${heading}" not found`);
+  const lines = readme.split('\n');
   const level = heading.match(/^#+/)[0].length;
-  const rest = readme.slice(start + heading.length + 2);
-  const end = rest.search(new RegExp(`\\n#{1,${level}} `));
-  return (end === -1 ? rest : rest.slice(0, end)).trim();
+  const start = lines.indexOf(heading);
+  assert.ok(start !== -1, `README section "${heading}" not found`);
+  let fenced = false;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*```/.test(lines[i])) fenced = !fenced;
+    const depth = fenced ? 0 : (/^(#+) /.exec(lines[i])?.[1].length ?? 0);
+    if (depth && depth <= level) {
+      end = i;
+      break;
+    }
+  }
+  return lines
+    .slice(start + 1, end)
+    .join('\n')
+    .trim();
 }
 
 /** Rows of the first Markdown table in `markdown`, as arrays of cell Markdown. */
@@ -453,4 +458,105 @@ write('readme.json', {
   },
   rules: table(section('## Rules')),
   engines: JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).engines,
+});
+
+// ─── The rules catalog ──────────────────────────────────────────────────────
+
+const { ruleDocs } = await import('./rule-docs.mjs');
+const ruleTable = table(section('## Rules'));
+const EXAMPLE_FILE = 'app/example.tsx';
+const rules = RULES.map((rule) => {
+  const docs = ruleDocs[rule.id];
+  assert.ok(docs, `scripts/rule-docs.mjs has no entry for ${rule.id}`);
+  const row = ruleTable.rows.find((r) => r[0] === `\`${rule.id}\``);
+  assert.ok(row, `the README Rules table has no row for ${rule.id}`);
+  const before = ds.check(docs.bad, EXAMPLE_FILE);
+  const own = before.diagnostics.filter((d) => d.ruleId === rule.id);
+  assert.ok(own.length > 0, `the ${rule.id} example should trip it`);
+  assert.equal(
+    own.length,
+    before.diagnostics.length,
+    `the ${rule.id} example should trip only that rule: ${JSON.stringify(before.diagnostics.map((d) => d.ruleId))}`,
+  );
+  const good = docs.good ?? applyFixes(docs.bad, own);
+  const after = ds.check(good, EXAMPLE_FILE);
+  assert.equal(
+    after.diagnostics.length,
+    0,
+    `the fixed ${rule.id} example should be clean: ${JSON.stringify(after.diagnostics)}`,
+  );
+  return {
+    id: rule.id,
+    description: rule.description,
+    severity: config.rules[rule.id].severity,
+    catches: row[2],
+    suggests: row[3],
+    why: docs.why,
+    allow: docs.allow ?? null,
+    bad: docs.bad,
+    good,
+    fixedBy: docs.good ? 'hand' : 'rule',
+    changes: changedSpans(docs.bad, good),
+    findings: own.map((d) => ({
+      severity: d.severity,
+      message: d.message,
+      line: d.line,
+      column: d.column,
+      start: offsetOf(docs.bad, d.line, d.column),
+      end: offsetOf(docs.bad, d.endLine, d.endColumn),
+      suggestion: d.suggestion ?? null,
+      fixable: Boolean(d.fix?.length),
+    })),
+  };
+});
+const rulesSection = section('## Rules');
+write('rules.json', {
+  version: VERSION,
+  rules,
+  // The paragraph under the README table: how colors, spacing and radius fixes are chosen.
+  details: rulesSection.slice(rulesSection.lastIndexOf('|\n') + 2).trim(),
+});
+
+// ─── Docs, from the README and the plugin ───────────────────────────────────
+
+/** The part of a section before its first subsection. */
+const intro = (markdown) => {
+  let fenced = false;
+  const lines = markdown.split('\n');
+  const end = lines.findIndex((line) => {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    return !fenced && /^#{3,} /.test(line);
+  });
+  return (end === -1 ? lines : lines.slice(0, end)).join('\n').trim();
+};
+const skill = fs
+  .readFileSync(path.join(repo, 'plugins/design-system/skills/design-system/SKILL.md'), 'utf8')
+  .replace(/^---\n[\s\S]*?\n---\n/, '')
+  .trim();
+/** README text that refers to the README itself, reworded for the site. Fails when it moves. */
+function reword(markdown, from, to) {
+  assert.ok(markdown.includes(from), `README text to reword not found: "${from}"`);
+  return markdown.replace(from, to);
+}
+write('docs.json', {
+  quickstart: reword(
+    section('## Quickstart'),
+    'click the install badge at the top, or add the [config](#cursor-and-vs-code) to the repository',
+    'use the install buttons on this page, or add the [config](#cursor-and-vs-code) to the repository',
+  ),
+  setup: intro(section('## Setup')),
+  plugin: section('### Claude Code plugin'),
+  cursorVsCode: reword(
+    section('### Cursor and VS Code'),
+    'The badges at the top install the server in one click.',
+    'The buttons at the top of this page install the server in one click.',
+  ),
+  otherClients: section('### Other clients'),
+  tools: section('## Tools'),
+  zeroConfig: section('### Zero config'),
+  configFile: section('### Config file'),
+  ci: intro(section('## CI')),
+  baseline: section('### Adopting it in an existing codebase'),
+  limits: section('### Limits'),
+  skill,
 });
