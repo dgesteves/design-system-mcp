@@ -62,8 +62,14 @@ export function readProjectConfig(root: string, tsconfig?: string): ProjectConfi
   delete options.tsBuildInfoFile;
   return {
     options,
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- TypeScript 5 projects still set baseUrl.
-    pathsBase: options.baseUrl ?? path.dirname(configFile),
+    // `paths` resolve against baseUrl, else against the directory of the tsconfig that
+    // declares them, which TypeScript records as `pathsBasePath` when it is an extended one.
+    pathsBase:
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- TypeScript 5 projects still set baseUrl.
+      options.baseUrl ??
+      (typeof options.pathsBasePath === 'string'
+        ? options.pathsBasePath
+        : path.dirname(configFile)),
     paths: options.paths ?? {},
     configFile,
     configFiles,

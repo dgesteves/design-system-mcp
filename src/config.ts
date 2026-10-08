@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 import * as z from 'zod';
 
+import { detectProject, type ImportMapping } from './detect.js';
 import { slashGlob } from './util/paths.js';
 
 export const RULE_IDS = [
@@ -112,6 +113,10 @@ export interface ResolvedConfig {
   docs: string[];
   tsconfig?: string | undefined;
   importPath?: string | undefined;
+  /** Import specifiers for component files, from the `exports` of the package that holds them. */
+  imports?: ImportMapping[] | undefined;
+  /** How the design system was found when the config does not say (`components.json`, a workspace package). */
+  detected?: string | undefined;
   elements: Record<string, string>;
   rules: Record<RuleId, ResolvedRule>;
 }
@@ -209,12 +214,6 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     else rules[id] = { severity: setting[0], options: setting[1] ?? {} };
   }
 
-  const tokenSources = options.tokens?.length
-    ? options.tokens.map((p) => ({ path: p }))
-    : config.tokens === undefined
-      ? DEFAULT_TOKENS.map((p) => ({ path: p }))
-      : toArray(config.tokens).map((t) => (typeof t === 'string' ? { path: t } : t));
-
   // Paths may be written Windows-style; globs and POSIX need forward slashes.
   const tsconfig = config.tsconfig?.replaceAll('\\', '/');
   if (tsconfig !== undefined && !fs.existsSync(path.resolve(root, tsconfig))) {
@@ -224,25 +223,43 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     );
   }
 
+  // Without component globs, look for components.json or a design-system package.
+  const componentsSet = Boolean(options.components?.length) || config.components !== undefined;
+  const detection = componentsSet ? undefined : detectProject(root, tsconfig);
+
+  const tokenSources = options.tokens?.length
+    ? options.tokens.map((p) => ({ path: p }))
+    : config.tokens !== undefined
+      ? toArray(config.tokens).map((t) => (typeof t === 'string' ? { path: t } : t))
+      : // Detected stylesheets replace the stylesheet guesses, not DTCG files.
+        (detection?.tokens.length
+          ? [...detection.tokens, ...DEFAULT_TOKENS.filter((t) => t.endsWith('.json'))]
+          : DEFAULT_TOKENS
+        ).map((p) => ({ path: p }));
+
   return {
     root,
     configFile,
     components: (options.components?.length
       ? options.components
-      : config.components === undefined
-        ? DEFAULT_COMPONENTS
-        : toArray(config.components)
+      : config.components !== undefined
+        ? toArray(config.components)
+        : detection
+          ? [...(detection.withDefaults ? DEFAULT_COMPONENTS : []), ...detection.components]
+          : DEFAULT_COMPONENTS
     ).map(slashGlob),
     exclude: (config.exclude ?? DEFAULT_EXCLUDE).map(slashGlob),
     tokens: tokenSources.map((t) => ({ ...t, path: slashGlob(t.path) })),
     docs: (options.docs?.length
       ? options.docs
       : config.docs === undefined
-        ? DEFAULT_DOCS
+        ? [...DEFAULT_DOCS, ...(detection?.docs ?? [])]
         : toArray(config.docs)
     ).map(slashGlob),
     tsconfig,
     importPath: config.importPath,
+    imports: detection?.imports ?? [],
+    detected: detection?.source,
     elements: config.elements ?? {},
     rules,
   };
