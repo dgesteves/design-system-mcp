@@ -5,11 +5,16 @@ import {
   findColorLiterals,
   formatDeltaE,
   isNamedColor,
+  isTinted,
   parseColor,
+  SAME_COLOR,
   type Oklch,
 } from '../../tokens/color.js';
-import type { Token } from '../../types.js';
+import type { ColorSuggestion } from '../../tokens/index.js';
+import { colorRole, scopesIn, type ColorRole, type ScopedFamily } from '../../tokens/roles.js';
 import { formatPx, lengthToPx } from '../../tokens/units.js';
+import { cssReference } from '../../tokens/usage.js';
+import type { Token } from '../../types.js';
 import { attributeName, literalValues, type JsxNode } from '../analyze.js';
 import type { Rule, RuleContext } from '../context.js';
 import {
@@ -28,11 +33,6 @@ import {
   withBase,
   type Utility,
 } from '../tailwind.js';
-
-/** Below this ΔE two colors are indistinguishable in practice. */
-const SAME_COLOR = 0.02;
-/** Above this ΔE the nearest token is a different color, so no mechanical fix is offered. */
-const CLOSE_COLOR = 0.1;
 
 // ─── Colors ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,7 @@ export const noHardcodedColor: Rule = {
             place: 'class',
             utility,
             element,
+            classes: classString.text,
           });
           continue;
         }
@@ -90,6 +91,7 @@ export const noHardcodedColor: Rule = {
             place: 'class',
             utility,
             element,
+            classes: classString.text,
           });
           continue;
         }
@@ -103,29 +105,29 @@ export const noHardcodedColor: Rule = {
             end: token.end,
             what: `\`${token.value}\` is Tailwind's default palette, not a design-system color`,
             color,
+            tinted: !palette.gray,
             prefix: palette.prefix,
             place: 'class',
             utility,
             element,
+            classes: classString.text,
           });
         }
       }
     }
 
-    for (const { object } of context.analysis.styles) {
+    for (const { object, element } of context.analysis.styles) {
       for (const prop of object.properties) {
         if (!ts.isPropertyAssignment(prop)) continue;
         const name = propertyName(prop.name);
         if (name === undefined || !(name in STYLE_COLOR_PROPERTIES)) continue;
         if (!ts.isStringLiteralLike(prop.initializer)) continue;
-        reportLiteralColors(
-          context,
-          prop.initializer,
-          `style.${name}`,
-          STYLE_COLOR_PROPERTIES[name],
-          'style',
+        reportLiteralColors(context, prop.initializer, element, {
+          where: `style.${name}`,
+          prefix: STYLE_COLOR_PROPERTIES[name],
+          place: 'style',
           allow,
-        );
+        });
       }
     }
 
@@ -135,7 +137,12 @@ export const noHardcodedColor: Rule = {
         if (!isColorAttribute(name)) continue;
         const prefix = name === 'fill' || name === 'stroke' ? name : 'text';
         for (const literal of literalValues(attribute)) {
-          reportLiteralColors(context, literal, `${name}="…"`, prefix, 'attribute', allow);
+          reportLiteralColors(context, literal, element, {
+            where: `${name}="…"`,
+            prefix,
+            place: 'attribute',
+            allow,
+          });
         }
       }
     }
@@ -145,10 +152,13 @@ export const noHardcodedColor: Rule = {
 function reportLiteralColors(
   context: RuleContext,
   literal: ts.StringLiteralLike,
-  where: string,
-  prefix: string | undefined,
-  place: 'style' | 'attribute',
-  allow: Set<string>,
+  element: JsxNode,
+  options: {
+    where: string;
+    prefix: string | undefined;
+    place: 'style' | 'attribute';
+    allow: Set<string>;
+  },
 ): void {
   const start = literal.getStart(context.sourceFile) + 1;
   // Match the source as written: offsets into `literal.text` drift after an escape such as `\"`.
@@ -160,14 +170,15 @@ function reportLiteralColors(
     if (color) matches.push({ text: trimmed, index: text.indexOf(trimmed), color });
   }
   for (const match of matches) {
-    if (allow.has(match.text.toLowerCase())) continue;
+    if (options.allow.has(match.text.toLowerCase())) continue;
     reportColor(context, {
       start: start + match.index,
       end: start + match.index + match.text.length,
-      what: `Hardcoded color \`${match.text}\` in ${where}`,
+      what: `Hardcoded color \`${match.text}\` in ${options.where}`,
       color: match.color,
-      prefix,
-      place,
+      prefix: options.prefix,
+      place: options.place,
+      element,
     });
   }
 }
@@ -179,6 +190,8 @@ function reportColor(
     end: number;
     what: string;
     color: Oklch;
+    /** A hue rather than a gray, when the source says so (`bg-sky-50` is blue, however pale). */
+    tinted?: boolean;
     /** Tailwind prefix to build the replacement class with (`bg`, `text`, `border-t`). */
     prefix: string | undefined;
     /**
@@ -189,20 +202,26 @@ function reportColor(
     place: 'class' | 'style' | 'attribute';
     utility?: Utility;
     element?: JsxNode | undefined;
+    /** The class string the color is in, which can place it in a sidebar or chart. */
+    classes?: string | undefined;
   },
 ): void {
-  const nearest = context.target.tokens.nearestColor(input.color, 6);
-  const best = nearest[0];
-  if (!best) return;
-  const token = best.candidate.token;
-  const sameValue = nearest
-    .slice(1)
-    .filter((n) => Math.abs(n.distance - best.distance) < 1e-4)
-    .map((n) => n.candidate.token.name);
+  const role = colorRole(input.prefix ?? input.utility?.prefix);
+  // `dark:bg-slate-900` is the dark-mode color: compare it with the tokens' dark values.
+  const mode = input.utility?.variants.includes('dark') ? 'dark' : undefined;
+  const suggestion = context.target.tokens.suggestColor(input.color, {
+    role,
+    scopes: scopes(context, input.element, input.classes),
+    tinted: input.tinted,
+    mode,
+  });
+  if (!suggestion) return;
+  const { match, nearest, reason, sameValue } = suggestion;
+  const token = nearest.candidate.token;
 
   const cls = input.prefix && token.tailwind ? `${input.prefix}-${token.tailwind}` : undefined;
-  const cssVar = token.cssVar ? `var(${token.cssVar})` : undefined;
-  const close = best.distance < CLOSE_COLOR;
+  const cssVar = cssReference(token);
+  const close = match !== undefined;
   const variant = cls && input.element ? variantApplying(context, input.element, cls) : undefined;
 
   let replacement: string | undefined;
@@ -225,17 +244,19 @@ function reportColor(
     advice = cls ? `\`${cls}\` in className` : undefined;
   }
 
-  const label =
-    best.distance < SAME_COLOR
-      ? 'Matches token'
-      : close
-        ? 'Nearest token'
-        : 'No close token; nearest is';
-  const same = sameValue.length ? `, same value as ${sameValue.join(', ')}` : '';
-  let message = `${input.what}. ${label} ${token.name} (${formatDeltaE(best.distance)}${same})`;
-  if (close && advice) message += ` → ${advice}`;
-  if (variant) message += `, or use ${variant}`;
-  message += close ? '.' : '. Pick the semantic token that fits.';
+  const same = sameValue.length ? `, same value as ${sameValue.map((t) => t.name).join(', ')}` : '';
+  const inMode = mode && token.modes?.[mode] !== undefined ? ` in ${mode} mode` : '';
+  const found = `${token.name}${inMode} (${formatDeltaE(nearest.distance)}${same})`;
+  let message: string;
+  if (close) {
+    message = `${input.what}. ${nearest.distance < SAME_COLOR ? 'Matches token' : 'Nearest token'} ${found}`;
+    if (advice) message += ` → ${advice}`;
+    if (variant) message += `, or use ${variant}`;
+    message += '.';
+  } else {
+    const tinted = input.tinted ?? isTinted(input.color);
+    message = `${input.what}. ${noMatch(reason, role, tinted, nearest.candidate.color, found)} Pick the semantic token that fits.`;
+  }
   const owner =
     !variant && input.prefix && input.element
       ? variantProp(context, input.element, input.prefix)
@@ -250,6 +271,52 @@ function reportColor(
     suggestion: close ? (variant ?? replacement) : undefined,
     fix: close && edit ? [{ range: [input.start, input.end], text: edit }] : undefined,
   });
+}
+
+const ROLE_WORDS: Record<ColorRole, string> = {
+  text: 'text',
+  surface: 'backgrounds',
+  line: 'borders',
+};
+
+/** Why no token replaces the color, naming the nearest one (`found`). */
+function noMatch(
+  reason: ColorSuggestion['reason'],
+  role: ColorRole | undefined,
+  tinted: boolean,
+  token: Oklch,
+  found: string,
+): string {
+  if (reason === 'hue') {
+    if (!tinted) return `No gray token is close; nearest is ${found}, which is tinted.`;
+    return `No token has this hue; nearest is ${found}, ${isTinted(token) ? 'another hue' : 'a gray'}.`;
+  }
+  if (reason === 'role' && role)
+    return `No close token is meant for ${ROLE_WORDS[role]}; nearest is ${found}.`;
+  return `No close token; nearest is ${found}.`;
+}
+
+/**
+ * The scoped token families (sidebar, chart) the code is in: the file, the
+ * element and the elements around it, or its classes.
+ */
+function scopes(
+  context: RuleContext,
+  element: JsxNode | undefined,
+  classes: string | undefined,
+): Set<ScopedFamily> {
+  const tags: string[] = [];
+  for (let node: ts.Node | undefined = element?.node; node; node = node.parent) {
+    const tag = ts.isJsxElement(node)
+      ? node.openingElement.tagName
+      : ts.isJsxSelfClosingElement(node)
+        ? node.tagName
+        : undefined;
+    const name = tag?.getText(context.sourceFile);
+    // A page laid out next to the sidebar is not in it.
+    if (name && !/^Sidebar(?:Provider|Inset)$/.test(name)) tags.push(name);
+  }
+  return scopesIn(context.file, classes, ...tags);
 }
 
 /** The variant prop of the element's component that already sets `prefix-*` classes, if any. */

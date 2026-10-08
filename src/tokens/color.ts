@@ -20,11 +20,32 @@ const KEYWORDS = new Set([
 
 export type { Oklch };
 
-/** Parses any CSS color (hex, rgb(), hsl(), oklch(), named, ...) into OKLCH. */
-export function parseColor(value: string): Oklch | undefined {
+/**
+ * HSL channels without the function, `214.3 31.8% 91.4%` (commas, `deg` and
+ * `/ alpha` allowed): how Tailwind v3 projects, and shadcn/ui before v4, store
+ * colors, to be used as `hsl(var(--border))`.
+ */
+const BARE_HSL =
+  /^(-?\d*\.?\d+)(deg)?(?:\s*,\s*|\s+)(\d*\.?\d+)%(?:\s*,\s*|\s+)(\d*\.?\d+)%(?:\s*\/\s*(\d*\.?\d+%?))?$/;
+
+export function isBareHsl(value: string): boolean {
+  return BARE_HSL.test(value.trim());
+}
+
+/**
+ * Parses any CSS color (hex, rgb(), hsl(), oklch(), named, ...) into OKLCH.
+ * With `bareHsl`, for token values, HSL channels count too: in a stylesheet
+ * they can only be a color, while in a class or style they are not one.
+ */
+export function parseColor(value: string, options: { bareHsl?: boolean } = {}): Oklch | undefined {
   const text = value.trim();
   if (!text || KEYWORDS.has(text.toLowerCase()) || text.includes('var(')) return undefined;
-  const parsed = parse(text);
+  let parsed = parse(text);
+  const hsl = !parsed && options.bareHsl ? BARE_HSL.exec(text) : null;
+  if (hsl) {
+    const [, h, deg = '', s, l, alpha] = hsl;
+    parsed = parse(`hsl(${h}${deg} ${s}% ${l}%${alpha ? ` / ${alpha}` : ''})`);
+  }
   return parsed ? toOklch(parsed) : undefined;
 }
 
@@ -58,6 +79,35 @@ export function findColorLiterals(text: string): ColorMatch[] {
     if (color) matches.push({ text: match[0], index: match.index, color });
   }
   return matches;
+}
+
+/** Below this ΔE two colors are indistinguishable in practice. */
+export const SAME_COLOR = 0.02;
+/** Above this ΔE the nearest token is a different color, so no mechanical fix is offered. */
+export const CLOSE_COLOR = 0.1;
+/**
+ * Chroma from which a color reads as a hue rather than a gray. Tailwind's
+ * grays, slate to taupe, stay below 0.046; its colors pass 0.05 by shade 200.
+ */
+const TINT_CHROMA = 0.05;
+/** Hues further apart than this are different colors: red and orange are 22° apart, red and amber 45°. */
+const HUE_TOLERANCE = 30;
+
+export function isTinted(color: Oklch): boolean {
+  return color.c >= TINT_CHROMA;
+}
+
+/**
+ * Whether `token` can stand in for `color` without changing what it is: both
+ * grays, or both hues within HUE_TOLERANCE. ΔE alone does not say it: a pale
+ * yellow is 0.07 from a light gray. `tinted` overrides the chroma test for the
+ * source, so a pale `bg-sky-50` still counts as blue.
+ */
+export function sameHue(color: Oklch, token: Oklch, tinted = isTinted(color)): boolean {
+  if (tinted !== isTinted(token)) return false;
+  if (!tinted || color.h === undefined || token.h === undefined) return true;
+  const diff = Math.abs(color.h - token.h) % 360;
+  return Math.min(diff, 360 - diff) <= HUE_TOLERANCE;
 }
 
 /** Formats a ΔE value the way it reads best in a diagnostic. */
