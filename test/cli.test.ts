@@ -154,6 +154,48 @@ describe("design-system-mcp check and the design system's own files", () => {
   });
 });
 
+describe('design-system-mcp without a design system', () => {
+  const plain = () =>
+    fixture({
+      'package.json': '{ "name": "plain" }',
+      'src/App.tsx': 'export const App = () => <button><svg /></button>',
+    });
+  const NOTICE =
+    'No design system found (no components or color tokens): only the accessibility rule ran. See https://github.com/dgesteves/design-system-mcp#configuration';
+
+  it('says that only the accessibility rule ran, in every format', async () => {
+    const root = plain();
+    const pretty = await run(['check', '.', '--no-cache'], root);
+    expect(pretty.code).toBe(1);
+    expect(pretty.stdout.split('\n').at(-1)).toBe(NOTICE);
+    const json = await run(['check', '.', '--format', 'json', '--no-cache'], root);
+    expect(JSON.parse(json.stdout)).toHaveLength(1);
+    expect(json.stderr).toBe(NOTICE);
+    const github = await run(['check', '.', '--format', 'github', '--no-cache'], root);
+    expect(github.stdout.split('\n').at(-1)).toBe(`::warning title=design-system-mcp::${NOTICE}`);
+  });
+
+  it('fails with --require-design-system, and names what is missing', async () => {
+    expect(await run(['check', '.', '--require-design-system', '--no-cache'], plain())).toEqual({
+      code: 2,
+      stdout: '',
+      stderr: `check --require-design-system: ${NOTICE}`,
+    });
+    const noColors = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/page.tsx': 'export default () => <p>Hi</p>',
+    });
+    const partial = await run(['check', 'app', '--require-design-system', '--no-cache'], noColors);
+    expect(partial.code).toBe(2);
+    expect(partial.stderr).toContain('No color tokens found: no-hardcoded-color did not run.');
+    expect(
+      (await run(['check', 'app', '--require-design-system', '--quiet-without-design-system']))
+        .code,
+    ).toBe(2);
+  });
+});
+
 describe('design-system-mcp errors and help', () => {
   it('reports a missing root in one line with exit code 2, for check and inspect', async () => {
     for (const args of [['check', '.'], ['inspect']]) {
@@ -206,6 +248,7 @@ describe('design-system-mcp check with a baseline', () => {
       'app/a.tsx': 'export const A = () => <><button>One</button><button>Two</button></>',
       'app/b.tsx': 'export const B = () => <input />',
       'app/c.tsx': 'export const C = () => <p>Fine</p>',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
   const baselineOf = (root: string) =>
     JSON.parse(fs.readFileSync(path.join(root, 'design-system-mcp.baseline.json'), 'utf8')) as {
@@ -334,6 +377,7 @@ describe('design-system-mcp check with a baseline', () => {
         'export function Badge(props: { variant?: "default" | "outline" }) { return <span /> }',
       'app/p.tsx':
         'export const P = () => <><Badge toString constructor valueOf="x" hasOwnProperty __proto__ /></>\nimport { Badge } from "../components/ui/badge"',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
     const recorded = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
     expect(recorded.stdout).toMatch(/^Baseline: 5 findings in 1 file → /);
@@ -352,6 +396,7 @@ describe('design-system-mcp check with a baseline', () => {
         'export function Button(props: { variant?: "default" | "destructive" } & React.ComponentProps<"button">) { return <button {...props} /> }',
       'app/a.tsx':
         'import { Button } from "../components/ui/button"\nexport const A = () => <><button>x</button><Button variant="danger" /></>',
+      'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
     const link = `${root}-link`;
     fs.symlinkSync(root, link);

@@ -152,6 +152,24 @@ describe('MCP server over the in-memory transport', () => {
     });
     expect(text(clean)).toBe('app/settings/members.tsx: no design-system problems found.');
     expect(clean.structuredContent).toMatchObject({ ok: true });
+    expect(clean.structuredContent).not.toHaveProperty('notice');
+  });
+
+  it('check_ui says when there is no design system to check against', async () => {
+    const ds = await load(fixture({ 'package.json': '{ "name": "plain" }' }));
+    const server = createServer({ getDesignSystem: () => Promise.resolve(ds) });
+    const plain = new Client({ name: 'plain-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), plain.connect(clientTransport)]);
+    const result = await plain.callTool({
+      name: 'check_ui',
+      arguments: { code: '<p className="text-gray-500">Hi</p>' },
+    });
+    const notice =
+      'No design system found (no components or color tokens): only the accessibility rule ran. See https://github.com/dgesteves/design-system-mcp#configuration';
+    expect(text(result)).toBe(`snippet.tsx: no design-system problems found.\n\n${notice}`);
+    expect(result.structuredContent).toMatchObject({ ok: true, notice });
+    await plain.close();
   });
 
   it('check_ui refuses paths outside the project and missing input', async () => {

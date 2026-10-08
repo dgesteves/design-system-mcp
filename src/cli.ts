@@ -60,12 +60,15 @@ Options
                           check: print nothing and exit 0 when the project has no
                           design system (no components, no tokens of its own, no
                           config), for hooks installed across many projects
+  --require-design-system
+                          check: exit 2 when no components or no color tokens
+                          are found, so CI cannot pass by checking nothing
   -h, --help              Show this help
   -v, --version           Show the version
 
 Examples
   npx -y ${NAME} inspect
-  npx -y ${NAME} check . --format github
+  npx -y ${NAME} check . --format github --require-design-system
   npx -y ${NAME} check . --update-baseline   # adopt in an existing codebase
 
 Docs: ${README}
@@ -108,6 +111,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         'ignore-baseline': { type: 'boolean', default: false },
         'quiet-without-design-system': { type: 'boolean', default: false },
         'include-design-system': { type: 'boolean' },
+        'require-design-system': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -188,9 +192,14 @@ async function check(
     'update-baseline': boolean;
     'ignore-baseline': boolean;
     'quiet-without-design-system': boolean;
+    'require-design-system': boolean;
   },
   io: Io,
 ): Promise<number> {
+  if (values['quiet-without-design-system'] && values['require-design-system']) {
+    io.stderr('check: pass --quiet-without-design-system or --require-design-system, not both');
+    return 2;
+  }
   if (!patterns.length) {
     io.stderr('check: pass files, folders or globs, e.g. design-system-mcp check .');
     return 2;
@@ -241,6 +250,14 @@ async function check(
   ) {
     if (format === 'json') io.stdout('[]');
     return 0;
+  }
+
+  // A run that found no components or no color tokens passes without having
+  // checked them: say so, and fail in CI when asked to.
+  const notice = ds.notice();
+  if (notice && values['require-design-system']) {
+    io.stderr(`check --require-design-system: ${notice}`);
+    return 2;
   }
 
   // The design system's own files implement the scale and the primitives the
@@ -309,6 +326,7 @@ async function check(
     io.stdout(
       `Baseline: ${count(counts.findings, 'finding')} in ${count(counts.files, 'file')} → ${displayPath(io.cwd, baselineFile)}`,
     );
+    if (notice) io.stderr(notice);
     return 0;
   }
 
@@ -321,6 +339,11 @@ async function check(
       : undefined,
   });
   if (output) io.stdout(output);
+  if (notice) {
+    if (format === 'pretty') io.stdout(notice);
+    else if (format === 'github') io.stdout(`::warning title=design-system-mcp::${notice}`);
+    else io.stderr(notice);
+  }
 
   const errors = results.reduce((n, r) => n + r.errorCount, 0);
   const warnings = results.reduce((n, r) => n + r.warningCount, 0);

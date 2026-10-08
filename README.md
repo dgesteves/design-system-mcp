@@ -150,13 +150,13 @@ The server sends usage instructions during the MCP handshake. Clients that ignor
 
 All tools are read-only, have zod-validated input schemas with size limits (up to 1,000,000 characters of code for `check_ui`), and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
 
-| Tool                | Input                                           | Returns                                                                                                                  |
-| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                |
-| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples |
-| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                   |
-| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                |
-| `check_ui`          | `code` or `path`, `filename?`                   | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix                                          |
+| Tool                | Input                                           | Returns                                                                                                                                     |
+| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                                   |
+| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples                    |
+| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                                      |
+| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                   |
+| `check_ui`          | `code` or `path`, `filename?`                   | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix, and a notice when no components or color tokens were found |
 
 Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. Claude Code exposes it as `/mcp__design-system__build-with-design-system`.
 
@@ -274,6 +274,8 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 ```
 
 `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results.
+
+When no components or no color tokens are found, `check` and `check_ui` say which rules could not run and point here, so a clean result is not mistaken for a checked one. In CI, `--require-design-system` turns that into a failure (exit code 2), for when the design system moves and the globs stop matching.
 
 ### Adopting it in an existing codebase
 

@@ -267,6 +267,10 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         errorCount: z.number().int(),
         warningCount: z.number().int(),
         diagnostics: z.array(diagnosticSchema),
+        notice: z
+          .string()
+          .optional()
+          .describe('Set when no components or no color tokens were found, so rules did not run.'),
       },
       annotations: READ_ONLY,
     },
@@ -306,9 +310,15 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         file = relativePath(ds.root, absolute);
       }
       const result = ds.check(source, file);
+      // A clean result without components or color tokens says little.
+      const notice = ds.notice();
       return {
-        content: [{ type: 'text', text: renderCheck(result) }],
-        structuredContent: { ...result, ok: result.errorCount === 0 },
+        content: [{ type: 'text', text: renderCheck(result) + (notice ? `\n\n${notice}` : '') }],
+        structuredContent: {
+          ...result,
+          ok: result.errorCount === 0,
+          ...(notice ? { notice } : {}),
+        },
       };
     },
   );
