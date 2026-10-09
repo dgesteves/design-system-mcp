@@ -15,7 +15,7 @@ import { colorRole, scopesIn, type ColorRole, type ScopedFamily } from '../../to
 import { formatPx, lengthToPx } from '../../tokens/units.js';
 import { cssReference } from '../../tokens/usage.js';
 import type { Token } from '../../types.js';
-import { attributeName, literalValues, type JsxNode } from '../analyze.js';
+import { attributeName, literalValues, valueBranches, type JsxNode } from '../analyze.js';
 import type { Rule, RuleContext } from '../context.js';
 import {
   COLOR_PREFIXES,
@@ -121,14 +121,17 @@ export const noHardcodedColor: Rule = {
         if (!ts.isPropertyAssignment(prop)) continue;
         const name = propertyName(prop.name);
         if (name === undefined || !(name in STYLE_COLOR_PROPERTIES)) continue;
-        if (!ts.isStringLiteralLike(prop.initializer)) continue;
-        reportLiteralColors(context, prop.initializer, element, {
-          where: `style.${name}`,
-          prefix: STYLE_COLOR_PROPERTIES[name],
-          place: 'style',
-          named: true,
-          allow,
-        });
+        // `isPressed ? "#ef4444" : undefined`: each literal branch is a value.
+        for (const value of valueBranches(prop.initializer)) {
+          if (!ts.isStringLiteralLike(value)) continue;
+          reportLiteralColors(context, value, element, {
+            where: `style.${name}`,
+            prefix: STYLE_COLOR_PROPERTIES[name],
+            place: 'style',
+            named: true,
+            allow,
+          });
+        }
       }
     }
 
@@ -431,39 +434,43 @@ function lengthRule(id: Rule['id'], description: string, spec: LengthRuleSpec): 
           const name = propertyName(prop.name);
           const prefix = name === undefined ? undefined : spec.styleProperties[name];
           if (!prefix) continue;
-          const init = prop.initializer;
-          const number = numberValue(init);
-          const raw = number ?? (ts.isStringLiteralLike(init) ? init.text : undefined);
-          if (raw === undefined || allow.has(raw)) continue;
-          const values = raw.trim().split(/\s+/);
-          const lengths = values.map((v) => (number !== undefined ? Number(v) : lengthToPx(v)));
-          if (lengths.some((px) => px === undefined) || lengths.every((px) => px === 0)) continue;
-          const px = lengths.find((v) => v !== 0) ?? 0;
-          const negative = px < 0;
-          if (negative && !NEGATIVE_PREFIXES.has(prefix)) continue;
-          const replacement =
-            values.length === 1 ? lengthReplacement(context, spec.category, px, prefix) : undefined;
-          const cls = replacement && `${negative ? '-' : ''}${replacement.cls}`;
-          const cssVar =
-            replacement?.cssVar &&
-            (negative ? `calc(${replacement.cssVar} * -1)` : replacement.cssVar);
-          const shown = number !== undefined ? `${name}: ${raw}` : `${name}: "${raw}"`;
-          const size = replacement?.pill ? 'fully rounded' : formatPx(replacement?.px ?? 0);
-          const advice = replacement
-            ? replacement.tailwind
-              ? `Use \`${cls}\` (${size}) in className instead of an inline style.`
-              : `Use \`${cssVar ?? cls}\` (${size}).`
-            : `Use ${spec.category} tokens instead.`;
-          context.report({
-            start: init.getStart(context.sourceFile),
-            end: init.end,
-            message: `Hardcoded ${spec.category} \`${shown}\` in style. ${advice}`,
-            suggestion: replacement ? (replacement.tailwind ? cls : cssVar) : undefined,
-            fix:
-              replacement && !replacement.tailwind && cssVar && replacement.exact
-                ? [{ range: [init.getStart(context.sourceFile), init.end], text: `"${cssVar}"` }]
-                : undefined,
-          });
+          // `isPressed ? 6 : 0`: each branch is a value.
+          for (const init of valueBranches(prop.initializer)) {
+            const number = numberValue(init);
+            const raw = number ?? (ts.isStringLiteralLike(init) ? init.text : undefined);
+            if (raw === undefined || allow.has(raw)) continue;
+            const values = raw.trim().split(/\s+/);
+            const lengths = values.map((v) => (number !== undefined ? Number(v) : lengthToPx(v)));
+            if (lengths.some((px) => px === undefined) || lengths.every((px) => px === 0)) continue;
+            const px = lengths.find((v) => v !== 0) ?? 0;
+            const negative = px < 0;
+            if (negative && !NEGATIVE_PREFIXES.has(prefix)) continue;
+            const replacement =
+              values.length === 1
+                ? lengthReplacement(context, spec.category, px, prefix)
+                : undefined;
+            const cls = replacement && `${negative ? '-' : ''}${replacement.cls}`;
+            const cssVar =
+              replacement?.cssVar &&
+              (negative ? `calc(${replacement.cssVar} * -1)` : replacement.cssVar);
+            const shown = number !== undefined ? `${name}: ${raw}` : `${name}: "${raw}"`;
+            const size = replacement?.pill ? 'fully rounded' : formatPx(replacement?.px ?? 0);
+            const advice = replacement
+              ? replacement.tailwind
+                ? `Use \`${cls}\` (${size}) in className instead of an inline style.`
+                : `Use \`${cssVar ?? cls}\` (${size}).`
+              : `Use ${spec.category} tokens instead.`;
+            context.report({
+              start: init.getStart(context.sourceFile),
+              end: init.end,
+              message: `Hardcoded ${spec.category} \`${shown}\` in style. ${advice}`,
+              suggestion: replacement ? (replacement.tailwind ? cls : cssVar) : undefined,
+              fix:
+                replacement && !replacement.tailwind && cssVar && replacement.exact
+                  ? [{ range: [init.getStart(context.sourceFile), init.end], text: `"${cssVar}"` }]
+                  : undefined,
+            });
+          }
         }
       }
     },
