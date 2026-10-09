@@ -8,11 +8,34 @@ import { LoopDemo } from '@/components/loop-demo';
 import { InlineMarkdown, resolveReadmeHref } from '@/components/markdown';
 import { Eyebrow, InlineCode, Section, TextLink } from '@/components/section';
 import { bench, demo, readme, rules, tools } from '@/lib/data';
-import { docsHref, REPO, repoLink } from '@/lib/site';
+import { AUTHOR, docsHref, NPM, REPO, repoLink, SITE_URL } from '@/lib/site';
+
+/** What search engines get as structured data. */
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'design-system-mcp',
+  description:
+    'An MCP server and Claude Code plugin that gives coding agents ground truth about a React design system, and a linter they run on their own UI.',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'macOS, Linux, Windows',
+  softwareVersion: tools.version,
+  license: 'https://opensource.org/licenses/MIT',
+  url: SITE_URL,
+  downloadUrl: NPM,
+  sameAs: [REPO, NPM],
+  author: { '@type': 'Person', name: AUTHOR.name, url: AUTHOR.url },
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 
 export default function Home() {
   return (
     <main id="main">
+      <script
+        type="application/ld+json"
+        // Static data from this file; nothing user-supplied.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
+      />
       <Hero />
       <Problem />
       <Proof />

@@ -1,9 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { ArrowRightIcon } from '@/components/icons';
 import { Eyebrow } from '@/components/section';
 import { docsPage, type DocsHref } from '@/lib/docs';
+import { pageMetadata } from '@/lib/metadata';
 import { readmeLink } from '@/lib/site';
 
 /** The frame of a docs page: title, lead, content, where it comes from, and the next page. */
@@ -80,17 +82,13 @@ export function DocPage({
   );
 }
 
-export function docsMetadata(href: DocsHref) {
+export function docsMetadata(href: DocsHref): Metadata {
   const { page } = docsPage(href);
-  return {
+  return pageMetadata({
     title: page.href === '/docs' ? 'Docs: quickstart' : page.title,
     description: page.description,
-    alternates: { canonical: page.href },
-    openGraph: {
-      title: `${page.title} · design-system-mcp`,
-      description: page.description,
-      url: page.href,
-    },
-    twitter: { title: `${page.title} · design-system-mcp`, description: page.description },
-  };
+    path: page.href,
+    // app/docs/opengraph-image.tsx covers /docs; the pages under it point at the same card.
+    image: page.href === '/docs' ? undefined : '/docs/opengraph-image',
+  });
 }

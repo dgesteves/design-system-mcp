@@ -7,18 +7,18 @@ import { InlineMarkdown } from '@/components/markdown';
 import { Eyebrow, InlineCode, TextLink } from '@/components/section';
 import { ruleCatalog, type RuleEntry } from '@/lib/data';
 import { highlightLines, type Mark } from '@/lib/highlight';
+import { pageMetadata } from '@/lib/metadata';
 import { repoLink } from '@/lib/site';
 
 const description =
   'Every check_ui and check rule, generated from the source: what it catches, why it matters, the fix it suggests, and a real example run on a demo design system.';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Rules',
+  socialTitle: 'design-system-mcp rules',
   description,
-  alternates: { canonical: '/rules' },
-  openGraph: { title: 'design-system-mcp rules', description, url: '/rules' },
-  twitter: { title: 'design-system-mcp rules', description },
-};
+  path: '/rules',
+});
 
 function Panel({
   title,

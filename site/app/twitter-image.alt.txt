@@ -1,1 +1,0 @@
-design-system-mcp: an agent writes a settings card, check_ui reports 8 errors and 3 warnings with fixes, and the agent fixes them. 10/10 clean components with the plugin, 6/10 without (Claude Haiku 4.5 on vercel/ai-chatbot).

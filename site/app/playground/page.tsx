@@ -5,18 +5,18 @@ import { Playground } from '@/components/playground';
 import { Eyebrow, InlineCode, TextLink } from '@/components/section';
 import { designSystem } from '@/lib/data';
 import { PLAYGROUND_LIMITS, playground } from '@/lib/playground';
+import { pageMetadata } from '@/lib/metadata';
 import { repoLink } from '@/lib/site';
 
 const description =
   'Run check_ui in the browser: edit a component or pick an agent draft, and see the findings and fixes against a shadcn/ui-style demo design system. The code is parsed, never run.';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Playground: try check_ui',
+  socialTitle: 'Try check_ui in the browser',
   description,
-  alternates: { canonical: '/playground' },
-  openGraph: { title: 'Try check_ui in the browser', description, url: '/playground' },
-  twitter: { title: 'Try check_ui in the browser', description },
-};
+  path: '/playground',
+});
 
 export default function PlaygroundPage() {
   const colors = designSystem.tokens.color ?? 0;
