@@ -946,6 +946,43 @@ export default () => <Card><Button aria-label="Delete"><TrashIcon /></Button><Bu
   });
 });
 
+describe('import suggestions', () => {
+  it('are relative to the checked file when the project has no path alias', async () => {
+    // Components in a flat src/ folder, imported by relative path, as in Vite starters.
+    const root = fixture({
+      'tsconfig.json': JSON.stringify({ compilerOptions: { jsx: 'react-jsx', strict: true } }),
+      'design-system-mcp.config.json': JSON.stringify({ components: ['src/ui/*.tsx'] }),
+      'src/ui/Button.tsx': `export function Button(props: { variant?: "primary" | "secondary"; children?: unknown }) {
+  return <button>{props.children as string}</button>
+}`,
+      'src/ui/Card.tsx': `export function Card(props: { children?: unknown }) { return <div>{props.children as string}</div> }
+export function CardHeader(props: { children?: unknown }) { return <div>{props.children as string}</div> }`,
+    });
+    const system = await load(root);
+    const native = `<button className="px-3">Save</button>`;
+    const message = (file: string) =>
+      system
+        .check(native, file)
+        .diagnostics.find((d) => d.ruleId === 'prefer-design-system-component')?.message;
+    expect(message('src/pages/settings.tsx')).toContain('import { Button } from "../ui/Button"');
+    expect(message('src/App.tsx')).toContain('import { Button } from "./ui/Button"');
+    expect(message('snippet.tsx')).toContain('import { Button } from "./src/ui/Button"');
+    expect(message(path.join(root, 'src/routes/index.tsx'))).toContain(
+      'import { Button } from "../ui/Button"',
+    );
+    const part = system.check(
+      `import { Card } from "../ui/Card"\n<Card><Card.Header>Billing</Card.Header></Card>`,
+      'src/pages/billing.tsx',
+    ).diagnostics[0];
+    expect(part?.message).toContain('import { CardHeader } from "../ui/Card"');
+  });
+
+  it('keep alias and package specifiers as they are', () => {
+    const [d] = check(`<button className="px-3">Save</button>`, 'prefer-design-system-component');
+    expect(d?.message).toContain('import { Button } from "@/components/ui/button"');
+  });
+});
+
 describe('no-unknown-prop', () => {
   const rule = 'no-unknown-prop';
 
@@ -966,6 +1003,54 @@ describe('no-unknown-prop', () => {
   it('accepts own props, inherited DOM props, data-/aria- attributes, key and ref', () => {
     const code = `${IMPORTS}<Button key="a" ref={r} type="submit" onClick={f} disabled aria-label="x" data-test="y" asChild variant="ghost" />`;
     expect(check(code, rule)).toEqual([]);
+  });
+
+  it('maps equivalent props in both directions, to the one the component takes', async () => {
+    // A React Aria Components style system: isOpen, isSelected and isDisabled, not open,
+    // checked and disabled.
+    const rac = await load(
+      fixture(
+        {
+          'tsconfig.json': TSCONFIG,
+          'components/ui/checkbox.tsx': `import * as React from "react"
+export function Checkbox(props: {
+  isSelected?: boolean
+  defaultSelected?: boolean
+  isDisabled?: boolean
+  isIndeterminate?: boolean
+  onChange?: (isSelected: boolean) => void
+  children?: React.ReactNode
+}) {
+  return <label>{props.children}</label>
+}`,
+          'components/ui/dialog.tsx': `import * as React from "react"
+export function DialogTrigger(props: {
+  isOpen?: boolean
+  onOpenChange?: (isOpen: boolean) => void
+  children?: React.ReactNode
+}) {
+  return <>{props.children}</>
+}`,
+        },
+        { nodeModules: true },
+      ),
+    );
+    const code = `import { Checkbox } from "@/components/ui/checkbox"
+import { DialogTrigger } from "@/components/ui/dialog"
+export const A = () => <Checkbox checked defaultChecked indeterminate disabled />
+export const B = ({ open }: { open: boolean }) => <DialogTrigger open={open} />`;
+    const findings = rac.check(code, 'app/page.tsx').diagnostics;
+    expect(findings.map((d) => [d.source, d.suggestion, d.fix?.[0]?.text])).toEqual([
+      ['checked', 'isSelected', 'isSelected'],
+      ['defaultChecked', 'defaultSelected', 'defaultSelected'],
+      ['indeterminate', 'isIndeterminate', 'isIndeterminate'],
+      ['disabled', 'isDisabled', 'isDisabled'],
+      ['open', 'isOpen', 'isOpen'],
+    ]);
+    // The other way round, on a Radix-style system.
+    expect(check(`${IMPORTS}<Button isDisabled>Save</Button>`, rule)[0]?.suggestion).toBe(
+      'disabled',
+    );
   });
 
   it('does not offer a rename that would duplicate an attribute', () => {

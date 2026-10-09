@@ -1,6 +1,9 @@
+import path from 'node:path';
+
 import ts from 'typescript';
 
 import type { ComponentInfo, PropInfo, TextEdit } from '../../types.js';
+import { toPosix } from '../../util/paths.js';
 import { closest } from '../../util/strings.js';
 import {
   asFunction,
@@ -32,9 +35,25 @@ function tagRange(context: RuleContext, element: JsxNode): { start: number; end:
   return { start: element.tagName.getStart(context.sourceFile), end: element.tagName.end };
 }
 
-function importLine(component: ComponentInfo): string {
+/**
+ * How the checked file imports `component`. A package or alias specifier is the same
+ * everywhere; a relative one (a project without aliases) is rewritten from the root to the
+ * checked file, so `./src/Button` becomes `../src/Button` in `app/page.tsx`.
+ */
+function importLine(component: ComponentInfo, context: RuleContext): string {
   const binding = component.exportName.split('.')[0] ?? component.name;
-  return `import { ${binding} } from "${component.importPath}"`;
+  let specifier = component.importPath;
+  if (specifier.startsWith('.')) {
+    const file = path.isAbsolute(context.file)
+      ? path.relative(context.target.model.root, context.file)
+      : context.file;
+    const relative = path.posix.relative(
+      path.posix.dirname(toPosix(file)),
+      path.posix.normalize(specifier),
+    );
+    specifier = relative.startsWith('.') ? relative : `./${relative}`;
+  }
+  return `import { ${binding} } from "${specifier}"`;
 }
 
 // ─── prefer-design-system-component ─────────────────────────────────────────
@@ -66,7 +85,7 @@ export const preferDesignSystemComponent: Rule = {
         ...tagRange(context, element),
         message:
           `Native <${resolution.tag}> where the design system has <${component.name}>. ` +
-          `Use <${component.name}> (${importLine(component)})` +
+          `Use <${component.name}> (${importLine(component, context)})` +
           (!dropIn
             ? rendered && rendered !== resolution.tag
               ? `; it renders a <${rendered}>, not a <${resolution.tag}>, so check its props and parts with get_component.`
@@ -99,7 +118,7 @@ export const noUnknownComponent: Rule = {
         if (flat) {
           context.report({
             ...range,
-            message: `<${element.tag}> does not exist: ${owner.name} is composed from flat parts. Use <${flat.name}> (${importLine(flat)}).`,
+            message: `<${element.tag}> does not exist: ${owner.name} is composed from flat parts. Use <${flat.name}> (${importLine(flat, context)}).`,
             suggestion: `<${flat.name}>`,
             fix: renameTag(context, element, flat.name),
           });
@@ -140,7 +159,7 @@ export const noUnknownComponent: Rule = {
             ...range,
             message: inScope
               ? `Unknown component <${resolution.name}>. Did you mean <${guess}>?`
-              : `Unknown component <${resolution.name}>. Did you mean <${guess}> (${importLine(component)})?`,
+              : `Unknown component <${resolution.name}>. Did you mean <${guess}> (${importLine(component, context)})?`,
             suggestion: `<${guess}>`,
             fix: inScope ? renameTag(context, element, guess) : undefined,
           });
@@ -183,6 +202,23 @@ const PROP_SYNONYMS: Record<string, string[]> = {
   onOpenChange: ['onClose', 'onDismiss', 'onToggle', 'onOpen', 'onVisibleChange'],
   asChild: ['as', 'component', 'render'],
 };
+
+/**
+ * Props that mean the same thing in different conventions: native elements and Radix on one
+ * side, React Aria Components on the other. Whichever spelling an agent writes, the one the
+ * component takes is suggested, in either direction. Event handlers are left out: their
+ * arguments differ (`onCheckedChange(checked)` against an input's `onChange(event)`).
+ */
+const PROP_EQUIVALENTS: string[][] = [
+  ['disabled', 'isDisabled'],
+  ['required', 'isRequired'],
+  ['readOnly', 'isReadOnly'],
+  ['invalid', 'isInvalid'],
+  ['open', 'isOpen'],
+  ['checked', 'isSelected', 'selected'],
+  ['defaultChecked', 'defaultSelected'],
+  ['indeterminate', 'isIndeterminate'],
+];
 
 /**
  * Radix composes with `asChild` and a child element, Base UI with a `render`
@@ -234,10 +270,14 @@ export const noUnknownProp: Rule = {
           });
           continue;
         }
+        const equivalents = PROP_EQUIVALENTS.find((group) => group.includes(name)) ?? [];
+        const equivalent =
+          equivalents.find((other) => other !== name && own.includes(other)) ??
+          equivalents.find((other) => other !== name && known.has(other));
         const synonym = Object.entries(PROP_SYNONYMS).find(
           ([target, aliases]) => known.has(target) && aliases.includes(name),
         )?.[0];
-        const guess = synonym ?? closest(name, own) ?? closest(name, known, 0.25);
+        const guess = equivalent ?? synonym ?? closest(name, own) ?? closest(name, known, 0.25);
         const prop = guess ? component.props.find((p) => p.name === guess) : undefined;
         const values = prop?.values?.length
           ? ` (${prop.values.map((v) => `"${v}"`).join(' | ')})`
