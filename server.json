@@ -7,12 +7,12 @@
     "url": "https://github.com/dgesteves/design-system-mcp",
     "source": "github"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@dgesteves/design-system-mcp",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "transport": {
         "type": "stdio"
       }
