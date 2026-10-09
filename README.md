@@ -20,10 +20,10 @@ https://github.com/user-attachments/assets/8ca1c640-94c2-4003-b59e-2b0d819c492d
 
 <!-- npm-readme:image
 <p align="center">
-  <a href="https://design-system-mcp-demo.vercel.app"><img src=".github/assets/hero.svg" width="100%" alt="An agent writes app/settings/danger-zone.tsx, calls check_ui, gets 8 errors and 3 warnings with fixes such as border-[#ef4444] to border-destructive and variant=danger to variant=destructive, applies them, and check_ui reports no problems."></a>
+  <a href="https://design-system-mcp-demo.vercel.app"><img src=".github/assets/demo.webp" width="100%" alt="On the website, an agent drafts a settings card, check_ui finds 11 problems with a fix each and the agent applies them. Then a real Claude Code session with the plugin, where Claude looks the components up before writing and check_ui passes. Last, the benchmark: clean components go from 6 to 10 out of 10 with Claude Haiku 4.5 and from 8 to 10 with Claude Opus 5."></a>
 </p>
 
-<sub>A 25-second demo video, with a real Claude Code session and the benchmark, plays in the <a href="https://github.com/dgesteves/design-system-mcp#readme">README on GitHub</a>.</sub>
+<sub>On the <a href="https://design-system-mcp-demo.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
 -->
 
 ## The problem
