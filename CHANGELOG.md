@@ -1,5 +1,11 @@
 # @dgesteves/design-system-mcp
 
+## 0.3.2
+
+### Patch Changes
+
+- [#38](https://github.com/dgesteves/design-system-mcp/pull/38) [`5fac3b5`](https://github.com/dgesteves/design-system-mcp/commit/5fac3b5dee79d6e402a2521ff6cae77980eef068) Thanks [@dgesteves](https://github.com/dgesteves)! - Refresh the README on npm: setup for every supported client, now including GitHub Copilot CLI, Windsurf, JetBrains IDEs and Grok Build, and the hero image where GitHub shows the demo video.
+
 ## 0.3.1
 
 ### Patch Changes
