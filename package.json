@@ -90,6 +90,8 @@
     "opentype.js": "^2.0.0",
     "prettier": "^3.9.9",
     "publint": "^0.3.25",
+    "react-aria-components": "^1.21.1",
+    "tailwind-variants": "^3.3.1",
     "tsdown": "^0.23.0",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"

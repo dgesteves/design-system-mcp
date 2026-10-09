@@ -367,7 +367,7 @@ function buildComponent(context: FileContext, candidate: Candidate): ComponentIn
   const param = candidate.fn?.parameters[0];
   const typeNode = candidate.propsTypeNode ?? param?.type;
   const definitions = linkedDefinitions(context, candidate, typeNode);
-  const variants = definitions.flatMap((d) => d.variants);
+  const variants = mergeVariants(definitions.flatMap((d) => d.variants));
 
   const { props, inherits, openProps } = extractProps(context, candidate, typeNode, param);
   mergeVariantProps(props, variants);
@@ -541,7 +541,16 @@ function extractProps(
     const names = (byOrigin.get(origin) ?? []).sort();
     const key = registerPropSet(context.propSets, names);
     const from = origin === 'react' ? inheritedLabel(context, typeNode) : origin;
-    inherits.push({ from, count: names.length, set: key });
+    const deprecated = names.filter((name) => {
+      const symbol = own.get(name)?.symbol;
+      return symbol?.getJsDocTags(checker).some((tag) => tag.name === 'deprecated');
+    });
+    inherits.push({
+      from,
+      count: names.length,
+      set: key,
+      ...(deprecated.length ? { deprecated } : {}),
+    });
   }
   return { props, inherits, openProps };
 }
@@ -733,6 +742,46 @@ function inheritedLabel(context: FileContext, typeNode: ts.TypeNode | undefined)
   return parts.length ? parts.join(' & ') : 'React DOM attributes';
 }
 
+/**
+ * A boolean key named like a render state (`isDisabled`, `isPending`, `isSelected`) styles a
+ * state the component reports, as React Aria's starter passes `renderProps` into `tv()`. It is
+ * not a variant callers choose; the prop, if the component takes one, stays a plain prop.
+ */
+function isStateKey(variant: VariantInfo): boolean {
+  return (
+    /^is[A-Z]/.test(variant.name) && variant.values.every((v) => v === 'true' || v === 'false')
+  );
+}
+
+/**
+ * The variants a component offers, once each: several linked definitions (a box and its label,
+ * a base the component extends) can declare the same key. Values keep their first order.
+ */
+function mergeVariants(variants: VariantInfo[]): VariantInfo[] {
+  const merged = new Map<string, VariantInfo>();
+  for (const variant of variants) {
+    if (isStateKey(variant)) continue;
+    const existing = merged.get(variant.name);
+    if (!existing) {
+      merged.set(variant.name, {
+        ...variant,
+        values: [...variant.values],
+        classes: { ...variant.classes },
+      });
+      continue;
+    }
+    for (const value of variant.values) {
+      if (!existing.values.includes(value)) existing.values.push(value);
+      const classes = variant.classes[value];
+      if (classes) {
+        existing.classes[value] = [existing.classes[value], classes].filter(Boolean).join(' ');
+      }
+    }
+    existing.default ??= variant.default;
+  }
+  return [...merged.values()];
+}
+
 /** Adds or enriches variant props from cva/tv definitions (works without type info). */
 function mergeVariantProps(props: PropInfo[], variants: VariantInfo[]): void {
   for (const variant of variants) {
@@ -890,6 +939,7 @@ function collectClasses(nodes: ts.Node[]): { classNames: string[]; cssVars: stri
  */
 function linkComposition(components: ComponentInfo[]): void {
   const names = components.map((c) => c.name);
+  const flat = new Map<string, ComponentInfo[]>();
   for (const component of components) {
     if (component.parent || component.name.includes('.')) continue;
     const parent = names
@@ -901,7 +951,17 @@ function linkComposition(components: ComponentInfo[]): void {
           /^[A-Z]/.test(component.name.charAt(n.length)),
       )
       .sort((a, b) => b.length - a.length)[0];
-    if (parent) component.parent = parent;
+    if (!parent) continue;
+    component.parent = parent;
+    flat.set(parent, [...(flat.get(parent) ?? []), component]);
+  }
+  // `CheckboxGroup` next to `Checkbox` (Jolly UI, React Aria's starter) holds checkboxes; it is
+  // not a part of one. When every name-prefix part of a component is such a container, none
+  // of them is a part. A family with other parts (`SelectGroup` beside `SelectItem`) is one.
+  for (const [parent, parts] of flat) {
+    if (parts.every((part) => /^(Group|List)$/.test(part.name.slice(parent.length)))) {
+      for (const part of parts) delete part.parent;
+    }
   }
   for (const component of components) {
     component.subcomponents = components
