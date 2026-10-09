@@ -43,10 +43,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       # The registry entry points at the npm package, and the plugin pins its version: both follow
-      # the npm publish above, in the same run.
+      # the npm publish above. It runs whenever main has no pending release and does nothing when
+      # the registry already lists this version, so a publish that failed (or a re-run, where
+      # changesets publishes nothing new) is completed by the next push to main.
       - name: Publish to the MCP Registry
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.has-changesets == 'false'
         run: |
+          version=$(node -p "require('./package.json').version")
+          listed=$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.dgesteves/design-system-mcp" \
+            | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+                const servers = JSON.parse(s).servers ?? [];
+                const listed = servers.some(({ server = {} }) => server.version === process.argv[1]);
+                console.log(listed ? "yes" : "no");
+              });' "$version")
+          if [ "$listed" = yes ]; then
+            echo "The MCP Registry already lists $version."
+            exit 0
+          fi
+          # The registry checks that npm serves the version, and npm can take a minute to serve
+          # one it has just accepted.
+          for attempt in $(seq 1 30); do
+            npm view "@dgesteves/design-system-mcp@$version" version > /dev/null 2>&1 && break
+            sleep 10
+          done
           curl -fsSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
