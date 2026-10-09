@@ -7,3 +7,6 @@ schema.json
 test/fixtures
 bench/agents/output
 bench/agents/results
+site/.next
+site/generated
+site/next-env.d.ts

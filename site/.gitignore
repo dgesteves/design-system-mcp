@@ -1,0 +1,4 @@
+.next
+generated
+next-env.d.ts
+*.tsbuildinfo
