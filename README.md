@@ -12,9 +12,9 @@ An MCP server that gives coding agents ground truth about your React design syst
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=design-system&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40dgesteves%2Fdesign-system-mcp%22%5D%7D)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-Plugin-d97757?style=flat-square&logo=claude&logoColor=white)](#claude-code-plugin)
 
-<p align="center">
-  <img src=".github/assets/hero.svg" width="100%" alt="An agent writes app/settings/danger-zone.tsx, calls check_ui, gets 8 errors and 3 warnings with fixes such as border-[#ef4444] to border-destructive and variant=danger to variant=destructive, applies them, and check_ui reports no problems.">
-</p>
+https://github.com/user-attachments/assets/8ca1c640-94c2-4003-b59e-2b0d819c492d
+
+<sub>On the <a href="https://design-system-mcp-demo.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
 
 ## The problem
 
