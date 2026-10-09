@@ -431,6 +431,112 @@ export default () => <><Button variant="danger">Delete</Button><button>Cancel</b
   });
 });
 
+/** A component wrapping React Aria, the way its Tailwind starter writes one per file. */
+const racComponent = (name: string, from = 'react-aria-components') => `'use client';
+import { ${name} as RAC${name}, type ${name}Props } from "${from}"
+export function ${name}(props: ${name}Props) { return <RAC${name} {...props} /> }
+`;
+
+const RAC_PACKAGE = json({
+  name: 'react-aria-tailwind-starter',
+  private: true,
+  dependencies: { 'react-aria-components': '^1.14.0', 'tailwind-variants': '^0.3.1' },
+});
+
+describe('detectProject: a flat folder of components', () => {
+  it("finds a src/ of components that wrap a primitives library, as React Aria's starter has it", async () => {
+    const root = fixture({
+      'package.json': RAC_PACKAGE,
+      // The starter's tsconfig: no path alias, so components are imported by relative path.
+      'tsconfig.json': json({
+        compilerOptions: { jsx: 'react', moduleResolution: 'bundler', strict: true },
+        include: ['src', 'stories'],
+      }),
+      'src/Button.tsx': racComponent('Button', 'react-aria-components/Button'),
+      'src/Checkbox.tsx': racComponent('Checkbox'),
+      'src/Dialog.tsx': racComponent('Dialog'),
+      'src/Select.tsx': racComponent('Select'),
+      'src/Switch.tsx': racComponent('Switch'),
+      'src/TextField.tsx': racComponent('TextField'),
+      'src/utils.ts': `export const focusRing = "outline-2"\n`,
+      'src/index.css': THEME,
+      'stories/Button.stories.tsx': `export default { title: "Button" }\n`,
+    });
+    const config = await loadConfig({ root });
+    expect(config.detected).toBe('src/ (6 components wrapping react-aria-components)');
+    expect(config.components).toEqual(['src/*.{tsx,jsx}']);
+    expect(config.tokens.map((t) => t.path)).toContain('src/index.css');
+    const ds = await load(root);
+    expect(
+      ds
+        .roots()
+        .map((c) => c.name)
+        .sort(),
+    ).toEqual(['Button', 'Checkbox', 'Dialog', 'Select', 'Switch', 'TextField']);
+    expect(ds.getComponent('Button')?.importPath).toBe('./src/Button');
+  });
+
+  it('leaves an app alone when src/ holds its pages and features', () => {
+    const page = (name: string) => `import { useNavigate } from "react-router"
+import { Card } from "./components/Card"
+export function ${name}() { const navigate = useNavigate(); return <Card onClick={() => navigate("/")}>${name}</Card> }
+`;
+    const app = {
+      'package.json': json({
+        name: 'acme-app',
+        dependencies: {
+          react: '^19.0.0',
+          'react-router': '^7.0.0',
+          '@radix-ui/react-dialog': '^1.1.0',
+        },
+      }),
+      'tsconfig.json': TSCONFIG,
+      'src/Dashboard.tsx': page('Dashboard'),
+      'src/Settings.tsx': page('Settings'),
+      'src/Profile.tsx': page('Profile'),
+      'src/Billing.tsx': page('Billing'),
+      'src/Team.tsx': page('Team'),
+      'src/components/Card.tsx': racComponent('Card', '@radix-ui/react-dialog'),
+    };
+    // Pages and features import the app's own components, not primitives.
+    expect(detectProject(fixture(app))).toBeUndefined();
+    // Nor does an app whose src/ also has an entry or a routes folder, whatever else is there.
+    const components = Object.fromEntries(
+      ['Button', 'Checkbox', 'Dialog', 'Select', 'Switch'].map((name) => [
+        `src/${name}.tsx`,
+        racComponent(name),
+      ]),
+    );
+    const withRac = { ...app, 'package.json': RAC_PACKAGE, ...components };
+    expect(detectProject(fixture({ ...withRac, 'src/main.tsx': 'export {}\n' }))).toBeUndefined();
+    expect(detectProject(fixture({ ...withRac, 'src/App.tsx': 'export {}\n' }))).toBeUndefined();
+    expect(
+      detectProject(fixture({ ...withRac, 'src/routes/index.tsx': 'export {}\n' })),
+    ).toBeUndefined();
+  });
+
+  it('needs a primitives dependency, five components, and four in five wrapping it', () => {
+    const files = (count: number, wrapping: number) =>
+      Object.fromEntries(
+        Array.from({ length: count }, (_, i) => {
+          const name = `Widget${String(i)}`;
+          return [
+            `src/${name}.tsx`,
+            i < wrapping ? racComponent(name) : `export function ${name}() { return <div /> }\n`,
+          ];
+        }),
+      );
+    const project = (extra: Record<string, string>, pkg = RAC_PACKAGE) =>
+      fixture({ 'package.json': pkg, 'tsconfig.json': TSCONFIG, ...extra });
+    expect(detectProject(project(files(5, 4)))?.source).toBe(
+      'src/ (5 components wrapping react-aria-components)',
+    );
+    expect(detectProject(project(files(4, 4)))).toBeUndefined();
+    expect(detectProject(project(files(6, 4)))).toBeUndefined();
+    expect(detectProject(project(files(5, 5), json({ name: 'no-primitives' })))).toBeUndefined();
+  });
+});
+
 describe('workspace helpers', () => {
   it('reads block and flow package lists from pnpm-workspace.yaml', () => {
     expect(

@@ -30,7 +30,7 @@ const FAQ: [question: string, answer: string][] = [
   ],
   [
     'My components are not in components/ui. Do I need a config?',
-    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), or is the design-system package itself: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y @dgesteves/design-system-mcp inspect` prints what was found.',
+    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), is the design-system package itself, or keeps its components in a flat `src/` that wraps React Aria, Radix or another primitives library: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y @dgesteves/design-system-mcp inspect` prints what was found.',
   ],
   [
     "Will check fail on my design system's own components?",
