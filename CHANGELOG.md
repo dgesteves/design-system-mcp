@@ -1,5 +1,19 @@
 # @dgesteves/design-system-mcp
 
+## 0.3.1
+
+### Patch Changes
+
+- [#27](https://github.com/dgesteves/design-system-mcp/pull/27) [`4f5d1e6`](https://github.com/dgesteves/design-system-mcp/commit/4f5d1e639c639ab733da166fc880e3808f0b9d61) Thanks [@dgesteves](https://github.com/dgesteves)! - `check`, `check_ui` and `checkSource` no longer throw on code nested thousands of levels deep. The analysis walks the syntax tree with an explicit stack, so deep chains are still checked, and code too deep for TypeScript's parser comes back as a single `syntax` error ("nested too deeply to parse") instead of failing the run or the tool call.
+
+- [#32](https://github.com/dgesteves/design-system-mcp/pull/32) [`08b02e8`](https://github.com/dgesteves/design-system-mcp/commit/08b02e88a7437c22cf024237e9c083a84a8ba17a) Thanks [@dgesteves](https://github.com/dgesteves)! - Zero config finds a flat `src/` of components that wrap a primitives library, the way React Aria's Tailwind starter ships them (`src/Button.tsx`, `src/Checkbox.tsx`), which used to need a config file. It is conservative: it needs a dependency on React Aria, Radix, Base UI, Headless UI or Ark UI, no app entry or route folder in `src/`, and at least five PascalCase files there, four in five of which import that library. Projects detected another way are unaffected.
+
+- [#31](https://github.com/dgesteves/design-system-mcp/pull/31) [`403f4a7`](https://github.com/dgesteves/design-system-mcp/commit/403f4a72abe89c35af326a11bf3b1b1c75fc6c3f) Thanks [@dgesteves](https://github.com/dgesteves)! - Accurate `get_component` contracts for React Aria Components design systems. Boolean `tv()` keys that style a render state (`isDisabled`, `isPending`, `isSelected`) are no longer listed as variants, so those props keep their own type and JSDoc, and a variant declared by two linked definitions is listed once. The inherited-props summary of a React Aria component names `onPress`, `onChange`, `isDisabled`, `isRequired` and the like instead of `onClick`, and leaves out props marked `@deprecated`. A container defined next to its item (`CheckboxGroup` beside `Checkbox`) is no longer listed as one of its parts.
+
+- [#29](https://github.com/dgesteves/design-system-mcp/pull/29) [`507ba5e`](https://github.com/dgesteves/design-system-mcp/commit/507ba5e3c0bc0660c1babc139715869deb27a2e1) Thanks [@dgesteves](https://github.com/dgesteves)! - Render props and style functions are checked. `icon-button-accessible-name` judges a function child (`<Button>{({ isPending }) => <Trash2 />}</Button>`, as in React Aria Components) by what it returns, across every `return` and branch. The color, spacing and radius rules read `style={({ isPressed }) => ({ ... })}` like a style object, and check each branch of a conditional style value (`isPressed ? "#ef4444" : undefined`).
+
+- [#30](https://github.com/dgesteves/design-system-mcp/pull/30) [`e59ef9f`](https://github.com/dgesteves/design-system-mcp/commit/e59ef9f85f55d42e2031030a23850f6e6317479d) Thanks [@dgesteves](https://github.com/dgesteves)! - Better suggestions. `no-unknown-prop` maps equivalent props in either direction to the one the component takes: `checked` → `isSelected`, `open` → `isOpen` and `disabled` → `isDisabled` on React Aria Components, and the reverse on Radix and native elements. In a project without a path alias, the import in a finding is relative to the checked file (`../ui/Button` from `src/pages/`) rather than to the project root.
+
 ## 0.3.0
 
 ### Minor Changes
