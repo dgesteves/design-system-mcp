@@ -559,8 +559,12 @@ function WorksWith() {
     'VS Code',
     'Claude Desktop',
     'Codex CLI',
+    'GitHub Copilot CLI',
+    'Windsurf',
+    'JetBrains IDEs',
     'Zed',
     'Gemini CLI',
+    'Grok Build',
     'Any stdio MCP client',
   ];
   const stacks = [
