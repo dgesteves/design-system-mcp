@@ -42,6 +42,29 @@ export interface Analysis {
 }
 
 const CLASS_FUNCTIONS = /^(cn|clsx|cx|twMerge|twJoin|classNames|classnames|cva|tv)$/;
+
+/** The node's children in source order. */
+function childrenOf(node: ts.Node): ts.Node[] {
+  const children: ts.Node[] = [];
+  ts.forEachChild(node, (child) => {
+    children.push(child);
+  });
+  return children;
+}
+
+/**
+ * Visits `root` and its descendants depth-first, in source order, with an explicit stack:
+ * generated or adversarial code can nest thousands of levels deep, more than recursion allows.
+ * `enter` returns false to skip a node's children.
+ */
+function walk(root: ts.Node, enter: (node: ts.Node) => boolean): void {
+  const stack: ts.Node[] = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (!enter(node)) continue;
+    const children = childrenOf(node);
+    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i] as ts.Node);
+  }
+}
 const VARIANT_FUNCTIONS = /^(cva|tv)$/;
 
 export function analyze(sourceFile: ts.SourceFile): Analysis {
@@ -56,15 +79,17 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
   const text = sourceFile.text;
 
   const collectStrings = (node: ts.Node, element?: JsxNode): void => {
-    const visit = (n: ts.Node): void => {
-      if (seenStrings.has(n)) return;
+    // Depth-first in source order, with an explicit stack, like `walk`.
+    const stack: ts.Node[] = [node];
+    for (let n = stack.pop(); n; n = stack.pop()) {
+      if (seenStrings.has(n)) continue;
       // Conditions like `size === "icon"` are not class names.
-      if (ts.isBinaryExpression(n) && isComparison(n.operatorToken.kind)) return;
+      if (ts.isBinaryExpression(n) && isComparison(n.operatorToken.kind)) continue;
       if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
         seenStrings.add(n);
         const start = n.getStart(sourceFile) + 1;
         analysis.classStrings.push({ text: text.slice(start, n.end - 1), start, element });
-        return;
+        continue;
       }
       if (ts.isTemplateExpression(n)) {
         seenStrings.add(n);
@@ -77,19 +102,19 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
           const end = ts.isTemplateTail(part) ? part.end - 1 : part.end - 2;
           analysis.classStrings.push({ text: text.slice(start, end), start, element });
         }
-        n.templateSpans.forEach((span) => {
-          visit(span.expression);
-        });
-        return;
+        for (let i = n.templateSpans.length - 1; i >= 0; i--) {
+          stack.push((n.templateSpans[i] as ts.TemplateSpan).expression);
+        }
+        continue;
       }
       // Object keys in clsx({ "bg-red-500": cond }) are classes; values are conditions.
       if (ts.isPropertyAssignment(n)) {
-        visit(n.name);
-        return;
+        stack.push(n.name);
+        continue;
       }
-      ts.forEachChild(n, visit);
-    };
-    visit(node);
+      const children = childrenOf(n);
+      for (let i = children.length - 1; i >= 0; i--) stack.push(children[i] as ts.Node);
+    }
   };
 
   /** A class value, or an object of them: tv slots, and variant options that style slots. */
@@ -136,7 +161,7 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
     }
   };
 
-  const visit = (node: ts.Node): void => {
+  const enter = (node: ts.Node): boolean => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       const source = node.moduleSpecifier.text;
       const clause = node.importClause;
@@ -152,7 +177,7 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
           });
         }
       }
-      return;
+      return false;
     }
 
     if (
@@ -206,10 +231,10 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
         else collectStrings(arg);
       });
     }
-    ts.forEachChild(node, visit);
+    return true;
   };
 
-  visit(sourceFile);
+  walk(sourceFile, enter);
   return analysis;
 }
 

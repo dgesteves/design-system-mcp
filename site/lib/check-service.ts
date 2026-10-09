@@ -9,13 +9,7 @@ import type { CheckResult } from '@dgesteves/design-system-mcp';
  */
 
 export type ErrorCode =
-  | 'invalid_json'
-  | 'invalid_request'
-  | 'too_large'
-  | 'too_complex'
-  | 'rate_limited'
-  | 'timeout'
-  | 'internal';
+  'invalid_json' | 'invalid_request' | 'too_large' | 'rate_limited' | 'timeout' | 'internal';
 
 export interface CheckError {
   error: { code: ErrorCode; message: string };
@@ -195,14 +189,6 @@ export function createCheckHandler({ check, maxBytes, timeoutMs, limiter }: Chec
           503,
           'timeout',
           `The check took longer than ${String(timeoutMs / 1000)} s and was stopped. Try a smaller piece of code.`,
-        );
-      }
-      // Thousands of nested brackets overflow the parser's recursion; nobody writes that.
-      if (error instanceof RangeError && /call stack/i.test(error.message)) {
-        return fail(
-          422,
-          'too_complex',
-          'This code is nested too deeply to parse. Real components are nowhere near that deep.',
         );
       }
       console.error('check_ui playground:', error);

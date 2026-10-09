@@ -41,6 +41,43 @@ export interface CheckOptions {
  */
 export function checkSource(code: string, target: LintTarget, options: CheckOptions): CheckResult {
   const file = options.filename ?? 'snippet.tsx';
+  try {
+    return checkParsed(code, target, options, file);
+  } catch (error) {
+    if (!isStackOverflow(error)) throw error;
+    // TypeScript's parser is recursive: thousands of nested brackets or tags exhaust the
+    // stack. Say so as a finding rather than failing the check, the CLI run or the tool call.
+    return {
+      file,
+      diagnostics: [
+        {
+          ruleId: 'syntax',
+          severity: 'error',
+          message:
+            'The code is nested too deeply to parse (thousands of levels), so it was not checked.',
+          line: 1,
+          column: 1,
+          endLine: 1,
+          endColumn: 1,
+          source: '',
+        },
+      ],
+      errorCount: 1,
+      warningCount: 0,
+    };
+  }
+}
+
+function isStackOverflow(error: unknown): boolean {
+  return error instanceof RangeError && /call stack/i.test(error.message);
+}
+
+function checkParsed(
+  code: string,
+  target: LintTarget,
+  options: CheckOptions,
+  file: string,
+): CheckResult {
   // `.ts` files must not be parsed as TSX: `<T>(x: T) => x` would read as a JSX tag.
   const kind = /\.[cm]?jsx?$/.test(file)
     ? ts.ScriptKind.JSX

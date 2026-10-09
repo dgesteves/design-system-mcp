@@ -1142,6 +1142,36 @@ describe('the engine', () => {
     );
   });
 
+  it('checks deeply nested code without running out of stack', () => {
+    // A chain of thousands of operators: the parser builds it without recursing, and so must
+    // the analysis, so this is checked (it is not valid code) rather than reported as too deep.
+    const chain = ds.check('<'.repeat(5000)).diagnostics;
+    expect(chain.length).toBeGreaterThan(1);
+    expect(chain.every((d) => !d.message.includes('too deeply'))).toBe(true);
+    const nested = `${'<div>'.repeat(300)}<button className="bg-[#ef4444]">Save</button>${'</div>'.repeat(300)}`;
+    expect(check(nested).map((d) => d.ruleId)).toEqual([
+      'prefer-design-system-component',
+      'no-hardcoded-color',
+    ]);
+    const classes = `<p className={cn(${'cn('.repeat(300)}"bg-[#ef4444]"${')'.repeat(300)})} />`;
+    expect(check(classes, 'no-hardcoded-color')).toHaveLength(1);
+  });
+
+  it('reports code too deep to parse as one finding instead of throwing', () => {
+    for (const code of [
+      '{'.repeat(5000),
+      '('.repeat(20000),
+      `const x = ${'a ? b : '.repeat(5000)}c`,
+    ]) {
+      const result = ds.check(code, 'deep.tsx');
+      expect(result).toMatchObject({ file: 'deep.tsx', errorCount: 1, warningCount: 0 });
+      expect(result.diagnostics[0]).toMatchObject({ ruleId: 'syntax', line: 1, column: 1 });
+      expect(result.diagnostics[0]?.message).toMatch(/nested too deeply to parse/);
+    }
+    // The checker is fine afterwards.
+    expect(check(`${IMPORTS}<Button variant="danger" />`, 'no-unknown-variant')).toHaveLength(1);
+  });
+
   it('does not count a byte-order mark as a column, and keeps fix offsets on the text', () => {
     const code = '\uFEFF<button>x</button>';
     const [d] = ds.check(code).diagnostics;

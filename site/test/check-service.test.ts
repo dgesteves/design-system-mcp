@@ -196,13 +196,15 @@ describe('the check endpoint', () => {
     }
   });
 
-  it('says so when code is nested too deeply to parse, and keeps working', async () => {
-    // Thousands of nested brackets overflow TypeScript's recursive parser.
-    for (const code of ['<'.repeat(5000), '{'.repeat(5000)]) {
-      const response = await handler()(post({ code }));
-      expect(response.status).toBe(422);
-      expect((await json<CheckError>(response)).error.code).toBe('too_complex');
-    }
+  it('answers code nested too deeply to parse with a finding, and keeps working', async () => {
+    // Thousands of nested brackets overflow TypeScript's recursive parser; the library reports it.
+    const response = await handler()(post({ code: '{'.repeat(5000) }));
+    expect(response.status).toBe(200);
+    const result = await json<CheckResponse>(response);
+    expect(result.diagnostics[0]).toMatchObject({ ruleId: 'syntax' });
+    expect(result.diagnostics[0]?.message).toMatch(/nested too deeply to parse/);
+    // A long operator chain is checked rather than refused.
+    expect((await handler()(post({ code: '<'.repeat(5000) }))).status).toBe(200);
     const after = await handler()(post({ code: draft }));
     expect((await json<CheckResponse>(after)).errorCount).toBe(8);
   });
