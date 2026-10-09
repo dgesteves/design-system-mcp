@@ -63,6 +63,8 @@ const STYLESHEETS = [
  *    workspace sources, read the same way or through their own `components.json`,
  *    or, for a package without `exports` that apps import by path
  *    (`@acme/ui/primitives/button`), from the files the root's code imports.
+ * 4. A flat folder of components that wrap a primitives library, the way React
+ *    Aria's Tailwind starter ships them (`src/Button.tsx`, `src/Checkbox.tsx`).
  *
  * A candidate whose globs match no file is skipped. Returns undefined when
  * nothing applies, so the shadcn defaults stay in force.
@@ -107,8 +109,94 @@ export function detectProject(root: string, tsconfig?: string): Detection | unde
       fromImports(root, dir, name, (imported ??= importedSubpaths(root, names)).get(name));
     if (candidate && matchesAny(root, candidate)) found.push(candidate);
   }
-  if (!found.length) return undefined;
-  return detection(root, found, true, `workspace package ${found.map((d) => d.source).join(', ')}`);
+  if (found.length) {
+    return detection(
+      root,
+      found,
+      true,
+      `workspace package ${found.map((d) => d.source).join(', ')}`,
+    );
+  }
+
+  const flat = own ? fromFlatFolder(root, own) : undefined;
+  if (flat && matchesAny(root, flat)) return detection(root, [flat], false, flat.source);
+  return undefined;
+}
+
+/** Libraries of unstyled primitives that design systems wrap. */
+const PRIMITIVES =
+  /^(?:react-aria-components|react-aria|radix-ui|@radix-ui\/react-[\w-]+|@base-ui-components\/react|@base-ui\/react|@headlessui\/react|@ark-ui\/react)(?:\/|$)/;
+
+/** Files that make `src/` an app rather than a library: entries and route folders. */
+const APP_ENTRIES = /^(?:main|index|App|app|root|entry-client|entry-server)\.[jt]sx?$/;
+const APP_FOLDERS = new Set(['app', 'pages', 'routes']);
+
+/** Fewer PascalCase files than this in `src/` are an app's, not a component library. */
+const MIN_FLAT_COMPONENTS = 5;
+
+/**
+ * A flat `src/` of components, as React Aria's Tailwind starter has it. It needs all of:
+ * a dependency on a primitives library, no app entry (`main.tsx`, `App.tsx`) or route
+ * folder in `src/`, and at least five PascalCase `.tsx`/`.jsx` files at its top level, four
+ * in five of which import the primitives library. An app whose `src/` holds pages or
+ * features imports its own components, not primitives, so it does not qualify.
+ */
+function fromFlatFolder(root: string, pkg: Record<string, unknown>): Found | undefined {
+  const dependencies = Object.keys({
+    ...asRecord(pkg.dependencies),
+    ...asRecord(pkg.devDependencies),
+    ...asRecord(pkg.peerDependencies),
+  }).filter((name) => PRIMITIVES.test(name));
+  if (!dependencies.length) return undefined;
+
+  const dir = path.join(root, 'src');
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  if (
+    entries.some(
+      (e) =>
+        (e.isFile() && APP_ENTRIES.test(e.name)) || (e.isDirectory() && APP_FOLDERS.has(e.name)),
+    )
+  ) {
+    return undefined;
+  }
+  const files = entries
+    .filter((e) => e.isFile() && /^[A-Z][A-Za-z0-9]*\.[jt]sx$/.test(e.name))
+    .map((e) => e.name);
+  if (files.length < MIN_FLAT_COMPONENTS) return undefined;
+
+  const libraries = new Map<string, number>();
+  let wrapping = 0;
+  for (const file of files) {
+    let text: string;
+    try {
+      text = fs.readFileSync(path.join(dir, file), 'utf8');
+    } catch {
+      continue;
+    }
+    const used = new Set<string>();
+    for (const match of text.matchAll(/\bfrom\s*['"]([^'"]+)['"]/g)) {
+      const library = PRIMITIVES.exec(match[1] ?? '')?.[0].replace(/\/$/, '');
+      if (library) used.add(library);
+    }
+    if (used.size) wrapping++;
+    for (const library of used) libraries.set(library, (libraries.get(library) ?? 0) + 1);
+  }
+  if (wrapping * 5 < files.length * 4) return undefined;
+
+  const library = [...libraries].sort((a, b) => b[1] - a[1])[0]?.[0] ?? dependencies[0] ?? '';
+  const stylesheet = STYLESHEETS.map((f) => path.join(root, f)).find((f) => fs.existsSync(f));
+  return {
+    components: ['src/*.{tsx,jsx}'],
+    tokens: stylesheet ? [escapePath(relativePath(root, stylesheet))] : [],
+    imports: [],
+    dirs: [dir],
+    source: `src/ (${String(files.length)} components wrapping ${library})`,
+  };
 }
 
 function detection(root: string, found: Found[], withDefaults: boolean, source: string): Detection {
