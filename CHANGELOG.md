@@ -1,5 +1,11 @@
 # @dgesteves/design-system-mcp
 
+## 0.3.3
+
+### Patch Changes
+
+- [#40](https://github.com/dgesteves/design-system-mcp/pull/40) [`1b7934d`](https://github.com/dgesteves/design-system-mcp/commit/1b7934ddca71502117d91c8e3faddc0b260cb80b) Thanks [@dgesteves](https://github.com/dgesteves)! - The README on npm opens with the demo animated, the same one GitHub plays as a video, instead of a still image.
+
 ## 0.3.2
 
 ### Patch Changes
