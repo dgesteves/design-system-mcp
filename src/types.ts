@@ -83,6 +83,8 @@ export interface InheritedProps {
   count: number;
   /** Key into `DesignSystemModel.propSets` with the full list of names. */
   set: string;
+  /** Names in the set marked `@deprecated` (React Aria's `onClick`), left out of summaries. */
+  deprecated?: string[];
 }
 
 export interface ExampleInfo {

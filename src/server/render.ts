@@ -72,6 +72,22 @@ const NOTABLE_INHERITED: Record<string, string[]> = {
   default: ['onClick', 'id', 'role', 'children'],
 };
 
+/** What callers of a React Aria component most often need, from its inherited props. */
+const REACT_ARIA_NOTABLE = [
+  'onPress',
+  'onChange',
+  'onAction',
+  'onSelectionChange',
+  'onOpenChange',
+  'value',
+  'defaultValue',
+  'isDisabled',
+  'isRequired',
+  'isInvalid',
+  'isReadOnly',
+  'autoFocus',
+];
+
 function renderProp(prop: PropInfo): string {
   const optional = prop.required ? '' : '?';
   const fallback = prop.default !== undefined ? ` = ${prop.default}` : '';
@@ -103,8 +119,11 @@ export function renderComponent(ds: DesignSystem, component: ComponentInfo): str
   for (const prop of component.props) lines.push(renderProp(prop));
   for (const inherited of component.inherits) {
     const names = ds.model.propSets[inherited.set] ?? [];
-    const wanted = NOTABLE_INHERITED[component.element ?? ''] ?? NOTABLE_INHERITED.default ?? [];
-    const notable = wanted.filter((n) => names.includes(n));
+    // React Aria's event props mark its components, whatever they render.
+    const wanted = names.some((n) => n === 'onPress' || n === 'onFocusChange')
+      ? REACT_ARIA_NOTABLE
+      : (NOTABLE_INHERITED[component.element ?? ''] ?? NOTABLE_INHERITED.default ?? []);
+    const notable = wanted.filter((n) => names.includes(n) && !inherited.deprecated?.includes(n));
     lines.push(
       `- …plus ${inherited.count} props from ${inherited.from}` +
         (notable.length ? ` (${notable.join(', ')}, aria-*, data-*, …)` : ''),
