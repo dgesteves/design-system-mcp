@@ -192,6 +192,81 @@ write('demo.json', {
   checkMs: Math.round(checkMs * 100) / 100,
 });
 
+// ─── The playground: the model to check against, and the drafts ────────────
+
+// The route handler builds a DesignSystem from this JSON and never touches the filesystem.
+// Paths from this machine are left out: the model only needs paths relative to the root.
+const PLAYGROUND_FILE = 'app/playground.tsx';
+const { root: _root, configFile: _configFile, tailwindConfig: _tailwind, ...portable } = config;
+const playgroundConfig = { ...portable, root: '/demo' };
+const playgroundModel = {
+  ...model,
+  root: '/demo',
+  warnings: [],
+  stats: { ...model.stats, durationMs: 0 },
+};
+const portableDs = new DesignSystem(
+  JSON.parse(JSON.stringify(playgroundModel)),
+  JSON.parse(JSON.stringify(playgroundConfig)),
+);
+// The JSON round trip must not change a single finding.
+assert.deepEqual(
+  portableDs.check(draft, demoFile).diagnostics,
+  result.diagnostics,
+  'the serialised model should check exactly like the loaded one',
+);
+write('playground-model.json', {
+  file: PLAYGROUND_FILE,
+  model: playgroundModel,
+  config: playgroundConfig,
+});
+
+const { deleteDialog, snippet } = await import('./presets.mjs');
+const demoSource = (file) =>
+  fs.readFileSync(path.join(demoRoot, file), 'utf8').replace(/^(?:\/\/[^\n]*\n)+/, '');
+const presets = [
+  {
+    id: 'danger-zone',
+    label: 'Agent draft',
+    file: 'danger-zone.tsx',
+    description: 'The settings card from the demo above: one problem per rule.',
+    code: draft,
+  },
+  {
+    id: 'delete-dialog',
+    label: 'Dialog',
+    file: 'delete-dialog.tsx',
+    description: 'A confirmation dialog with props, parts and values from other libraries.',
+    code: deleteDialog,
+  },
+  {
+    id: 'snippet',
+    label: 'Snippet',
+    file: 'snippet.tsx',
+    description: 'A fragment with no imports, the way agents often check code before saving it.',
+    code: snippet,
+  },
+  {
+    id: 'members',
+    label: 'Clean',
+    file: 'members.tsx',
+    description: 'UI written against the design system: nothing to report.',
+    code: demoSource('app/settings/members.tsx'),
+  },
+].map((preset) => ({ ...preset, result: portableDs.check(preset.code, PLAYGROUND_FILE) }));
+for (const preset of presets) {
+  const { errorCount, warningCount, diagnostics } = preset.result;
+  const clean = preset.id === 'members';
+  assert.ok(
+    clean
+      ? diagnostics.length === 0
+      : errorCount > 0 && !diagnostics.some((d) => d.ruleId === 'syntax'),
+    `preset ${preset.id}: unexpected result ${JSON.stringify(diagnostics.map((d) => d.ruleId))}`,
+  );
+  console.log(`  preset ${preset.id}: ${errorCount} errors, ${warningCount} warnings`);
+}
+write('playground.json', { file: PLAYGROUND_FILE, presets });
+
 // ─── What the agent sees: the real MCP server over stdio ────────────────────
 
 const pkg = JSON.parse(

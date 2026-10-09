@@ -35,3 +35,6 @@ export const MORE = [
     description: 'React components for agent runs: tool timelines, approvals, diff review.',
   },
 ];
+
+/** Where the rules are documented. */
+export const RULES_HREF = readmeLink('rules');

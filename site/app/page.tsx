@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Benchmark } from '@/components/benchmark';
 import { Code } from '@/components/code';
 import { ArrowRightIcon, CheckIcon } from '@/components/icons';
@@ -93,7 +95,14 @@ function Hero() {
             Real output: the findings and fixes are what <InlineCode>check_ui</InlineCode> returns
             for this file against the{' '}
             <TextLink href={repoLink('examples/shadcn-demo', 'tree')}>demo design system</TextLink>,
-            generated when this site was built.
+            generated when this site was built.{' '}
+            <Link
+              href="/playground"
+              className="group inline-flex items-center gap-1 font-medium text-fg-soft transition-colors hover:text-fg"
+            >
+              Try it on your own code
+              <ArrowRightIcon className="size-3.5 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-cyan" />
+            </Link>
           </p>
         </div>
       </div>

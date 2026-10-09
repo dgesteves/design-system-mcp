@@ -10,8 +10,24 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  turbopack: { root },
+  turbopack: {
+    root,
+    // The playground's route handler imports the library, whose CLI and server read projects
+    // from disk with computed paths. Turbopack flags each of those calls; the route never
+    // makes them, so the warnings are noise, and the files they make it trace are left out below.
+    ignoreIssue: [{ path: /dist\/.+\.js$/, title: /Dynamic filesystem access/ }],
+  },
   outputFileTracingRoot: root,
+  outputFileTracingExcludes: {
+    '/api/check': [
+      './app/**',
+      './components/**',
+      './generated/**',
+      './lib/**',
+      './scripts/**',
+      './test/**',
+    ],
+  },
   headers() {
     return Promise.resolve([
       {
