@@ -6,3 +6,6 @@ coverage
 .eslintcache
 .vscode/*
 !.vscode/extensions.json
+
+# Original README while `npm pack` swaps in the npm version (scripts/npm-readme.mjs)
+.npm-readme-backup.md

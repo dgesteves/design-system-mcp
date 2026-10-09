@@ -66,7 +66,9 @@
     "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-server-json.mjs",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "prepack": "node scripts/npm-readme.mjs prepack",
+    "postpack": "node scripts/npm-readme.mjs postpack"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
