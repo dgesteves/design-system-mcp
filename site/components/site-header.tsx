@@ -12,9 +12,9 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { href: '/#benchmark', label: 'Benchmark' },
-  { href: '/#how-it-works', label: 'How it works' },
   { href: '/playground', label: 'Playground' },
-  { href: `${REPO}#readme`, label: 'Docs' },
+  { href: '/rules', label: 'Rules' },
+  { href: '/docs', label: 'Docs' },
 ];
 
 /** Shown on small screens too; the rest from md up. */

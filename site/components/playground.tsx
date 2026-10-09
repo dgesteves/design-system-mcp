@@ -8,7 +8,7 @@ import { InlineMarkdown } from '@/components/markdown';
 import type { CheckError, CheckResponse } from '@/lib/check-service';
 import { highlightLines, type Mark } from '@/lib/highlight';
 import type { Preset, PresetResult } from '@/lib/playground';
-import { RULES_HREF } from '@/lib/site';
+import { ruleHref } from '@/lib/site';
 
 type Diagnostic = PresetResult['diagnostics'][number];
 
@@ -438,7 +438,7 @@ export function Playground({ presets, maxBytes }: { presets: Preset[]; maxBytes:
                       <span className="truncate text-muted">syntax</span>
                     ) : (
                       <a
-                        href={RULES_HREF}
+                        href={ruleHref(d.ruleId)}
                         className="inline-flex min-w-0 items-center gap-0.5 truncate text-muted hover:text-fg"
                       >
                         {d.ruleId}

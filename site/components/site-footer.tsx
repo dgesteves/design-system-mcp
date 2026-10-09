@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { LogoMark } from '@/components/logo';
 import { AUTHOR, MORE, NPM, REGISTRY, REPO, VERSION, repoLink } from '@/lib/site';
 
@@ -20,6 +22,21 @@ export function SiteFooter() {
         <nav aria-label="Project">
           <h2 className="font-mono text-[11px] tracking-[0.14em] text-subtle uppercase">Project</h2>
           <ul className="mt-3 grid gap-2 text-sm">
+            <li>
+              <Link className={link} href="/docs">
+                Docs
+              </Link>
+            </li>
+            <li>
+              <Link className={link} href="/rules">
+                Rules
+              </Link>
+            </li>
+            <li>
+              <Link className={link} href="/playground">
+                Playground
+              </Link>
+            </li>
             <li>
               <a className={link} href={REPO}>
                 GitHub

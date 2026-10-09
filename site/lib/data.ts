@@ -5,6 +5,7 @@
 import benchJson from '@/generated/bench.json';
 import demoJson from '@/generated/demo.json';
 import designSystemJson from '@/generated/design-system.json';
+import docsJson from '@/generated/docs.json';
 import readmeJson from '@/generated/readme.json';
 import rulesJson from '@/generated/rules.json';
 import toolsJson from '@/generated/tools.json';
@@ -85,6 +86,51 @@ export interface Rule {
   severity: 'error' | 'warn' | 'off';
 }
 
+export interface RuleEntry extends Rule {
+  /** The README's Rules table, as Markdown. */
+  catches: string;
+  suggests: string;
+  why: string;
+  allow: string | null;
+  /** An example the rule trips on, and the same code after the fix (verified clean). */
+  bad: string;
+  good: string;
+  fixedBy: 'rule' | 'hand';
+  changes: { start: number; end: number }[];
+  findings: {
+    severity: 'error' | 'warning';
+    message: string;
+    line: number;
+    column: number;
+    start: number;
+    end: number;
+    suggestion: string | null;
+    fixable: boolean;
+  }[];
+}
+
+export interface RuleCatalog {
+  version: string;
+  rules: RuleEntry[];
+  /** How colour, spacing and radius fixes are chosen, from the README. */
+  details: string;
+}
+
+export interface Docs {
+  quickstart: string;
+  setup: string;
+  plugin: string;
+  cursorVsCode: string;
+  otherClients: string;
+  tools: string;
+  zeroConfig: string;
+  configFile: string;
+  ci: string;
+  baseline: string;
+  limits: string;
+  skill: string;
+}
+
 export interface MarkdownTable {
   header: string[];
   rows: string[][];
@@ -117,6 +163,8 @@ function typed<T>(json: unknown): T {
 export const demo = typed<Demo>(demoJson);
 export const bench = typed<Bench>(benchJson);
 export const tools = typed<Tools>(toolsJson);
-export const rules = typed<{ rules: Rule[] }>(rulesJson).rules;
+export const ruleCatalog = typed<RuleCatalog>(rulesJson);
+export const rules: Rule[] = ruleCatalog.rules;
+export const docs = typed<Docs>(docsJson);
 export const readme = typed<Readme>(readmeJson);
 export const designSystem = typed<DesignSystemSummary>(designSystemJson);

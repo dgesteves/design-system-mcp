@@ -36,5 +36,32 @@ export const MORE = [
   },
 ];
 
-/** Where the rules are documented. */
-export const RULES_HREF = readmeLink('rules');
+/** A rule's entry in the catalog. */
+export function ruleHref(id: string): string {
+  return `/rules#${id}`;
+}
+
+/**
+ * README anchors that have a page on this site. Links in README text shown here go to the
+ * site's page; other anchors go to the README on GitHub.
+ */
+export const README_ANCHORS: Record<string, string> = {
+  quickstart: '/docs',
+  setup: '/docs/clients',
+  'cursor-and-vs-code': '/docs/clients#cursor-and-vs-code',
+  'other-clients': '/docs/clients#other-clients',
+  'claude-code-plugin': '/docs/plugin',
+  tools: '/docs/tools',
+  rules: '/rules',
+  configuration: '/docs/configuration',
+  'zero-config': '/docs/configuration#zero-config',
+  'config-file': '/docs/configuration#config-file',
+  ci: '/docs/ci',
+  'adopting-it-in-an-existing-codebase': '/docs/ci#adopting-it-in-an-existing-codebase',
+  limits: '/docs/faq#limits',
+};
+
+/** Where a README anchor points from the site. */
+export function docsHref(anchor: string): string {
+  return README_ANCHORS[anchor] ?? readmeLink(anchor);
+}

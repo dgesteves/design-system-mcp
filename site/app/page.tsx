@@ -8,7 +8,7 @@ import { LoopDemo } from '@/components/loop-demo';
 import { InlineMarkdown, resolveReadmeHref } from '@/components/markdown';
 import { Eyebrow, InlineCode, Section, TextLink } from '@/components/section';
 import { bench, demo, readme, rules, tools } from '@/lib/data';
-import { REPO, readmeLink, repoLink } from '@/lib/site';
+import { docsHref, REPO, repoLink } from '@/lib/site';
 
 export default function Home() {
   return (
@@ -154,7 +154,7 @@ function Proof() {
           Claude Code built ten components a chat product needs for{' '}
           <TextLink href="https://github.com/vercel/ai-chatbot">vercel/ai-chatbot</TextLink>, a real
           shadcn/ui app: once as it ships, once with the{' '}
-          <TextLink href={readmeLink('claude-code-plugin')}>plugin</TextLink>. Then{' '}
+          <TextLink href={docsHref('claude-code-plugin')}>plugin</TextLink>. Then{' '}
           <InlineCode>design-system-mcp check</InlineCode> scored every file it wrote.
         </p>
       }
@@ -307,7 +307,7 @@ function HowItWorks() {
             No config for a shadcn/ui <InlineCode>components.json</InlineCode>, a monorepo whose
             components live in a workspace package (<InlineCode>@acme/ui</InlineCode>), or the
             design-system package itself.{' '}
-            <TextLink href={readmeLink('zero-config')}>How it finds them</TextLink>.
+            <TextLink href={docsHref('zero-config')}>How it finds them</TextLink>.
           </p>
         </Card>
         <Card step="02" title="Answers the agent over MCP">
@@ -560,8 +560,8 @@ function WorksWith() {
           React only (<InlineCode>.tsx</InlineCode> and <InlineCode>.jsx</InlineCode>), with Node.js{' '}
           {readme.engines.node.replace('>=', '')} or later. Styling is checked in Tailwind classes,{' '}
           <InlineCode>style</InlineCode> objects and color attributes, not in CSS-in-JS or CSS
-          Modules. The full list of <TextLink href={readmeLink('limits')}>limits</TextLink> is in
-          the README.
+          Modules. The full list of <TextLink href={docsHref('limits')}>limits</TextLink> is in the
+          docs.
         </p>
       }
     >
@@ -574,7 +574,7 @@ function WorksWith() {
             ))}
           </ul>
           <p className="mt-4 text-[14px] text-muted">
-            Configs for each are in the <TextLink href={readmeLink('setup')}>setup guide</TextLink>.
+            Configs for each are in the <TextLink href={docsHref('setup')}>setup guide</TextLink>.
           </p>
         </div>
         <div>
@@ -585,7 +585,7 @@ function WorksWith() {
             ))}
           </ul>
           <p className="mt-4 text-[14px] text-muted">
-            Other layouts take a <TextLink href={readmeLink('configuration')}>config file</TextLink>{' '}
+            Other layouts take a <TextLink href={docsHref('configuration')}>config file</TextLink>{' '}
             with a few globs.
           </p>
         </div>
