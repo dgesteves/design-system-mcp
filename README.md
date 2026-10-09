@@ -59,7 +59,7 @@ No config is needed in a shadcn/ui project (Tailwind v3 or v4), a monorepo whose
   ```
 
 - **Cursor or VS Code**: click the install badge at the top, or add the [config](#cursor-and-vs-code) to the repository.
-- **Any other MCP client**: run `npx -y @dgesteves/design-system-mcp` as a stdio server. There are [configs for Claude Desktop, Codex CLI, Zed and Gemini CLI](#other-clients).
+- **Any other MCP client**: run `npx -y @dgesteves/design-system-mcp` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](#other-clients).
 
 **2. See what it found**, from the app's folder:
 
@@ -188,6 +188,72 @@ args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
 </details>
 
 <details>
+<summary><strong>GitHub Copilot CLI</strong></summary>
+
+```sh
+copilot mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app
+```
+
+That writes `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "design-system": {
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"],
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+In a session, `/mcp show design-system` lists its tools.
+
+</details>
+
+<details>
+<summary><strong>Windsurf (Devin Desktop)</strong></summary>
+
+Windsurf is now Devin Desktop, and its agent reads the Devin CLI's MCP config: `~/.config/devin/mcp_config.json` (`%APPDATA%\devin\mcp_config.json` on Windows), or `.devin/mcp_config.json` in the repository to share it with the team:
+
+```json
+{
+  "mcpServers": {
+    "design-system": {
+      "command": "npx",
+      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+    }
+  }
+}
+```
+
+From the terminal, `devin mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app` adds the same entry.
+
+</details>
+
+<details>
+<summary><strong>JetBrains IDEs (AI Assistant and Junie)</strong></summary>
+
+For AI Assistant, open Settings → Tools → AI Assistant → Model Context Protocol (MCP), click Add, choose STDIO and paste:
+
+```json
+{
+  "mcpServers": {
+    "design-system": {
+      "command": "npx",
+      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+    }
+  }
+}
+```
+
+Set the server level to the project to run it only there. Junie reads the same format from `.junie/mcp/mcp.json` in the project, or `~/.junie/mcp/mcp.json` for every project.
+
+</details>
+
+<details>
 <summary><strong>Zed</strong></summary>
 
 In Zed's `settings.json`:
@@ -221,6 +287,25 @@ In Zed's `settings.json`:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><strong>Grok Build</strong></summary>
+
+```sh
+grok mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app
+```
+
+or in `~/.grok/config.toml` (`--scope project` writes `.grok/config.toml` in the repository instead):
+
+```toml
+[mcp_servers.design-system]
+command = "npx"
+args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+```
+
+`grok mcp doctor design-system` starts it and lists its tools. Grok Build also reads a project's `.mcp.json` once you trust the folder.
 
 </details>
 

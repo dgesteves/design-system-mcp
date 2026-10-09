@@ -9,7 +9,7 @@ export const DOCS_PAGES = [
     href: '/docs/clients',
     title: 'Set up your agent',
     description:
-      'Configs for Cursor, VS Code, Claude Desktop, Codex CLI, Zed, Gemini CLI and Claude Code without the plugin.',
+      'Configs for Cursor, VS Code, Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI, Grok Build and Claude Code without the plugin.',
   },
   {
     href: '/docs/plugin',
