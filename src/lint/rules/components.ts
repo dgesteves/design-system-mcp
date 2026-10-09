@@ -3,10 +3,13 @@ import ts from 'typescript';
 import type { ComponentInfo, PropInfo, TextEdit } from '../../types.js';
 import { closest } from '../../util/strings.js';
 import {
+  asFunction,
   attributeLiterals,
   attributeName,
   findAttribute,
   literalValues,
+  returnedExpressions,
+  valueBranches,
   type JsxNode,
 } from '../analyze.js';
 import type { Rule, RuleContext } from '../context.js';
@@ -382,8 +385,12 @@ function classify(children: readonly ts.Node[], context: RuleContext, icons: str
   for (const child of children) {
     let kind: Content = 'empty';
     if (ts.isJsxText(child)) kind = child.text.trim() ? 'text' : 'empty';
-    else if (ts.isJsxExpression(child)) kind = child.expression ? 'text' : 'empty';
-    else if (ts.isJsxFragment(child)) kind = classify(child.children, context, icons);
+    else if (ts.isJsxExpression(child)) {
+      // A render prop (`{({ isPending }) => <Trash2 />}`) shows what it returns; any other
+      // expression may be text.
+      const fn = child.expression && asFunction(child.expression);
+      kind = fn ? classifyReturned(fn, context, icons) : child.expression ? 'text' : 'empty';
+    } else if (ts.isJsxFragment(child)) kind = classify(child.children, context, icons);
     else if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
       const opening = ts.isJsxElement(child) ? child.openingElement : child;
       const tag = opening.tagName.getText(context.sourceFile);
@@ -404,6 +411,28 @@ function classify(children: readonly ts.Node[], context: RuleContext, icons: str
         kind = 'icon';
       }
     }
+    if (kind === 'text') return 'text';
+    if (kind === 'icon') result = 'icon';
+  }
+  return result;
+}
+
+/** What a render prop returns, across `return`s and branches: text wins, then icons. */
+function classifyReturned(
+  fn: ts.ArrowFunction | ts.FunctionExpression,
+  context: RuleContext,
+  icons: string[],
+): Content {
+  let result: Content = 'empty';
+  for (const value of returnedExpressions(fn).flatMap(valueBranches)) {
+    const kind: Content =
+      ts.isJsxElement(value) || ts.isJsxSelfClosingElement(value) || ts.isJsxFragment(value)
+        ? classify([value], context, icons)
+        : value.kind === ts.SyntaxKind.NullKeyword ||
+            value.kind === ts.SyntaxKind.FalseKeyword ||
+            (ts.isIdentifier(value) && value.text === 'undefined')
+          ? 'empty'
+          : 'text';
     if (kind === 'text') return 'text';
     if (kind === 'icon') result = 'icon';
   }

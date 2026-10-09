@@ -53,6 +53,22 @@ function check(code: string, rule?: string, system = ds): Diagnostic[] {
 describe('no-hardcoded-color', () => {
   const rule = 'no-hardcoded-color';
 
+  it('checks colors in style functions and in each branch of a style value', () => {
+    const fn = check(
+      `<Button style={({ isPressed }) => ({ backgroundColor: isPressed ? "#ef4444" : undefined })} />`,
+      rule,
+    );
+    expect(fn).toHaveLength(1);
+    expect(fn[0]?.message).toContain('Hardcoded color `#ef4444` in style.backgroundColor');
+    const branches = check(
+      `<p style={{ color: active ? "#737373" : muted ?? "#ef4444", borderColor: open && "red" }} />`,
+      rule,
+    );
+    expect(branches.map((d) => d.source)).toEqual(['#737373', '#ef4444', 'red']);
+    // Conditions and non-literal values are not colors.
+    expect(check(`<p style={{ color: tone === "#fff" ? token : other }} />`, rule)).toEqual([]);
+  });
+
   it('flags arbitrary Tailwind colors with the nearest token and a fix', () => {
     const code = `<div className="p-4 border-[#ef4444]" />`;
     const [d] = check(code, rule);
@@ -452,6 +468,23 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
     expect(d?.message).toBe(
       '`gap-x-[16px]` is 16px, which is on the spacing scale: use `gap-x-4`.',
     );
+  });
+
+  it('checks style functions and every branch of a style value', () => {
+    // React Aria Components take style={({ isPressed }) => ({ ... })}.
+    const spacing = check(
+      `<Button style={({ isPressed }) => ({ marginTop: isPressed ? 6 : 0, padding: "13px" })} />`,
+      'no-hardcoded-spacing',
+    );
+    expect(spacing.map((d) => [d.source, d.suggestion])).toEqual([
+      ['6', 'mt-1.5'],
+      ['"13px"', 'p-3'],
+    ]);
+    const block = check(
+      `<div style={function style() { return { borderRadius: 14 } }} />`,
+      'no-hardcoded-radius',
+    );
+    expect(block[0]?.suggestion).toBe('rounded-xl');
   });
 
   it('flags spacing in inline styles', () => {
@@ -1018,6 +1051,40 @@ describe('icon-button-accessible-name', () => {
       'Icon-only <Button> has no accessible name. Add aria-label="Delete" describing the action, or visually hidden text.',
     );
     expect(applyFixes(code, d ? [d] : [])).toContain('<Button aria-label="Delete" size="icon"');
+  });
+
+  it('reads render props: a function child shows what it returns', () => {
+    // React Aria Components and Headless UI pass render state to a function child.
+    const code = `${IMPORTS}<Button size="icon">{() => <Trash2 />}</Button>`;
+    const [d] = check(code, rule);
+    expect(d?.message).toContain(
+      'Icon-only <Button> has no accessible name. Add aria-label="Delete"',
+    );
+    expect(applyFixes(code, d ? [d] : [])).toContain('<Button aria-label="Delete" size="icon">');
+    // Every return and both branches count; a block body too.
+    expect(
+      check(
+        `${IMPORTS}<Button>{({ isPending }) => (isPending ? <Loader2 /> : <Trash2 />)}</Button>`,
+        rule,
+      ),
+    ).toHaveLength(1);
+    expect(
+      check(
+        `${IMPORTS}<Button>{(state) => { if (state.isPending) return null; return <X /> }}</Button>`,
+        rule,
+      )[0]?.suggestion,
+    ).toBe('aria-label="Close"');
+  });
+
+  it('accepts render props that return text or come with a label', () => {
+    const ok = [
+      `<Button>{({ isPending }) => (isPending ? <Loader2 /> : "Delete")}</Button>`,
+      `<Button>{() => <><Trash2 /> Delete</>}</Button>`,
+      `<Button>{({ isPending }) => isPending ? <Loader2 /> : label}</Button>`,
+      `<Button aria-label="Delete">{() => <Trash2 />}</Button>`,
+      `<Button>{function render() { return <span className="sr-only">Delete</span> }}</Button>`,
+    ];
+    for (const code of ok) expect(check(`${IMPORTS}${code}`, rule)).toEqual([]);
   });
 
   it('flags native icon buttons and empty icon-size buttons', () => {

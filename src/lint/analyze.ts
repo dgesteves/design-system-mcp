@@ -213,13 +213,10 @@ export function analyze(sourceFile: ts.SourceFile): Analysis {
         const init = attribute.initializer;
         if (!init) continue;
         if (name === 'className' || name === 'class') collectStrings(init, element);
-        if (
-          name === 'style' &&
-          ts.isJsxExpression(init) &&
-          init.expression &&
-          ts.isObjectLiteralExpression(init.expression)
-        ) {
-          analysis.styles.push({ element, object: init.expression });
+        if (name === 'style' && ts.isJsxExpression(init) && init.expression) {
+          for (const object of styleObjects(init.expression)) {
+            analysis.styles.push({ element, object });
+          }
         }
       }
     }
@@ -289,4 +286,83 @@ export function literalValues(attribute: ts.JsxAttribute): ts.StringLiteralLike[
   };
   visit(init.expression);
   return out;
+}
+
+/** `(x)`, `x as T`, `x satisfies T` and `x!` all evaluate to `x`. */
+function unwrap(expr: ts.Expression): ts.Expression {
+  let current = expr;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isNonNullExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+/**
+ * The expressions a value can evaluate to: both branches of `a ? b : c`, both sides of `a ?? b`
+ * and `a || b`, and the right of `cond && b`, down to the leaves.
+ */
+export function valueBranches(expr: ts.Expression): ts.Expression[] {
+  const out: ts.Expression[] = [];
+  const stack = [expr];
+  for (let current = stack.pop(); current; current = stack.pop()) {
+    const value = unwrap(current);
+    if (ts.isConditionalExpression(value)) {
+      stack.push(value.whenFalse, value.whenTrue);
+    } else if (
+      ts.isBinaryExpression(value) &&
+      (value.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+    ) {
+      stack.push(value.right, value.left);
+    } else if (
+      ts.isBinaryExpression(value) &&
+      value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      stack.push(value.right);
+    } else {
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+/**
+ * What a function returns: its expression body, or the `return` statements of its block,
+ * not counting functions nested inside it. Render props (`{({ isPressed }) => <Icon />}`) and
+ * style functions (`style={({ isPressed }) => ({ ... })}`) are read through this.
+ */
+export function returnedExpressions(fn: ts.ArrowFunction | ts.FunctionExpression): ts.Expression[] {
+  if (!ts.isBlock(fn.body)) return [fn.body];
+  const out: ts.Expression[] = [];
+  const stack: ts.Node[] = [fn.body];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (ts.isReturnStatement(node)) {
+      if (node.expression) out.push(node.expression);
+      continue;
+    }
+    if (ts.isFunctionLike(node)) continue;
+    const children = childrenOf(node);
+    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i] as ts.Node);
+  }
+  return out;
+}
+
+/** A function the way JSX passes one: an arrow function or a function expression. */
+export function asFunction(
+  expr: ts.Expression,
+): ts.ArrowFunction | ts.FunctionExpression | undefined {
+  const value = unwrap(expr);
+  return ts.isArrowFunction(value) || ts.isFunctionExpression(value) ? value : undefined;
+}
+
+/** The object literals a `style` value can be: an object, a branch of one, or what a style function returns. */
+function styleObjects(expr: ts.Expression): ts.ObjectLiteralExpression[] {
+  const fn = asFunction(expr);
+  const values = fn ? returnedExpressions(fn).flatMap(valueBranches) : valueBranches(expr);
+  return values.filter(ts.isObjectLiteralExpression);
 }
