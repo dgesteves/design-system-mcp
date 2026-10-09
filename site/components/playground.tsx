@@ -365,16 +365,14 @@ export function Playground({ presets, maxBytes }: { presets: Preset[]; maxBytes:
               <p className="font-medium text-fg">
                 {problem.code === 'too_large'
                   ? 'Too large to check here'
-                  : problem.code === 'too_complex'
-                    ? 'Too deeply nested to parse'
-                    : problem.code === 'rate_limited'
-                      ? 'Slow down a little'
-                      : problem.code === 'timeout'
-                        ? 'The check timed out'
-                        : 'Could not check'}
+                  : problem.code === 'rate_limited'
+                    ? 'Slow down a little'
+                    : problem.code === 'timeout'
+                      ? 'The check timed out'
+                      : 'Could not check'}
               </p>
               <p className="mt-0.5 text-muted">{problem.message}</p>
-              {problem.code !== 'too_large' && problem.code !== 'too_complex' && (
+              {problem.code !== 'too_large' && (
                 <button
                   type="button"
                   onClick={() => {
