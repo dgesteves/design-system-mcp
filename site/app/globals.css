@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /*
- * Shared with ask-my-site and agent-ui-kit: ink, raised surfaces and hairline borders, cyan as
+ * Shared with ondocs and signoff-ui: ink, raised surfaces and hairline borders, cyan as
  * the accent, magenta only for errors. Text colours keep at least 4.5:1 on every surface.
  */
 @theme {
