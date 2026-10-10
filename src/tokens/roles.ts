@@ -18,24 +18,141 @@ export function colorRole(prefix: string | undefined): ColorRole | undefined {
 /**
  * Token families made for one part of the UI. `sidebar-accent` has the value
  * of `accent` and `chart-2` that of `muted-foreground`, but they only belong
- * in a sidebar or a chart.
+ * in a sidebar or a chart. Beyond these two, any family that is not named for
+ * a role and that at most one design-system file uses is scoped the same way:
+ * syntax-highlighting colors (`sh-class`), a chart palette (`rainbow-4`), one
+ * screen's background (`envelope-editor-background`), or a copy of Tailwind's
+ * palette (`color-red-500`).
  */
-export type ScopedFamily = 'sidebar' | 'chart';
+export type ScopedFamily = string;
 
-export function scopedFamily(token: Token): ScopedFamily | undefined {
-  const family = /^(sidebar|chart)(?:-|$)/.exec(tokenKey(token))?.[1];
-  return family === 'sidebar' || family === 'chart' ? family : undefined;
+const NAMED_SCOPES = new Set(['sidebar', 'chart']);
+
+/** Sidebar and chart, scoped by their name rather than by how little they are used. */
+export function isNamedScope(family: ScopedFamily): boolean {
+  return NAMED_SCOPES.has(family);
 }
 
-/** The scoped families code mentions: `app-sidebar.tsx`, `<SidebarMenuButton>`, `fill-chart-1`. */
-export function scopesIn(...texts: (string | undefined)[]): Set<ScopedFamily> {
+/**
+ * First name segments of tokens meant for the whole UI: shadcn/ui's roles,
+ * status colors and common DTCG names. They are never scoped by usage, since a
+ * small design system may use `background` or `destructive` in one file.
+ */
+const CORE_FAMILIES = new Set([
+  'background',
+  'foreground',
+  'bg',
+  'fg',
+  'text',
+  'surface',
+  'canvas',
+  'card',
+  'popover',
+  'primary',
+  'secondary',
+  'tertiary',
+  'muted',
+  'accent',
+  'brand',
+  'border',
+  'input',
+  'ring',
+  'outline',
+  'divider',
+  'separator',
+  'overlay',
+  'link',
+]);
+
+/** Name segments of status colors: what happened, rather than how it looks. */
+const STATUS_WORDS = new Set([
+  'destructive',
+  'danger',
+  'error',
+  'critical',
+  'negative',
+  'invalid',
+  'warning',
+  'warn',
+  'caution',
+  'success',
+  'positive',
+  'valid',
+  'info',
+  'information',
+  'notice',
+]);
+
+/** The family a color token belongs to: the first segment of its name (`sidebar`, `sh`, `rainbow`). */
+export function tokenFamily(token: Token): string {
+  return tokenKey(token).split('-')[0] ?? '';
+}
+
+/**
+ * The scoped families among `tokens`: sidebar and chart, plus every family not
+ * named for a role or a status whose tokens at most one file uses (`filesUsing`:
+ * family → the design-system files that reference its tokens).
+ */
+export function scopedFamilies(
+  tokens: readonly Token[],
+  filesUsing: ReadonlyMap<string, ReadonlySet<string>> | undefined,
+): Set<ScopedFamily> {
+  const scoped = new Set<ScopedFamily>();
+  for (const token of tokens) {
+    if (token.category !== 'color') continue;
+    const family = tokenFamily(token);
+    if (!family || scoped.has(family)) continue;
+    if (NAMED_SCOPES.has(family)) scoped.add(family);
+    // Without usage, only the families named for a part of the UI are scoped.
+    else if (
+      filesUsing &&
+      !CORE_FAMILIES.has(family) &&
+      !STATUS_WORDS.has(family) &&
+      (filesUsing.get(family)?.size ?? 0) <= 1
+    ) {
+      scoped.add(family);
+    }
+  }
+  return scoped;
+}
+
+/**
+ * The scoped families code mentions: `app-sidebar.tsx`, `<SidebarMenuButton>`,
+ * `fill-chart-1`, `envelope-editor.tsx`. Sidebar and chart match anywhere in a
+ * name; other families as a whole word of it.
+ */
+export function scopesIn(
+  families: ReadonlySet<ScopedFamily>,
+  ...texts: (string | undefined)[]
+): Set<ScopedFamily> {
   const scopes = new Set<ScopedFamily>();
   for (const text of texts) {
     if (!text) continue;
-    if (/sidebar/i.test(text)) scopes.add('sidebar');
-    if (/chart/i.test(text)) scopes.add('chart');
+    const words = new Set(
+      text
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/),
+    );
+    for (const family of families) {
+      const found = NAMED_SCOPES.has(family)
+        ? new RegExp(family, 'i').test(text)
+        : words.has(family);
+      if (found) scopes.add(family);
+    }
   }
   return scopes;
+}
+
+/**
+ * A status color (`destructive`, `warning`, `success-foreground`): it says that
+ * something failed or succeeded, so a fix may only swap it in for nearly the
+ * same hue, never for a gray or a brand color.
+ */
+export function isStatusToken(token: Token): boolean {
+  return roleKey(token)
+    .split('-')
+    .some((segment) => STATUS_WORDS.has(segment));
 }
 
 type Kind = 'foreground' | 'surface' | 'line' | 'other';

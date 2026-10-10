@@ -3,10 +3,28 @@ import path from 'node:path';
 
 import type { Token, TokenCategory } from '../types.js';
 import { relativePath } from '../util/paths.js';
-import { CLOSE_COLOR, colorDistance, parseColor, sameHue, type Oklch } from './color.js';
+import {
+  CLOSE_COLOR,
+  colorDistance,
+  hueDistance,
+  isTinted,
+  parseColor,
+  sameHue,
+  STATUS_HUE_TOLERANCE,
+  type Oklch,
+} from './color.js';
 import { cssSheetTokens, readCssSheet, type CssSheet } from './css.js';
 import { parseDtcgTokens, type DtcgOptions } from './dtcg.js';
-import { roleFit, scopedFamily, type ColorRole, type RoleFit, type ScopedFamily } from './roles.js';
+import {
+  isNamedScope,
+  isStatusToken,
+  roleFit,
+  scopedFamilies,
+  tokenFamily,
+  type ColorRole,
+  type RoleFit,
+  type ScopedFamily,
+} from './roles.js';
 import { evaluateLength, lengthToPx } from './units.js';
 
 export { parseCssTokens } from './css.js';
@@ -131,8 +149,14 @@ export interface ColorSuggestion {
   match?: Nearest<ColorCandidate> | undefined;
   /** The token to name: the match, else the nearest, preferring the same hue and the role. */
   nearest: Nearest<ColorCandidate>;
-  /** Why the nearest token is no match: no token of its hue (or no gray), too far, or made for another role. */
-  reason?: 'far' | 'hue' | 'role' | undefined;
+  /**
+   * Why the nearest token is no match: no token of its hue (or no gray), too far,
+   * made for another role, a status color whose hue is not close enough, or a
+   * token of a family scoped to another part of the UI.
+   */
+  reason?: 'far' | 'hue' | 'role' | 'status' | 'scoped' | undefined;
+  /** With reason `status`: how far apart the hues are, in degrees. */
+  hueOff?: number | undefined;
   /** Other tokens with the nearest one's value. */
   sameValue: Token[];
 }
@@ -175,8 +199,22 @@ export class TokenIndex {
   readonly spacingUnitPx: number | undefined;
   private readonly spacingUnit: Token | undefined;
   private readonly byVar = new Map<string, Token>();
+  /** Families suggested only in their own part of the UI (`sidebar`, `chart`, `sh`). */
+  readonly scopedFamilies: ReadonlySet<ScopedFamily>;
+  /** Family → the design-system files that use its tokens. */
+  readonly familyFiles: ReadonlyMap<string, ReadonlySet<string>>;
 
-  constructor(readonly tokens: Token[]) {
+  /**
+   * `filesUsing` maps each token family to the design-system files that use it;
+   * a family that at most one of them uses is scoped. Without it, only sidebar
+   * and chart are.
+   */
+  constructor(
+    readonly tokens: Token[],
+    options: { filesUsing?: ReadonlyMap<string, ReadonlySet<string>> | undefined } = {},
+  ) {
+    this.scopedFamilies = scopedFamilies(tokens, options.filesUsing);
+    this.familyFiles = options.filesUsing ?? new Map();
     for (const token of tokens) if (token.cssVar) this.byVar.set(token.cssVar, token);
     const resolve = (name: string) => this.byVar.get(name)?.value;
 
@@ -219,6 +257,13 @@ export class TokenIndex {
     return this.byVar.get(name);
   }
 
+  /** The scoped family a token belongs to, if any. */
+  scopedFamilyOf(token: Token): ScopedFamily | undefined {
+    if (token.category !== 'color') return undefined;
+    const family = tokenFamily(token);
+    return this.scopedFamilies.has(family) ? family : undefined;
+  }
+
   nearestColor(color: Oklch, limit = 3): Nearest<ColorCandidate>[] {
     return this.colors
       .map((candidate) => ({ candidate, distance: colorDistance(color, candidate.color) }))
@@ -239,22 +284,33 @@ export class TokenIndex {
   suggestColor(color: Oklch, query: ColorQuery = {}): ColorSuggestion | undefined {
     const valueOf = (candidate: ColorCandidate) =>
       (query.mode && candidate.modes?.[query.mode]) || candidate.color;
+    const tinted = query.tinted ?? isTinted(color);
     const scored: Scored[] = this.colors.map((candidate, index) => {
-      const family = scopedFamily(candidate.token);
+      const family = this.scopedFamilyOf(candidate.token);
+      const value = valueOf(candidate);
+      const hue = sameHue(color, value, tinted);
+      // A status color replaces only a color of nearly its hue: never a gray, a brand orange
+      // for `destructive` or a gray for `destructive-foreground`.
+      const status = isStatusToken(candidate.token);
       return {
         candidate,
-        distance: colorDistance(color, valueOf(candidate)),
-        hue: sameHue(color, valueOf(candidate), query.tinted),
+        distance: colorDistance(color, value),
+        hue: status ? tinted && hue && hueDistance(color, value) <= STATUS_HUE_TOLERANCE : hue,
+        looseHue: hue,
+        status,
         fit: roleFit(candidate.token, query.role),
         scoped: family !== undefined && !query.scopes?.has(family),
         inScope: family !== undefined && query.scopes?.has(family) === true,
+        // Out of scope, and scoped by usage: syntax colors are never swapped in elsewhere.
+        foreign: family !== undefined && !query.scopes?.has(family) && !isNamedScope(family),
         index,
       };
     });
-    // Scoped families stand in only for a design system made of nothing else.
+    // Scoped families stand in only for a design system made of nothing else, and then only
+    // sidebar and chart as fixes: a design system whose only colors are syntax colors gets none.
     const pool = scored.some((s) => !s.scoped) ? scored.filter((s) => !s.scoped) : scored;
     const match = pool
-      .filter((s) => s.hue && s.fit.tier < 2 && s.distance < CLOSE_COLOR)
+      .filter((s) => s.hue && !s.foreign && s.fit.tier < 2 && s.distance < CLOSE_COLOR)
       .sort((a, b) => a.fit.tier - b.fit.tier || byDistance(a, b))[0];
     const named =
       match ??
@@ -273,7 +329,17 @@ export class TokenIndex {
     const nearest = { candidate: named.candidate, distance: named.distance };
     if (match) return { match: nearest, nearest, sameValue };
     // The nearest token of the same hue comes first, so another hue means the design system has none.
-    const reason = !named.hue ? 'hue' : named.distance >= CLOSE_COLOR ? 'far' : 'role';
+    if (!named.hue && named.status && named.looseHue && tinted) {
+      const hueOff = Math.round(hueDistance(color, valueOf(named.candidate)));
+      return { nearest, reason: 'status', hueOff, sameValue };
+    }
+    const reason = !named.hue
+      ? 'hue'
+      : named.distance >= CLOSE_COLOR
+        ? 'far'
+        : named.foreign
+          ? 'scoped'
+          : 'role';
     return { nearest, reason, sameValue };
   }
 
@@ -348,7 +414,13 @@ function preferTailwind(a: Token, b: Token): number {
 }
 
 interface Scored extends Nearest<ColorCandidate> {
+  /** Of the same hue, as tightly as the token needs (status colors more tightly). */
   hue: boolean;
+  /** Of the same hue by the general tolerance. */
+  looseHue: boolean;
+  /** Of a family scoped by usage to another part of the UI. */
+  foreign: boolean;
+  status: boolean;
   fit: RoleFit;
   /** Of a scoped family the code is not in (a sidebar token outside the sidebar). */
   scoped: boolean;

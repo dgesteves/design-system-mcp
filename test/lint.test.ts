@@ -123,6 +123,47 @@ describe('no-hardcoded-color', () => {
     expect(d?.message).toContain('or use variant="destructive"');
   });
 
+  it('keeps the hue of pale arbitrary colors: a pastel is no gray', () => {
+    // #fef2f2 (red-50) is 0.013 from muted and #fffbeb (amber-50) 0.025 from background,
+    // but they are a pale red and a pale amber.
+    for (const [value, nearest] of [
+      ['#fef2f2', 'muted'],
+      ['#fffbeb', 'background'],
+    ] as const) {
+      const [d] = check(`<div className="bg-[${value}]" />`, rule);
+      expect(d?.fix).toBeUndefined();
+      expect(d?.suggestion).toBeUndefined();
+      expect(d?.message).toContain(`No token has this hue; nearest is ${nearest} (ΔE`);
+    }
+    // A pale gray is still a gray.
+    expect(check(`<div className="bg-[#f5f5f5]" />`, rule)[0]?.suggestion).toBe('bg-muted');
+  });
+
+  it('never fixes a brand orange into the destructive red', () => {
+    // The sign-in button of nextjs/saas-starter, and its orange text: 11–14° from destructive.
+    const code = `${IMPORTS}<Button className="bg-orange-600 hover:bg-orange-700">Sign in</Button>
+<p className="text-orange-600">Pricing</p>`;
+    const diagnostics = check(code, rule);
+    expect(diagnostics.map((d) => d.source)).toEqual([
+      'bg-orange-600',
+      'hover:bg-orange-700',
+      'text-orange-600',
+    ]);
+    for (const d of diagnostics) {
+      expect(d.fix).toBeUndefined();
+      expect(d.suggestion).toBeUndefined();
+      expect(d.message).not.toContain('variant="destructive"');
+      expect(d.message).toMatch(
+        /Nearest is destructive \(ΔE 0\.\d{3}\), a status color 1[14]° away in hue; status colors are only suggested for their own hue\./,
+      );
+    }
+    expect(applyFixes(code, diagnostics)).toBe(code);
+    // Reds are still destructive.
+    expect(
+      check(`<p className="text-red-600 border-[#ef4444]" />`, rule).map((d) => d.suggestion),
+    ).toEqual(['text-destructive', 'border-destructive']);
+  });
+
   it('flags style values and color attributes, replacing CSS literals with var()', () => {
     const code = `<p style={{ color: "#737373", border: "1px solid #e5e5e5" }}><svg fill="#171717" /></p>`;
     const diagnostics = check(code, rule);
@@ -329,6 +370,112 @@ describe('no-hardcoded-color on a stock shadcn/ui theme', () => {
     // A page laid out next to the sidebar is not in it.
     const inset = `<SidebarInset><div className="bg-gray-100" /></SidebarInset>`;
     expect(suggest(inset)[0]?.suggestion).toBe('bg-muted');
+  });
+
+  it('never swaps a gray or another hue for a status color, or for the text that goes on one', async () => {
+    const system = await load(
+      fixture({
+        'app/globals.css': `@import "tailwindcss";
+@theme inline {
+  --color-foreground: var(--foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+}
+:root {
+  --foreground: oklch(0.145 0 0);
+  --destructive-foreground: oklch(0.97 0 0);
+  --success: oklch(0.627 0.194 149.214);
+}`,
+      }),
+    );
+    const [gray, emerald, green] = system.check(
+      `<p className="text-neutral-100 bg-emerald-600 bg-green-600" />`,
+    ).diagnostics;
+    // neutral-100 is exactly destructive-foreground, the text on a destructive button.
+    expect(gray?.fix).toBeUndefined();
+    expect(gray?.message).not.toContain('→');
+    // emerald-600 is 14° from success; green-600 is the same hue.
+    expect(emerald?.fix).toBeUndefined();
+    expect(emerald?.message).toContain('Nearest is success (ΔE');
+    expect(emerald?.message).toContain('a status color 14° away in hue');
+    expect(green?.suggestion).toBe('bg-success');
+  });
+
+  it('suggests a token family that one component uses only around that component', async () => {
+    const system = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/button.tsx': `export function Button(props: { children?: string }) {
+  return <button className="bg-primary text-primary-foreground" {...props} />
+}`,
+        'components/ui/badge.tsx': `export function Badge(props: { children?: string }) {
+  return <span className="bg-primary text-primary-foreground" {...props} />
+}`,
+        'components/ui/code-block.tsx': `export function CodeBlock(props: { children?: string }) {
+  return <pre className="bg-sh-background text-sh-keyword" {...props} />
+}`,
+        'app/globals.css': `@import "tailwindcss";
+@theme inline {
+  --color-envelope-editor-background: var(--envelope-editor-background);
+  --color-sh-background: var(--sh-background);
+  --color-sh-keyword: var(--sh-keyword);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+}
+:root {
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --sh-background: oklch(0.21 0.034 264.665);
+  --sh-keyword: oklch(0.707 0.165 254.624);
+  --envelope-editor-background: oklch(0.985 0.002 247.839);
+}`,
+      }),
+    );
+    const colors = (code: string, file = 'app/page.tsx') =>
+      system.check(code, file).diagnostics.filter((d) => d.ruleId === rule);
+    // blue-400 is exactly sh-keyword, a syntax-highlighting color only the code block uses.
+    const [link] = colors(`<a className="text-blue-400">Docs</a>`);
+    expect(link?.suggestion).toBeUndefined();
+    expect(link?.message).not.toContain('sh-keyword');
+    const [keyword] = colors(`import { CodeBlock } from "@/components/ui/code-block"
+<CodeBlock><span className="text-blue-400">const</span></CodeBlock>`);
+    expect(keyword?.suggestion).toBe('text-sh-keyword');
+    // One screen's background, which no component uses: only in that screen.
+    expect(colors(`<div className="bg-gray-50" />`)[0]?.message).not.toContain('envelope');
+    expect(
+      colors(`<div className="bg-gray-50" />`, 'app/envelope-editor/page.tsx')[0]?.suggestion,
+    ).toBe('bg-envelope-editor-background');
+    // Scoped families are listed after the core tokens.
+    expect(system.getTokens({ category: 'color' }).map((t) => t.name)).toEqual([
+      'primary',
+      'primary-foreground',
+      'envelope-editor-background',
+      'sh-background',
+      'sh-keyword',
+    ]);
+  });
+
+  it('never fixes into a scoped family, even when the design system has no other colors', async () => {
+    // openstatus's website: its only color tokens are syntax-highlighting ones.
+    const system = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/code-block.tsx': `export function CodeBlock(props: { children?: string }) {
+  return <pre className="text-sh-class" {...props} />
+}`,
+        'app/globals.css': `@import "tailwindcss";
+@theme inline { --color-sh-class: var(--sh-class); }
+:root { --sh-class: oklch(0.707 0.165 254.624); }`,
+      }),
+    );
+    const [d] = system.check(
+      `<a className="text-blue-400">Dashboard</a>`,
+      'app/header.tsx',
+    ).diagnostics;
+    expect(d?.fix).toBeUndefined();
+    expect(d?.message).toContain(
+      'Nearest is sh-class (exact match), a token one part of the UI uses (not this one).',
+    );
   });
 
   it('lists core tokens before sidebar and chart tokens', () => {

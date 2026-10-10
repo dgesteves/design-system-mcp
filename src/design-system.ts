@@ -20,7 +20,6 @@ import {
   type SearchHit,
 } from './search/index.js';
 import { loadTokens, type TokenIndex } from './tokens/index.js';
-import { scopedFamily } from './tokens/roles.js';
 import { applyTailwindColors, readTailwindColors } from './tokens/tailwind-config.js';
 import type {
   CheckResult,
@@ -32,7 +31,7 @@ import type {
 import { silentLogger, type Logger } from './util/log.js';
 import { globBase, isInside, relativePath } from './util/paths.js';
 import { closest, unique } from './util/strings.js';
-import { parseUtility } from './lint/tailwind.js';
+import { COLOR_UTILITY, parseUtility } from './lint/tailwind.js';
 import { VERSION } from './version.js';
 
 /** A loaded design system: the model plus the indexes the tools query. */
@@ -88,7 +87,7 @@ export class DesignSystem {
     return searchComponents(this.searchIndex, query, limit);
   }
 
-  /** Tokens, core ones first: `sidebar-*` and `chart-*` follow the rest, which an agent should reach for. */
+  /** Tokens, core ones first: scoped families (`sidebar-*`, `chart-*`) follow the rest, which an agent should reach for. */
   getTokens(
     filter: { category?: TokenCategory | undefined; query?: string | undefined } = {},
   ): Token[] {
@@ -102,7 +101,11 @@ export class DesignSystem {
             (t.description ?? '').toLowerCase().includes(query) ||
             t.usage.some((u) => u.toLowerCase().includes(query))),
       )
-      .sort((a, b) => Number(scoped(a)) - Number(scoped(b)));
+      .sort(
+        (a, b) =>
+          Number(this.tokenIndex.scopedFamilyOf(a) !== undefined) -
+          Number(this.tokenIndex.scopedFamilyOf(b) !== undefined),
+      );
   }
 
   /** Tokens a component's classes and CSS variables reference, e.g. `bg-primary` → `primary`. */
@@ -153,14 +156,7 @@ export class DesignSystem {
   }
 }
 
-function scoped(token: Token): boolean {
-  return token.category === 'color' && scopedFamily(token) !== undefined;
-}
-
 const CONFIGURATION_DOCS = 'https://github.com/dgesteves/design-system-mcp#configuration';
-
-const COLOR_UTILITY =
-  /^(?:bg|text|border(?:-[xytrblse])?|ring|ring-offset|outline|fill|stroke|from|via|to|divide|accent|caret|decoration|placeholder|shadow)-(.+)$/;
 
 /** `border-ring` → token `ring`, for color utilities a token's usage list does not spell out. */
 function matchUtility(base: string, tokens: Token[]): Token | undefined {

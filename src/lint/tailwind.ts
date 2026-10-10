@@ -235,6 +235,10 @@ export function paletteColor(
     : undefined;
 }
 
+/** A color utility and its theme key: `border-ring` → `ring`, `bg-primary` → `primary`. */
+export const COLOR_UTILITY =
+  /^(?:bg|text|border(?:-[xytrblse])?|ring|ring-offset|outline|fill|stroke|from|via|to|divide|accent|caret|decoration|placeholder|shadow)-(.+)$/;
+
 /** `style` properties that take colors → the Tailwind prefix to use instead. */
 export const STYLE_COLOR_PROPERTIES: Record<string, string | undefined> = {
   color: 'text',

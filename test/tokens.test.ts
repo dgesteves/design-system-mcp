@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { colorDistance, findColorLiterals, parseColor } from '../src/tokens/color.js';
+import { colorDistance, findColorLiterals, isTinted, parseColor } from '../src/tokens/color.js';
 import {
   loadTokens,
   mergeTokens,
@@ -91,6 +91,30 @@ describe('W3C DTCG tokens', () => {
 });
 
 describe('CSS custom-property tokens', () => {
+  it("resolves Tailwind's theme colors, which a stylesheet can build its tokens on", () => {
+    // coss/ui (cal.com) declares its tokens on Tailwind's palette, which the project never declares.
+    const { tokens } = parseCssTokens(
+      `:root {
+  --background: var(--color-white);
+  --primary: var(--color-neutral-800);
+  --destructive: var(--color-red-500);
+  --muted: --alpha(var(--color-black) / 4%);
+  --brand: var(--color-brand-500);
+}
+.dark { --primary: var(--color-neutral-100); }`,
+      'src/styles/globals.css',
+    );
+    expect(tokens.map((t) => [t.name, t.category, t.value, t.modes?.dark])).toEqual([
+      ['background', 'color', '#fff', undefined],
+      ['primary', 'color', 'oklch(26.9% 0 none)', 'oklch(97% 0 none)'],
+      ['destructive', 'color', 'oklch(63.7% 0.237 25.331)', undefined],
+      // Translucent and unknown values are left as they are, not guessed.
+      ['muted', 'other', '--alpha(var(--color-black) / 4%)', undefined],
+      ['brand', 'other', 'var(--color-brand-500)', undefined],
+    ]);
+    expect(new TokenIndex(tokens).has('color')).toBe(true);
+  });
+
   const css = fs.readFileSync(path.join(DEMO_ROOT, 'app/globals.css'), 'utf8');
   const { tokens } = parseCssTokens(css, 'app/globals.css');
 
@@ -368,6 +392,30 @@ describe('CSS custom-property tokens', () => {
 });
 
 describe('units and colors', () => {
+  it('tells pale and dark tints from grays by chroma relative to lightness', () => {
+    const tinted = (value: string) => {
+      const color = parseColor(value);
+      if (!color) throw new Error(value);
+      return isTinted(color);
+    };
+    // Pastels hold almost all the chroma sRGB allows that close to white.
+    for (const pastel of ['#fef2f2', '#fffbeb', '#f0f9ff', 'oklch(98.4% 0.014 180.72)']) {
+      expect([pastel, tinted(pastel)]).toEqual([pastel, true]);
+    }
+    // Grays, including slate's bluish ones and the near-black of a dark theme.
+    for (const gray of [
+      '#f5f5f5',
+      '#fafafa',
+      '#e2e8f0',
+      '#f1f5f9',
+      'oklch(13% 0.028 261.692)',
+      'hsl(222.2 84% 4.9%)',
+    ]) {
+      expect([gray, tinted(gray)]).toEqual([gray, false]);
+    }
+    expect(tinted('#ef4444')).toBe(true);
+  });
+
   it('converts lengths and evaluates calc() with var()', () => {
     expect(lengthToPx('0.5rem')).toBe(8);
     expect(lengthToPx('12px')).toBe(12);

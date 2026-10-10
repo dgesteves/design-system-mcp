@@ -7,6 +7,7 @@ import postcss, {
   type Rule,
 } from 'postcss';
 
+import { TAILWIND_PALETTE } from '../lint/tailwind-palette.js';
 import type { Token, TokenCategory } from '../types.js';
 import { parseColor } from './color.js';
 import { usageFor } from './usage.js';
@@ -157,7 +158,7 @@ export function cssSheetTokens(sheets: readonly CssSheet[]): {
   }
 
   const lookup = (name: string): string | undefined =>
-    base.get(name)?.value ?? theme.get(name)?.value;
+    base.get(name)?.value ?? theme.get(name)?.value ?? tailwindColor(name);
 
   const tokens: Token[] = [];
   const consumed = new Set<string>();
@@ -264,6 +265,18 @@ export function cssSheetTokens(sheets: readonly CssSheet[]): {
   }
 
   return { tokens, warnings };
+}
+
+/**
+ * Tailwind v4's own theme colors, which `var(--color-neutral-800)` reads
+ * without the project declaring them (coss/ui and other registries build their
+ * tokens on them).
+ */
+function tailwindColor(name: string): string | undefined {
+  if (name === '--color-black') return '#000';
+  if (name === '--color-white') return '#fff';
+  const match = /^--color-([a-z]+)-(50|[1-9]00|950)$/.exec(name);
+  return match?.[1] && match[2] ? TAILWIND_PALETTE[match[1]]?.[match[2]] : undefined;
 }
 
 /** One sheet from many (a copy: promoting the light mode edits it); the first declaration of a variable wins. */
