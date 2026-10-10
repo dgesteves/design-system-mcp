@@ -1660,10 +1660,12 @@ describe('the engine', () => {
   });
 
   it('reports code too deep to parse as one finding instead of throwing', () => {
+    // Deep enough to exhaust the stack however warm the JIT is: after many other checks, Node 22
+    // parses 5,000 nested conditionals, which are valid code, without overflowing.
     for (const code of [
-      '{'.repeat(5000),
-      '('.repeat(20000),
-      `const x = ${'a ? b : '.repeat(5000)}c`,
+      '{'.repeat(50_000),
+      '('.repeat(50_000),
+      `const x = ${'a ? b : '.repeat(50_000)}c`,
     ]) {
       const result = ds.check(code, 'deep.tsx');
       expect(result).toMatchObject({ file: 'deep.tsx', errorCount: 1, warningCount: 0 });
