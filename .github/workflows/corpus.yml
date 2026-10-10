@@ -1,0 +1,66 @@
+name: Corpus
+
+# Checks the built CLI on public repositories pinned by commit (corpus/repos.json) and compares
+# the findings with corpus/snapshot.json and the labels in corpus/labels.json. Not a required
+# check yet: it reports, and a change of counts needs `pnpm corpus --update` in the pull request.
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'corpus/**'
+      - 'scripts/corpus*'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/corpus.yml'
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    name: Real-world corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Outside the checkout: the CLI looks upwards for node_modules and workspace roots.
+      - run: echo "CORPUS_DIR=${{ runner.temp }}/corpus" >> "$GITHUB_ENV"
+      # Restored and saved around the fetch, so a failing check still caches the checkouts.
+      - id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/corpus
+          key: corpus-${{ hashFiles('corpus/repos.json') }}
+      - run: pnpm --silent corpus fetch
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/corpus
+          key: corpus-${{ hashFiles('corpus/repos.json') }}
+      - name: Check the corpus
+        shell: bash
+        run: |
+          set +e
+          pnpm --silent corpus > corpus-report.txt 2>&1
+          status=$?
+          cat corpus-report.txt
+          {
+            echo '## Real-world corpus'
+            echo '```text'
+            cat corpus-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

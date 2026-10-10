@@ -1,0 +1,6 @@
+{
+  "components": ["../../packages/ui/src/**/*.tsx"],
+  "exclude": ["**/*.stories.tsx", "**/icons/**", "**/charts/**"],
+  "tokens": ["../../packages/tailwind-config/themes.css", "styles/globals.css"],
+  "importPath": "@dub/ui"
+}

@@ -1,0 +1,93 @@
+{
+  "$comment": "Public repositories pinned by commit, checked by scripts/corpus.mjs. `paths` limits the sparse fetch to those folders (plus root files and every package.json, tsconfig and components.json); without it the whole repository is fetched. Only source, styles, manifests and docs are fetched, and nothing in them is installed, built or run.",
+  "repos": [
+    {
+      "name": "saas-starter",
+      "url": "https://github.com/nextjs/saas-starter",
+      "sha": "6e33e58b1e553a41fe22e6b941a7229a002de361",
+      "runs": [{ "name": "saas-starter", "cwd": ".", "check": ["."] }]
+    },
+    {
+      "name": "chatbot",
+      "url": "https://github.com/vercel/chatbot",
+      "sha": "c2f8235e1f3ea903ad8b7f61447c4f74164b5c58",
+      "runs": [{ "name": "chatbot", "cwd": ".", "check": ["app", "components"] }]
+    },
+    {
+      "name": "shadcn-ui",
+      "url": "https://github.com/shadcn-ui/ui",
+      "sha": "0132174664c07d41262fb51012d0cc782e458e6c",
+      "paths": ["apps/v4"],
+      "runs": [{ "name": "shadcn-website", "cwd": "apps/v4", "check": ["app", "components"] }]
+    },
+    {
+      "name": "midday",
+      "url": "https://github.com/midday-ai/midday",
+      "sha": "51587319f26a0ffaa9dfccab1920373cb65689b7",
+      "paths": ["apps/dashboard", "packages"],
+      "runs": [{ "name": "midday-dashboard", "cwd": "apps/dashboard", "check": ["src"] }]
+    },
+    {
+      "name": "documenso",
+      "url": "https://github.com/documenso/documenso",
+      "sha": "38ecb217effcc53a7164d7123c51336f636bd3b2",
+      "paths": ["apps/remix", "packages"],
+      "runs": [{ "name": "documenso", "cwd": "apps/remix", "check": ["."] }]
+    },
+    {
+      "name": "dub",
+      "url": "https://github.com/dubinc/dub",
+      "sha": "70c96f90701451358bc9438f8b7fdf4b3b46a6f4",
+      "paths": ["apps/web", "packages"],
+      "runs": [
+        { "name": "dub-web", "cwd": "apps/web", "check": ["."] },
+        { "name": "dub-ui", "cwd": "packages/ui", "check": ["."] },
+        {
+          "name": "dub-web-configured",
+          "cwd": "apps/web",
+          "config": "configs/dub.json",
+          "check": ["."]
+        }
+      ]
+    },
+    {
+      "name": "openstatus",
+      "url": "https://github.com/openstatusHQ/openstatus",
+      "sha": "e36446dc7d6980c16959f07d683f6261bc9c37d0",
+      "paths": ["apps/dashboard", "apps/web", "packages"],
+      "runs": [
+        { "name": "openstatus-dashboard", "cwd": "apps/dashboard", "check": ["."] },
+        { "name": "openstatus-web", "cwd": "apps/web", "check": ["."] },
+        { "name": "openstatus-ui", "cwd": "packages/ui", "check": ["."] }
+      ]
+    },
+    {
+      "name": "cal.com",
+      "url": "https://github.com/calcom/cal.com",
+      "sha": "54343aa685ae8f33159d2f485ec4a57bad5c574a",
+      "paths": ["apps/web", "packages"],
+      "runs": [
+        { "name": "calcom-web", "cwd": "apps/web", "check": ["."] },
+        { "name": "calcom-ui", "cwd": "packages/ui", "check": ["."] },
+        { "name": "calcom-atoms", "cwd": "packages/platform/atoms", "check": ["."] }
+      ]
+    },
+    {
+      "name": "twenty",
+      "url": "https://github.com/twentyhq/twenty",
+      "sha": "b83943ab4503196489eec95c73d1f1d26b249e0b",
+      "paths": ["packages/twenty-ui", "packages/twenty-front"],
+      "runs": [
+        { "name": "twenty-ui", "cwd": "packages/twenty-ui", "check": ["."] },
+        { "name": "twenty-front", "cwd": "packages/twenty-front", "check": ["."] }
+      ]
+    },
+    {
+      "name": "react-spectrum",
+      "url": "https://github.com/adobe/react-spectrum",
+      "sha": "740c6c5c4a717ca8c82fc4d15d199f6166cd42dc",
+      "paths": ["starters/tailwind"],
+      "runs": [{ "name": "react-aria-starter", "cwd": "starters/tailwind", "check": ["."] }]
+    }
+  ]
+}

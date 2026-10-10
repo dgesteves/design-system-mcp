@@ -1,0 +1,642 @@
+{
+  "$comment": "Written by `node scripts/corpus.mjs --update`. Counts per run and rule; `labels` records which labelled findings were reported.",
+  "version": "0.3.3",
+  "runs": {
+    "saas-starter": {
+      "inspect": {
+        "detected": "components.json (ui: @/components/ui → components/ui)",
+        "files": "7 component files, 1 token file, 0 docs",
+        "components": 7,
+        "parts": 23,
+        "tokens": {
+          "color": 40,
+          "radius": 8,
+          "spacing": 1
+        },
+        "warnings": 0
+      },
+      "files": 16,
+      "rules": {
+        "no-hardcoded-color": {
+          "errors": 102,
+          "warnings": 0,
+          "fixes": 66
+        },
+        "prefer-design-system-component": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 2
+        }
+      }
+    },
+    "chatbot": {
+      "inspect": {
+        "detected": "components.json (ui: @/components/ui → components/ui)",
+        "files": "22 component files, 1 token file, 0 docs",
+        "components": 23,
+        "parts": 97,
+        "tokens": {
+          "radius": 8,
+          "color": 31,
+          "shadow": 6,
+          "other": 6,
+          "spacing": 1
+        },
+        "warnings": 0
+      },
+      "files": 61,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 11,
+          "warnings": 0,
+          "fixes": 4
+        },
+        "no-hardcoded-color": {
+          "errors": 41,
+          "warnings": 0,
+          "fixes": 8
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 1,
+          "fixes": 1
+        },
+        "prefer-design-system-component": {
+          "errors": 20,
+          "warnings": 0,
+          "fixes": 20
+        }
+      }
+    },
+    "shadcn-website": {
+      "inspect": {
+        "detected": "components.json (ui: @/registry/new-york-v4/ui → registry/new-york-v4/ui)",
+        "files": "61 component files, 1 token file, 0 docs",
+        "components": 68,
+        "parts": 263,
+        "tokens": {
+          "typography": 3,
+          "radius": 8,
+          "color": 40,
+          "spacing": 1
+        },
+        "warnings": 0
+      },
+      "files": 279,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 0
+        },
+        "no-hardcoded-color": {
+          "errors": 96,
+          "warnings": 0,
+          "fixes": 46
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 5,
+          "fixes": 5
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 4,
+          "fixes": 4
+        },
+        "prefer-design-system-component": {
+          "errors": 9,
+          "warnings": 0,
+          "fixes": 7
+        }
+      }
+    },
+    "midday-dashboard": {
+      "inspect": {
+        "detected": "workspace package @midday/ui",
+        "files": "76 component files, 1 token file, 0 docs",
+        "components": 78,
+        "parts": 144,
+        "tokens": {
+          "color": 33,
+          "radius": 1
+        },
+        "warnings": 0
+      },
+      "files": 569,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 105,
+          "warnings": 0,
+          "fixes": 12
+        },
+        "no-hardcoded-color": {
+          "errors": 1024,
+          "warnings": 0,
+          "fixes": 552
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 4,
+          "fixes": 4
+        },
+        "prefer-design-system-component": {
+          "errors": 108,
+          "warnings": 0,
+          "fixes": 102
+        }
+      }
+    },
+    "documenso": {
+      "inspect": {
+        "detected": "workspace package @documenso/ui, imported by path",
+        "files": "94 component files, 1 token file, 0 docs",
+        "components": 99,
+        "parts": 108,
+        "tokens": {
+          "color": 102,
+          "other": 1,
+          "radius": 1
+        },
+        "warnings": 0
+      },
+      "files": 506,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 41,
+          "warnings": 0,
+          "fixes": 25
+        },
+        "no-hardcoded-color": {
+          "errors": 286,
+          "warnings": 0,
+          "fixes": 266
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 7,
+          "fixes": 1
+        },
+        "prefer-design-system-component": {
+          "errors": 104,
+          "warnings": 0,
+          "fixes": 65
+        }
+      }
+    },
+    "dub-web": {
+      "inspect": {
+        "detected": null,
+        "files": "0 component files, 1 token file, 0 docs",
+        "components": 0,
+        "parts": 0,
+        "tokens": {},
+        "warnings": 1
+      },
+      "files": 1484,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 76,
+          "warnings": 0,
+          "fixes": 47
+        }
+      }
+    },
+    "dub-ui": {
+      "inspect": {
+        "detected": null,
+        "files": "0 component files, 0 token files, 0 docs",
+        "components": 0,
+        "parts": 0,
+        "tokens": {},
+        "warnings": 2
+      },
+      "files": 457,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 2
+        }
+      }
+    },
+    "dub-web-configured": {
+      "inspect": {
+        "detected": null,
+        "files": "104 component files, 2 token files, 0 docs",
+        "components": 108,
+        "parts": 14,
+        "tokens": {
+          "other": 24
+        },
+        "warnings": 0
+      },
+      "files": 1484,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 76,
+          "warnings": 0,
+          "fixes": 47
+        },
+        "no-unknown-component": {
+          "errors": 1207,
+          "warnings": 0,
+          "fixes": 10
+        },
+        "prefer-design-system-component": {
+          "errors": 1126,
+          "warnings": 0,
+          "fixes": 1121
+        }
+      }
+    },
+    "openstatus-dashboard": {
+      "inspect": {
+        "detected": "components.json (ui: @/components/ui → src/components/ui)",
+        "files": "10 component files, 1 token file, 0 docs",
+        "components": 14,
+        "parts": 8,
+        "tokens": {
+          "spacing": 3,
+          "typography": 4,
+          "color": 4,
+          "radius": 8
+        },
+        "warnings": 0
+      },
+      "files": 454,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 4,
+          "warnings": 0,
+          "fixes": 0
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 2,
+          "fixes": 2
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 2,
+          "fixes": 1
+        },
+        "prefer-design-system-component": {
+          "errors": 9,
+          "warnings": 0,
+          "fixes": 9
+        }
+      }
+    },
+    "openstatus-web": {
+      "inspect": {
+        "detected": "components.json (ui: @/components/ui → src/components/ui)",
+        "files": "2 component files, 1 token file, 0 docs",
+        "components": 2,
+        "parts": 0,
+        "tokens": {
+          "color": 9,
+          "typography": 3,
+          "radius": 9,
+          "spacing": 1
+        },
+        "warnings": 0
+      },
+      "files": 172,
+      "rules": {
+        "no-hardcoded-color": {
+          "errors": 9,
+          "warnings": 0,
+          "fixes": 3
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 2,
+          "fixes": 1
+        },
+        "prefer-design-system-component": {
+          "errors": 12,
+          "warnings": 0,
+          "fixes": 12
+        }
+      }
+    },
+    "openstatus-ui": {
+      "inspect": {
+        "detected": "components.json (ui: @openstatus/ui/components/ui → src/components/ui)",
+        "files": "42 component files, 1 token file, 0 docs",
+        "components": 47,
+        "parts": 158,
+        "tokens": {
+          "color": 51,
+          "radius": 8,
+          "spacing": 1
+        },
+        "warnings": 0
+      },
+      "files": 60,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 2
+        },
+        "no-hardcoded-color": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 2
+        },
+        "prefer-design-system-component": {
+          "errors": 9,
+          "warnings": 0,
+          "fixes": 9
+        }
+      }
+    },
+    "calcom-web": {
+      "inspect": {
+        "detected": "components.json (ui: @coss/ui/components → ../../packages/coss-ui/src/components)",
+        "files": "50 component files, 1 token file, 0 docs",
+        "components": 55,
+        "parts": 222,
+        "tokens": {
+          "color": 41,
+          "typography": 3,
+          "radius": 4
+        },
+        "warnings": 0
+      },
+      "files": 601,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 15,
+          "warnings": 0,
+          "fixes": 11
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 33,
+          "fixes": 28
+        },
+        "prefer-design-system-component": {
+          "errors": 98,
+          "warnings": 0,
+          "fixes": 92
+        }
+      }
+    },
+    "calcom-ui": {
+      "inspect": {
+        "detected": "package.json exports of @calcom/ui",
+        "files": "4 component files, 0 token files, 0 docs",
+        "components": 4,
+        "parts": 10,
+        "tokens": {},
+        "warnings": 1
+      },
+      "files": 136,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 8,
+          "warnings": 0,
+          "fixes": 1
+        },
+        "no-unknown-component": {
+          "errors": 24,
+          "warnings": 0,
+          "fixes": 10
+        },
+        "prefer-design-system-component": {
+          "errors": 1,
+          "warnings": 0,
+          "fixes": 1
+        }
+      }
+    },
+    "calcom-atoms": {
+      "inspect": {
+        "detected": "components.json (ui: @/components/ui → src/components/ui)",
+        "files": "8 component files, 1 token file, 0 docs",
+        "components": 29,
+        "parts": 26,
+        "tokens": {
+          "typography": 30,
+          "color": 182,
+          "spacing": 1,
+          "other": 41,
+          "radius": 8,
+          "shadow": 18
+        },
+        "warnings": 0
+      },
+      "files": 56,
+      "rules": {
+        "no-hardcoded-color": {
+          "errors": 11,
+          "warnings": 0,
+          "fixes": 11
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 2,
+          "fixes": 2
+        },
+        "no-unknown-component": {
+          "errors": 0,
+          "warnings": 1,
+          "fixes": 0
+        },
+        "prefer-design-system-component": {
+          "errors": 1,
+          "warnings": 0,
+          "fixes": 1
+        }
+      }
+    },
+    "twenty-ui": {
+      "inspect": {
+        "detected": null,
+        "files": "0 component files, 0 token files, 0 docs",
+        "components": 0,
+        "parts": 0,
+        "tokens": {},
+        "warnings": 2
+      },
+      "files": 553,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 16,
+          "warnings": 0,
+          "fixes": 0
+        }
+      }
+    },
+    "twenty-front": {
+      "inspect": {
+        "detected": null,
+        "files": "0 component files, 1 token file, 0 docs",
+        "components": 0,
+        "parts": 0,
+        "tokens": {
+          "other": 3
+        },
+        "warnings": 1
+      },
+      "files": 3765,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 2,
+          "warnings": 0,
+          "fixes": 0
+        }
+      }
+    },
+    "react-aria-starter": {
+      "inspect": {
+        "detected": "src/ (56 components wrapping react-aria-components)",
+        "files": "56 component files, 1 token file, 0 docs",
+        "components": 71,
+        "parts": 29,
+        "tokens": {
+          "spacing": 1,
+          "radius": 8
+        },
+        "warnings": 0
+      },
+      "files": 49,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 5,
+          "warnings": 0,
+          "fixes": 3
+        }
+      }
+    }
+  },
+  "labels": {
+    "9390be588076": true,
+    "015f2da20747": true,
+    "137617b14863": true,
+    "92f74cff7f03": true,
+    "5b7bd502dd6c": true,
+    "d6bbf5f1279e": true,
+    "14336c5ade5a": true,
+    "9245343b22d0": true,
+    "32cdac44a8e9": true,
+    "4de9ff833cb9": true,
+    "7d66bc35128a@var(--radius)": true,
+    "022d89932328": true,
+    "00b1c9afadda": true,
+    "c8f17a7bf964": true,
+    "517c8696d735": true,
+    "2486e9215cee": true,
+    "aeaf3a6fba2f": true,
+    "482837efa8e8": true,
+    "127cb695bb72": true,
+    "818db750975b@fill-[var(--rainbow-4)]": true,
+    "161c1a1f85ee": true,
+    "d6ade20df6aa@text-sh-class": true,
+    "968cb54667a1": true,
+    "13ee2a16d511": true,
+    "73f196f44868": true,
+    "360843387dba": true,
+    "8c791e5894b5@variant=\"destructive\"": true,
+    "07a61c304317@variant=\"destructive\"": true,
+    "02c963b7f3fe": true,
+    "703c3a411509": true,
+    "e0dc49cdd748": true,
+    "0e8ed079c6c5": true,
+    "0a9155609801@bg-[var(--cal-bg-primary)]": true,
+    "058d10e38701@-ml-[var(--spacing)]": true,
+    "7ecfa4a8053d": true,
+    "6b429f7a4e16": true,
+    "e75ccc28ba97@-ml-[var(--spacing)]": true,
+    "4184374b6cad": true,
+    "1b925ebede7b": true,
+    "6126756b536b": true,
+    "7e90d4ce06b5": true,
+    "a8e944fae425": true,
+    "e62478928ecd": true,
+    "b3abce5b082f": true,
+    "40714c224173": true,
+    "2c3baec6c883": true,
+    "e92036503144": true,
+    "b92dd66ef226": true,
+    "65125f1c020d": true,
+    "ce0bcb6ab5ed": true,
+    "3e6b01eff38c": true,
+    "5e94fdb8a2c0": true,
+    "a80e5785d29d": true,
+    "620100b5267b": true,
+    "8667fc205b34": true,
+    "0b7d6277e36f": true,
+    "d57a7acb0ca7": true,
+    "86dd24e1770f": true,
+    "e9443840c75b": true,
+    "45b34afb80f3": true,
+    "aa3c685f5c59": true,
+    "6022001aed51@var(--radius)": true,
+    "eec23647b927": true,
+    "fa2f799ffc9d": true,
+    "8bfd295ade59": true,
+    "09e74bd6b97e": true,
+    "7e48b3a3605a": true,
+    "e1ac7f215eca": true,
+    "9a81e236971d": true,
+    "64d94510d4d1": true,
+    "66103392d4f0": true,
+    "033bb54a4f89": true,
+    "6638c8e9ed5c": true,
+    "7663bf4ae926": true,
+    "345d28e8b2c6": true,
+    "3dd61e0fa1a5": true,
+    "bfb32c98b3c7": true,
+    "874a45847759": true,
+    "b63d5ba89965": true,
+    "574de778e36d": true,
+    "a950d68620bf": true,
+    "e92e29fab2ce": true,
+    "257e37dda958": true,
+    "da74d97037e0": true,
+    "34104ec5ff49": true,
+    "cd3d4c1eff01": true,
+    "bb5532106279": true,
+    "14b8b8a2269b": true,
+    "3f64e5d56330": true,
+    "ba822f05da4a": true,
+    "a09a11960838": true,
+    "cd04a2176a9d": true,
+    "07ce214a81fc": true,
+    "32c9476d729d": true,
+    "eaa1dcde097a@text-[var(--rainbow-4)]": true,
+    "b12d5a3781ca": true,
+    "a286fdc59187": true,
+    "72b96304daff": true,
+    "9823267380b4": true,
+    "edd24d65ab5c": true,
+    "5567c56c84f6": true,
+    "b29178758fc4": true,
+    "f74b614ee3aa": true,
+    "5ef7d322cd00": true,
+    "78d654aa058b": true,
+    "c3ef200c5d88": true,
+    "eb5adbc95a55": true,
+    "0a9f72b1d0bc": true,
+    "104eedc1455e": true,
+    "005b807d7c59": true,
+    "084ac2c71fee": true,
+    "45ba21a0fd4c": true,
+    "e200a29c863c@text-destructive-foreground": true,
+    "835dc3507977": true,
+    "3f6ff6d4dd10": true,
+    "2064b3b4b09c": true,
+    "73ad5069b787": true,
+    "fb92b62f1978": true,
+    "7ce9b1059947": true,
+    "d2f2265ee782": true,
+    "0cf42873ec1e": true,
+    "f4905fdf7382": true,
+    "031dc08572af": true,
+    "1567cbdac05a": true
+  }
+}

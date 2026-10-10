@@ -62,6 +62,7 @@
     "smoke": "node scripts/smoke.mjs",
     "assets": "node scripts/build-assets.mjs",
     "palette": "node scripts/build-palette.mjs",
+    "corpus": "node scripts/corpus.mjs",
     "demo:check": "cd examples/shadcn-demo && node ../../dist/cli.js check \"app/**/*.tsx\"",
     "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
     "changeset": "changeset",
