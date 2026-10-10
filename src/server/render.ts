@@ -202,9 +202,22 @@ export function renderSearch(query: string, hits: SearchHit[]): string {
   return lines.join('\n');
 }
 
-export function renderTokens(ds: DesignSystem, tokens: Token[]): string {
-  if (!tokens.length)
-    return 'No tokens match. Call get_tokens without filters to see all categories.';
+export function renderTokens(
+  ds: DesignSystem,
+  tokens: Token[],
+  filter: { category?: string | undefined; query?: string | undefined } = {},
+): string {
+  if (!ds.tokens.length) {
+    return `No design tokens found in this project (root: ${ds.root}): no stylesheet or *.tokens.json defines any. Set "tokens" in the config: https://github.com/dgesteves/design-system-mcp#configuration`;
+  }
+  if (!tokens.length) {
+    const counts = new Map<string, number>();
+    for (const token of ds.tokens)
+      counts.set(token.category, (counts.get(token.category) ?? 0) + 1);
+    const categories = [...counts].map(([category, n]) => `${category} (${n})`).join(', ');
+    const what = [filter.category, filter.query && `"${filter.query}"`].filter(Boolean).join(' ');
+    return `No tokens match${what ? ` ${what}` : ''}. The design system has ${categories}; call get_tokens without filters to see them.`;
+  }
   const groups = new Map<string, Token[]>();
   for (const token of tokens)
     groups.set(token.category, [...(groups.get(token.category) ?? []), token]);

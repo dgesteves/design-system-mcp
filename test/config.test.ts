@@ -9,6 +9,7 @@ import {
   configJsonSchema,
   DEFAULT_COMPONENTS,
   loadConfig,
+  nodeRunsTypeScript,
   rulesFor,
 } from '../src/config.js';
 import { matchesGlob } from '../src/util/paths.js';
@@ -65,6 +66,21 @@ describe('loadConfig', () => {
       `const config: { components: string[] } = { components: ["ui/**/*.tsx"] };\nexport default config;\n`,
     );
     expect((await loadConfig({ root: dir })).components).toEqual(['ui/**/*.tsx']);
+  });
+
+  it('knows which Node.js versions run a TypeScript config', () => {
+    // The package runs on Node.js 20.19; only a .ts config needs type stripping.
+    for (const [version, runs] of [
+      ['20.19.0', false],
+      ['v20.20.1', false],
+      ['22.17.1', false],
+      ['22.18.0', true],
+      ['23.5.0', false],
+      ['23.6.0', true],
+      ['24.0.0', true],
+    ] as const) {
+      expect([version, nodeRunsTypeScript(version)]).toEqual([version, runs]);
+    }
   });
 
   it('rejects invalid configs with a readable message', async () => {

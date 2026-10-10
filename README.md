@@ -57,7 +57,7 @@ Run as is, with no config, on public apps (with version 0.2.0). These counts are
 
 ## Quickstart
 
-No config is needed in a shadcn/ui project (Tailwind v3 or v4), a monorepo whose components live in a workspace package, or the design-system package itself ([how it finds them](#zero-config)). Other layouts take a [config file](#configuration). Requires Node.js 22.18 or later.
+No config is needed in a shadcn/ui project (Tailwind v3 or v4), a monorepo whose components live in a workspace package, or the design-system package itself ([how it finds them](#zero-config)). Other layouts take a [config file](#configuration). Requires Node.js 20.19 or later.
 
 **1. Give your agent the tools.** Pick one:
 
@@ -445,7 +445,7 @@ A candidate whose files cannot be found is skipped. Components found through `ex
 
 ### Config file
 
-`design-system-mcp.config.json` (or `.ts`, `.mjs`, `.js`) in the project root. Every field is optional; the [JSON Schema](schema.json) gives editor completion.
+`design-system-mcp.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](schema.json) gives editor completion.
 
 ```json
 {

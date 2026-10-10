@@ -50,7 +50,7 @@ const FAQ: [question: string, answer: string][] = [
   ],
   [
     'What does it need to run?',
-    'Node.js 22.18 or later. On native Windows, wrap the command as `cmd /c npx ...`.',
+    'Node.js 20.19 or later (22.18 or later for a TypeScript config file). On native Windows, wrap the command as `cmd /c npx ...`.',
   ],
 ];
 

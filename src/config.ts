@@ -378,7 +378,18 @@ export function rulesFor(
   return rules;
 }
 
+/** Whether a Node.js version runs TypeScript files without flags (type stripping): 22.18, or 23.6 and later. */
+export function nodeRunsTypeScript(version: string = process.versions.node): boolean {
+  const [major = 0, minor = 0] = version.replace(/^v/, '').split('.').map(Number);
+  return major > 23 || (major === 23 && minor >= 6) || (major === 22 && minor >= 18);
+}
+
 async function readConfigFile(file: string): Promise<unknown> {
+  if (/\.[cm]?ts$/.test(file) && !nodeRunsTypeScript()) {
+    throw new ConfigError(
+      `${file} is TypeScript, which Node.js runs from 22.18; this is ${process.version}. Use design-system-mcp.config.json or .mjs, or Node.js 22.18 or later.`,
+    );
+  }
   if (file.endsWith('.json')) {
     try {
       return JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
