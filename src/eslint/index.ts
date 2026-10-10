@@ -13,7 +13,7 @@
  */
 import path from 'node:path';
 
-import type { ESLint, Linter, Rule } from 'eslint';
+import type { ESLint, Linter, Rule, SourceCode } from 'eslint';
 
 import {
   DEFAULT_SEVERITY,
@@ -33,8 +33,13 @@ const RULES_PAGE = 'https://design-system-mcp-demo.vercel.app/rules';
 /** Design systems by project root, at the version the loader last reported. */
 const designSystems = new Map<string, { version: string; ds: DesignSystem }>();
 
-/** The last file checked: every rule of a file shares one check. */
-let last: { file: string; text: string; outcome: Outcome } | undefined;
+/**
+ * One check per file per lint pass, shared by every rule of the pass: they see the same
+ * SourceCode, and a new pass (another run, a fix pass, an editor's next keystroke) gets a new
+ * one, so the design system's freshness is asked about again. `reported` says that a file that
+ * could not be checked has been said so in this pass.
+ */
+const passes = new WeakMap<SourceCode, { outcome: Outcome; reported: boolean }>();
 
 type Outcome = { result: CheckResult } | { skipped: true } | { error: string };
 
@@ -46,11 +51,14 @@ export interface Settings {
   config?: string;
 }
 
-function check(cwd: string, file: string, text: string, settings: Settings): Outcome {
-  if (last?.file === file && last.text === text) return last.outcome;
-  const outcome = run(cwd, file, text, settings);
-  last = { file, text, outcome };
-  return outcome;
+function passFor(context: Rule.RuleContext, file: string, settings: Settings) {
+  const { sourceCode } = context;
+  let pass = passes.get(sourceCode);
+  if (!pass) {
+    pass = { outcome: run(context.cwd, file, sourceCode.text, settings), reported: false };
+    passes.set(sourceCode, pass);
+  }
+  return pass;
 }
 
 function run(cwd: string, file: string, text: string, settings: Settings): Outcome {
@@ -71,9 +79,6 @@ function run(cwd: string, file: string, text: string, settings: Settings): Outco
   return result.skipped ? { skipped: true } : { result };
 }
 
-/** Files that could not be checked, said once each rather than once per rule. */
-const told = new Set<string>();
-
 function createRule(id: RuleId, description: string): Rule.RuleModule {
   return {
     meta: {
@@ -87,12 +92,13 @@ function createRule(id: RuleId, description: string): Rule.RuleModule {
       const settings = (context.settings.onsystem ?? {}) as Settings;
       return {
         'Program:exit'(node) {
-          const outcome = check(context.cwd, file, context.sourceCode.text, settings);
+          const pass = passFor(context, file, settings);
+          const { outcome } = pass;
           if ('skipped' in outcome) return;
           if ('error' in outcome) {
-            const key = `${file}\0${outcome.error}`;
-            if (told.has(key)) return;
-            told.add(key);
+            // Once per file and pass, from the first rule that runs, rather than once per rule.
+            if (pass.reported) return;
+            pass.reported = true;
             context.report({
               node,
               message: `onsystem could not check this file: ${outcome.error}`,

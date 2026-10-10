@@ -206,6 +206,39 @@ describe('the ESLint plugin', () => {
     expect(result?.messages[0]?.message).toMatch(/^onsystem could not check this file: /);
   });
 
+  // An editor's ESLint server lints the same file again and again in one process.
+  it('says on every lint, not only the first, that a file could not be checked', async () => {
+    const root = fixture({ 'onsystem.config.json': '{ "components": 42 }', 'app/page.tsx': RED });
+    const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: config() });
+    for (let run = 0; run < 2; run++) {
+      const [result] = await eslint.lintFiles(['app/page.tsx']);
+      expect(result?.messages.map((m) => m.message)).toEqual([
+        expect.stringMatching(/^onsystem could not check this file: /),
+      ]);
+    }
+  });
+
+  it('picks up a change to the design system between lints of an unchanged file', async () => {
+    const button = (variants: string) =>
+      `export function Button(props: { variant?: ${variants} }) { return <button {...props} /> }\n`;
+    const root = fixture({
+      'components/ui/button.tsx': button('"default" | "outline"'),
+      'app/page.tsx':
+        'import { Button } from "../components/ui/button"\nexport default () => <Button variant="ghost" />\n',
+    });
+    const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: config() });
+    const rules = async () =>
+      (await eslint.lintFiles(['app/page.tsx'])).flatMap((r) => r.messages.map((m) => m.ruleId));
+    expect(await rules()).toEqual(['onsystem/no-unknown-variant']);
+    fs.writeFileSync(
+      path.join(root, 'components/ui/button.tsx'),
+      button('"default" | "outline" | "ghost"'),
+    );
+    // The loader looks at the design system's files again once they are two seconds old.
+    await new Promise((resolve) => setTimeout(resolve, 2100));
+    expect(await rules()).toEqual([]);
+  });
+
   it('runs on ESLint 9', async () => {
     const eslint = new ESLint9({
       cwd: DEMO_ROOT,
