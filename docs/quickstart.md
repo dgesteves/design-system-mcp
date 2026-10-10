@@ -8,7 +8,9 @@ No config is needed in a shadcn/ui project (Tailwind v3 or v4), an app whose com
 npx -y onsystem inspect
 ```
 
-It lists the components with their props, variants and parts, and the tokens by category. If the list is empty, see [troubleshooting](troubleshooting.md#inspect-found-nothing).
+It lists the components with their props, variants and parts, and the tokens by category. `inspect --explain` adds every place it looked and why each was taken or not, the config it resolved to, tokens that did not resolve and components whose props did not. If the list is empty, see [troubleshooting](troubleshooting.md#inspect-found-nothing).
+
+To keep what it found in a file you can edit, run `npx -y onsystem init`: it writes `onsystem.config.json` from it (or asks where the components and tokens are when it found nothing), checks the project once and offers to record the findings as a baseline. `--yes` answers for you.
 
 **2. Hold your agent to it.** Pick one:
 

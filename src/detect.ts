@@ -5,7 +5,7 @@ import { escapePath, globSync } from 'tinyglobby';
 
 import { readProjectConfig, type ProjectConfig } from './extract/program.js';
 import { buildEntries, exportedFiles, moduleFile, sourceTarget } from './package-source.js';
-import { relativePath, toPosix } from './util/paths.js';
+import { isInside, relativePath, toPosix } from './util/paths.js';
 import { unique } from './util/strings.js';
 
 /**
@@ -41,6 +41,18 @@ export interface Detection {
    */
   designSystems?: DesignSystemSource[] | undefined;
 }
+
+/** A candidate zero config looked at, and what came of it, for `inspect --explain`. */
+export interface DetectionStep {
+  /** `components.json`, `package.json exports of @acme/web`, `workspace package @acme/ui`. */
+  candidate: string;
+  accepted: boolean;
+  reason: string;
+}
+
+/** Why a candidate was turned down, for the trace. */
+type Note = (reason: string) => void;
+const ignore: Note = () => undefined;
 
 /** One of several design systems an app uses, and how often its code imports it. */
 export interface DesignSystemSource {
@@ -92,54 +104,121 @@ const STYLESHEETS = [
  * (`designSystems`). A candidate whose globs match no file is skipped. Returns undefined
  * when nothing applies, so the shadcn defaults stay in force.
  */
-export function detectProject(root: string, tsconfig?: string): Detection | undefined {
+export function detectProject(
+  root: string,
+  tsconfig?: string,
+  trace?: DetectionStep[],
+): Detection | undefined {
+  const step = (candidate: string, accepted: boolean, reason: string) =>
+    trace?.push({ candidate, accepted, reason });
   const packages = new PackageFinder(root);
   const found: Found[] = [];
 
   const shadcn = readJson(path.join(root, 'components.json'));
+  let why = 'no ui or components alias';
   const fromShadcn = shadcn
-    ? fromComponentsJson(root, root, shadcn, readProjectConfig(root, tsconfig), packages)
+    ? fromComponentsJson(root, root, shadcn, readProjectConfig(root, tsconfig), packages, (r) => {
+        why = r;
+      })
     : undefined;
-  if (fromShadcn && matchesAny(root, fromShadcn)) {
+  if (!shadcn) {
+    step(
+      'components.json',
+      false,
+      fs.existsSync(path.join(root, 'components.json')) ? 'not valid JSON' : 'not found',
+    );
+  } else if (!fromShadcn) {
+    step('components.json', false, why);
+  } else if (!matchesAny(root, fromShadcn)) {
+    step('components.json', false, `${fromShadcn.source}, but no .tsx or .jsx file is there`);
+  } else {
     found.push({ ...fromShadcn, source: `components.json (ui: ${fromShadcn.source})` });
+    step('components.json', true, `ui: ${fromShadcn.source}, ${countFiles(root, fromShadcn)}`);
   }
   // The app's own components/ui stays in unless components.json names its folder.
   const withDefaults = !found.length;
 
   const own = readJson(path.join(root, 'package.json'));
+  const ownName = typeof own?.name === 'string' ? own.name : 'the root';
   if (!found.length) {
-    const self = own ? fromPackage(root, root, own) : undefined;
+    let reason = 'no package.json';
+    const self = own
+      ? fromPackage(root, root, own, (r) => {
+          reason = r;
+        })
+      : undefined;
     if (self && matchesAny(root, self)) {
+      step(`package.json exports of ${ownName}`, true, countFiles(root, self));
       return detection(root, [self], false, `package.json exports of ${self.source}`);
     }
+    step(
+      `package.json exports of ${ownName}`,
+      false,
+      self ? 'its exports match no .tsx or .jsx file' : reason,
+    );
+  } else {
+    step(
+      `package.json exports of ${ownName}`,
+      false,
+      'not read: components.json found the components',
+    );
   }
 
-  const names = Object.keys({
+  const dependencies = Object.keys({
     ...asRecord(own?.dependencies),
     ...asRecord(own?.devDependencies),
-  }).filter(isDesignSystemName);
+  });
+  const names = dependencies.filter(isDesignSystemName);
+  if (!names.length) {
+    step(
+      'workspace design-system packages',
+      false,
+      `no dependency is named like one (@acme/ui, acme-ui, @acme/design-system) among ${plural(dependencies.length, 'dependency', 'dependencies')}`,
+    );
+  }
   let imported: Map<string, Set<string>> | undefined;
   for (const name of names) {
+    const candidate = `workspace package ${name}`;
     // What components.json already points into.
-    if (found.some((f) => f.package === name)) continue;
+    if (found.some((f) => f.package === name)) {
+      step(candidate, false, 'not added twice: components.json points into it');
+      continue;
+    }
     // Only workspace sources: a package installed from the registry is compiled.
     const dir = packages.find(name);
     const pkg = dir ? readJson(path.join(dir, 'package.json')) : undefined;
-    if (!dir || !pkg) continue;
-    const candidate =
-      fromPackage(root, dir, pkg) ??
-      fromPackageComponentsJson(root, dir, pkg, packages) ??
-      fromImports(root, dir, name, (imported ??= importedSubpaths(root, names)).get(name));
-    if (candidate && matchesAny(root, candidate)) {
+    if (!dir || !pkg) {
+      step(
+        candidate,
+        false,
+        'not a workspace package: an installed package is compiled, and only sources are read',
+      );
+      continue;
+    }
+    const reasons: string[] = [];
+    const note: Note = (r) => reasons.push(r);
+    const result =
+      fromPackage(root, dir, pkg, note) ??
+      fromPackageComponentsJson(root, dir, pkg, packages, note) ??
+      fromImports(root, dir, name, (imported ??= importedSubpaths(root, names)).get(name), note);
+    if (result && matchesAny(root, result)) {
       found.push({
-        ...candidate,
-        source: `workspace package ${candidate.source}`,
+        ...result,
+        source: `workspace package ${result.source}`,
         package: name,
         prefixes: [name],
       });
+      step(candidate, true, `${relativePath(root, dir)}, ${countFiles(root, result)}`);
+    } else {
+      step(
+        candidate,
+        false,
+        result ? 'its components match no file' : unique(reasons).join('; ') || 'nothing to read',
+      );
     }
   }
   if (found.length) {
+    step('a flat src/ of components', false, 'not read: a design system was found');
     if (found.length === 1) {
       const [only] = found;
       return detection(root, found, withDefaults, only?.source ?? '');
@@ -170,9 +249,32 @@ export function detectProject(root: string, tsconfig?: string): Detection | unde
     };
   }
 
-  const flat = own ? fromFlatFolder(root, own) : undefined;
-  if (flat && matchesAny(root, flat)) return detection(root, [flat], false, flat.source);
+  let flatWhy = 'no package.json';
+  const flat = own
+    ? fromFlatFolder(root, own, (r) => {
+        flatWhy = r;
+      })
+    : undefined;
+  if (flat && matchesAny(root, flat)) {
+    step('a flat src/ of components', true, flat.source);
+    return detection(root, [flat], false, flat.source);
+  }
+  step('a flat src/ of components', false, flatWhy);
   return undefined;
+}
+
+/** `12 component files`, for the trace. */
+function countFiles(root: string, found: Found): string {
+  const files = globSync(found.components, {
+    cwd: root,
+    ignore: ['**/node_modules/**'],
+    expandDirectories: false,
+  }).length;
+  return plural(files, 'component file');
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 }
 
 /** Libraries of unstyled primitives that design systems wrap. */
@@ -193,33 +295,45 @@ const MIN_FLAT_COMPONENTS = 5;
  * in five of which import the primitives library. An app whose `src/` holds pages or
  * features imports its own components, not primitives, so it does not qualify.
  */
-function fromFlatFolder(root: string, pkg: Record<string, unknown>): Found | undefined {
+function fromFlatFolder(
+  root: string,
+  pkg: Record<string, unknown>,
+  note: Note = ignore,
+): Found | undefined {
   const dependencies = Object.keys({
     ...asRecord(pkg.dependencies),
     ...asRecord(pkg.devDependencies),
     ...asRecord(pkg.peerDependencies),
   }).filter((name) => PRIMITIVES.test(name));
-  if (!dependencies.length) return undefined;
+  if (!dependencies.length) {
+    note('no dependency on a primitives library (React Aria, Radix, Base UI, Headless UI, Ark UI)');
+    return undefined;
+  }
 
   const dir = path.join(root, 'src');
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
+    note('no src/ folder');
     return undefined;
   }
-  if (
-    entries.some(
-      (e) =>
-        (e.isFile() && APP_ENTRIES.test(e.name)) || (e.isDirectory() && APP_FOLDERS.has(e.name)),
-    )
-  ) {
+  const app = entries.find(
+    (e) => (e.isFile() && APP_ENTRIES.test(e.name)) || (e.isDirectory() && APP_FOLDERS.has(e.name)),
+  );
+  if (app) {
+    note(`src/${app.name} makes src/ an app`);
     return undefined;
   }
   const files = entries
     .filter((e) => e.isFile() && /^[A-Z][A-Za-z0-9]*\.[jt]sx$/.test(e.name))
     .map((e) => e.name);
-  if (files.length < MIN_FLAT_COMPONENTS) return undefined;
+  if (files.length < MIN_FLAT_COMPONENTS) {
+    note(
+      `${plural(files.length, 'PascalCase .tsx file')} in src/, fewer than ${MIN_FLAT_COMPONENTS}`,
+    );
+    return undefined;
+  }
 
   const libraries = new Map<string, number>();
   let wrapping = 0;
@@ -238,7 +352,12 @@ function fromFlatFolder(root: string, pkg: Record<string, unknown>): Found | und
     if (used.size) wrapping++;
     for (const library of used) libraries.set(library, (libraries.get(library) ?? 0) + 1);
   }
-  if (wrapping * 5 < files.length * 4) return undefined;
+  if (wrapping * 5 < files.length * 4) {
+    note(
+      `${wrapping} of ${files.length} files in src/ import ${dependencies[0] ?? 'a primitives library'}, fewer than four in five`,
+    );
+    return undefined;
+  }
 
   const library = [...libraries].sort((a, b) => b[1] - a[1])[0]?.[0] ?? dependencies[0] ?? '';
   const stylesheet = STYLESHEETS.map((f) => path.join(root, f)).find((f) => fs.existsSync(f));
@@ -252,12 +371,14 @@ function fromFlatFolder(root: string, pkg: Record<string, unknown>): Found | und
 }
 
 function detection(root: string, found: Found[], withDefaults: boolean, source: string): Detection {
+  const dirs = unique(found.flatMap((f) => f.dirs));
   return {
     components: found.flatMap((f) => f.components),
     tokens: found.flatMap((f) => f.tokens),
-    docs: unique(found.flatMap((f) => f.dirs)).map(
-      (dir) => `${escapePath(relativePath(root, dir) || '.')}/**/*.{md,mdx}`,
-    ),
+    // A folder inside another is covered by its `**`.
+    docs: dirs
+      .filter((dir) => !dirs.some((other) => other !== dir && isInside(other, dir)))
+      .map((dir) => `${escapePath(relativePath(root, dir) || '.')}/**/*.{md,mdx}`),
     imports: found.flatMap((f) => f.imports),
     withDefaults,
     source,
@@ -281,6 +402,7 @@ function fromComponentsJson(
   json: Record<string, unknown>,
   project: ProjectConfig,
   packages: PackageFinder,
+  note: Note = ignore,
 ): Found | undefined {
   const aliases = asRecord(json.aliases);
   const ui =
@@ -289,7 +411,10 @@ function fromComponentsJson(
       : typeof aliases.components === 'string'
         ? `${aliases.components}/ui`
         : undefined;
-  if (!ui) return undefined;
+  if (!ui) {
+    note('no ui or components alias');
+    return undefined;
+  }
 
   let uiDir = resolveThroughPaths(ui, project);
   let imports: ImportMapping[] = [];
@@ -297,10 +422,16 @@ function fromComponentsJson(
     const name = packageName(ui);
     const pkgDir = name ? packages.find(name) : undefined;
     const pkg = pkgDir ? readJson(path.join(pkgDir, 'package.json')) : undefined;
-    if (!name || !pkgDir || !pkg) return undefined;
+    if (!name || !pkgDir || !pkg) {
+      note(`the ui alias ${ui} resolves through neither tsconfig paths nor a workspace package`);
+      return undefined;
+    }
     imports = exportMappings(root, pkgDir, pkg);
     uiDir = resolveThroughExports(ui, imports, root) ?? subpathDir(pkgDir, ui.slice(name.length));
-    if (!uiDir) return undefined;
+    if (!uiDir) {
+      note(`the ui alias ${ui} names no folder in ${name}`);
+      return undefined;
+    }
   }
 
   const tailwind = asRecord(json.tailwind);
@@ -349,9 +480,13 @@ function fromPackageComponentsJson(
   dir: string,
   pkg: Record<string, unknown>,
   packages: PackageFinder,
+  note: Note = ignore,
 ): Found | undefined {
   const json = readJson(path.join(dir, 'components.json'));
-  const found = json && fromComponentsJson(root, dir, json, readProjectConfig(dir), packages);
+  if (!json) return undefined;
+  const found = fromComponentsJson(root, dir, json, readProjectConfig(dir), packages, (r) => {
+    note(`its components.json: ${r}`);
+  });
   if (!found) return undefined;
   const name = typeof pkg.name === 'string' ? pkg.name : relativePath(root, dir);
   const barrel = pkg.exports !== undefined || typeof pkg.main === 'string';
@@ -370,7 +505,12 @@ function fromPackageComponentsJson(
  * `src/index.tsx` behind `dist/`) stands for the files the barrel re-exports, each
  * suggested with the export's specifier.
  */
-function fromPackage(root: string, dir: string, pkg: Record<string, unknown>): Found | undefined {
+function fromPackage(
+  root: string,
+  dir: string,
+  pkg: Record<string, unknown>,
+  note: Note = ignore,
+): Found | undefined {
   const imports: ImportMapping[] = [];
   const components: ImportMapping[] = [];
   const add = (mapping: ImportMapping, component: boolean) => {
@@ -393,7 +533,22 @@ function fromPackage(root: string, dir: string, pkg: Record<string, unknown>): F
   const files = components.filter((m) => !m.target.includes('*'));
   const patterns = components.filter((m) => m.target.includes('*'));
   // One or two .tsx exports are an app or a widget, not a component library.
-  if (files.length < 3 && !patterns.length) return undefined;
+  if (files.length < 3 && !patterns.length) {
+    const built = exportMappings(root, dir, pkg).filter((m) =>
+      /(?:^|\/)(?:dist|build|lib|out|esm|cjs)\//.test(m.target),
+    );
+    note(
+      pkg.exports === undefined && typeof pkg.main !== 'string'
+        ? 'no exports'
+        : built.length
+          ? `its exports point at build output with no source found (${built
+              .slice(0, 2)
+              .map((m) => m.target)
+              .join(', ')})`
+          : `its exports lead to ${plural(files.length, 'component file')}; a design system exports at least 3`,
+    );
+    return undefined;
+  }
 
   const stylesheets = imports
     .filter((m) => m.target.endsWith('.css') && !m.target.includes('*'))
@@ -445,6 +600,7 @@ function fromImports(
   dir: string,
   name: string,
   subpaths: ReadonlySet<string> | undefined,
+  note: Note = ignore,
 ): Found | undefined {
   const files: ImportMapping[] = [];
   const barrels: ImportMapping[] = [];
@@ -463,7 +619,10 @@ function fromImports(
       stylesheets.push(relativePath(root, file));
     }
   }
-  if (!files.length && !barrels.length) return undefined;
+  if (!files.length && !barrels.length) {
+    note(`the app imports no component file from ${name} by path`);
+    return undefined;
+  }
   return {
     components: [
       ...files.map((m) => escapePath(m.target)),

@@ -25,7 +25,7 @@ The root stays one project, as before, when it has a design system of its own (a
 
 ## Config file
 
-`onsystem.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](../schema.json) gives editor completion.
+`onsystem.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](../schema.json) gives editor completion. `npx onsystem init` writes one: the folders zero config found, spelled out (it leaves `components` to zero config when a package's exports name more than a few files or import paths a config cannot spell), or your answers to where the components, tokens and import path are when it found nothing. It never replaces an existing config without `--force`. At a monorepo root it writes a config with only `$schema`, for rules all projects share.
 
 ```json
 {

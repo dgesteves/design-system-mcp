@@ -47,7 +47,7 @@ onsystem reads your components, `cva` and `tv` variants, parts and tokens from s
 
 ## Quickstart
 
-Run it from the app's folder or from the monorepo root, with Node.js 20.19 or later. `npx onsystem inspect` shows what it found; at a [monorepo root](https://design-system-mcp-demo.vercel.app/docs/configuration#monorepo-roots), every app and design-system package, each file checked by its own project's design system.
+Run it from the app's folder or from the monorepo root, with Node.js 20.19 or later. `npx onsystem inspect` shows what it found, and `--explain` why; at a [monorepo root](https://design-system-mcp-demo.vercel.app/docs/configuration#monorepo-roots), every app and design-system package, each file checked by its own project's design system. `npx onsystem init` writes the config from it and offers a baseline.
 
 **Claude Code.** The plugin brings the hook, the MCP server and a skill:
 

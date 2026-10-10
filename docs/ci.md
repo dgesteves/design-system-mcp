@@ -34,7 +34,7 @@ When no components or no color tokens are found, `check` and `check_ui` say whic
 
 ## Adopting it in an existing codebase
 
-An established app can start with hundreds of findings (midday's dashboard has about 1,300). Record them once and commit the file:
+An established app can start with hundreds of findings (midday's dashboard has about 1,300). `npx onsystem init` offers to record them right after it writes the config (`--yes` does it without asking). Or record them yourself, once, and commit the file:
 
 ```sh
 npx -y onsystem check "src/**/*.tsx" --update-baseline

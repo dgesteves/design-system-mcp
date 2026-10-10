@@ -1,14 +1,14 @@
 # Troubleshooting
 
-Most problems show up in `npx onsystem inspect`: from the app's folder it prints the root, the config it read, how it found the design system (`detected`), and every component and token category it extracted; from a monorepo root, the same for each project. Start there.
+Most problems show up in `npx onsystem inspect`: from the app's folder it prints the root, the config it read, how it found the design system (`detected`), and every component and token category it extracted; from a monorepo root, the same for each project. `npx onsystem inspect --explain` adds why: every candidate zero config looked at (`components.json`, the package's `exports`, each dependency named like a design system, a flat `src/`) and why it was taken or turned down, the resolved config, tokens whose value reads a custom property no token file defines, and components whose props did not resolve, with the reason. Start there.
 
 ## inspect found nothing
 
 `inspect` prints `Components (0 + 0 parts)`, or `check` says `No design system found (no components or color tokens)`.
 
 1. **Run it from the app's folder**, the one with the app's `package.json` and, in a shadcn/ui project, `components.json`, or from the monorepo root: see the [next section](#a-monorepo-root-misses-a-project).
-2. **Read the `detected` line.** It says how the components were found. With no `detected` line, none of the [zero-config layouts](configuration.md#zero-config) matched: a `components.json`, a design-system package's `exports`, a workspace dependency named like a design system (`@acme/ui`), or a flat `src/` of components that wrap a primitives library.
-3. **Point at them with a config file.** An `onsystem.config.json` in the app's folder with a `components` glob is enough; add `tokens` when the stylesheet is not one of the default paths:
+2. **Read the `detected` line,** or run `inspect --explain` for each candidate's reason (`the ui alias ~/ui resolves through neither tsconfig paths nor a workspace package`, `not a workspace package: an installed package is compiled`). It says how the components were found. With no `detected` line, none of the [zero-config layouts](configuration.md#zero-config) matched: a `components.json`, a design-system package's `exports`, a workspace dependency named like a design system (`@acme/ui`), or a flat `src/` of components that wrap a primitives library.
+3. **Point at them with a config file.** `npx onsystem init` asks where the components and tokens are and writes it. An `onsystem.config.json` in the app's folder with a `components` glob is enough; add `tokens` when the stylesheet is not one of the default paths:
 
    ```json
    {
@@ -35,7 +35,7 @@ At a workspace root, `inspect` lists every project it found (`apps/remix (@docum
 
 `inspect` lists components that wrap a library, such as a Radix `Dialog` or `DropdownMenu`, with `0 props`, and `no-unknown-prop` never reports on them.
 
-Their props come from the types of the packages they wrap, so they resolve only when the project's dependencies are installed. Without `node_modules`, extraction marks those props as open rather than guess, and `no-unknown-prop` skips the component. `inspect` does not warn about it yet. On a checkout of Vercel's chatbot without its dependencies, `Dialog`, `DropdownMenu` and `Popover` show 0 props; in the demo, with them, `Dialog` has 5.
+Their props come from the types of the packages they wrap, so they resolve only when the project's dependencies are installed. Without `node_modules`, extraction marks those props as open rather than guess, and `no-unknown-prop` skips the component. `inspect --explain` lists them under `Props` and says whether the dependencies are installed. On a checkout of Vercel's chatbot without its dependencies, `Dialog`, `DropdownMenu` and `Popover` show 0 props; in the demo, with them, `Dialog` has 5.
 
 Install the dependencies (`npm install`, `pnpm install`, …) before running `inspect`, `check` or the server, and in CI before `check` (`npm ci`). If the counts still show 0, run once with `--no-cache`.
 
