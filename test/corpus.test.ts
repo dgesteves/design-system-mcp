@@ -142,6 +142,21 @@ describe('corpus comparison', () => {
     expect(check(fixed, 'demo', withFix, [harmful]).labelFailures).toHaveLength(1);
   });
 
+  it('keeps the record of a label that is narrowed to a suggestion', () => {
+    // Labelled FP while the finding pointed at the wrong component; the fix points at the right one.
+    const broad = label('demo', 'label', 'FP', { rule: 'prefer-design-system-component' });
+    const before = results(['prefer-design-system-component', 'label', 1, '<FileUpload>']);
+    const baseline = snapshotOf('demo', before, [broad]);
+    const narrowed = { ...broad, suggestion: '<FileUpload>' };
+    const right = { ...broad, verdict: 'TP' as const, suggestion: '<Label>' };
+    const after = results(['prefer-design-system-component', 'label', 1, '<Label>']);
+    const result = check(baseline, 'demo', after, [narrowed, right]);
+    // The FP is gone (not "matches no finding"), and the TP for the right suggestion holds.
+    expect(result.labelFailures).toEqual([]);
+    expect(result.labelChanges).toMatchObject([{ label: narrowed, present: false }]);
+    expect(result.present.has(right)).toBe(true);
+  });
+
   it('rejects a new label that matches nothing, and labels whose fingerprint is wrong', () => {
     const stray = label('demo', 'bg-blue-500', 'TP');
     const result = check(

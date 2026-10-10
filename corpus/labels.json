@@ -181,18 +181,6 @@
     "sample": "audit"
   },
   {
-    "fingerprint": "2486e9215cee",
-    "run": "dub-web-configured",
-    "file": "app/(ee)/admin.dub.co/(dashboard)/components/delete-partner-account.tsx",
-    "line": 92,
-    "rule": "prefer-design-system-component",
-    "source": "label",
-    "occurrence": 1,
-    "verdict": "FP",
-    "reason": "A checkbox's <label> pointed at FileUpload, a file-drop component that renders a label.",
-    "sample": "audit"
-  },
-  {
     "fingerprint": "aeaf3a6fba2f",
     "run": "dub-web-configured",
     "file": "app/(ee)/admin.dub.co/(dashboard)/partners/fraud/review-fraud-alert-sheet.tsx",
@@ -882,18 +870,6 @@
     "occurrence": 3,
     "verdict": "TP",
     "reason": "A hand-styled text input where @dub/ui's Input exists.",
-    "sample": "random"
-  },
-  {
-    "fingerprint": "7663bf4ae926",
-    "run": "dub-web-configured",
-    "file": "ui/partners/edit-commission-modal.tsx",
-    "line": 208,
-    "rule": "prefer-design-system-component",
-    "source": "label",
-    "occurrence": 2,
-    "verdict": "FP",
-    "reason": "A form field's <label> pointed at FileUpload, a file-drop component.",
     "sample": "random"
   },
   {
@@ -1605,6 +1581,82 @@
     "occurrence": 1,
     "verdict": "TP",
     "reason": "A focus border in gray-800, the primary token's value.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "2486e9215cee",
+    "run": "dub-web-configured",
+    "file": "app/(ee)/admin.dub.co/(dashboard)/components/delete-partner-account.tsx",
+    "line": 92,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 1,
+    "verdict": "FP",
+    "reason": "A checkbox's <label> pointed at FileUpload, a file-drop component that renders a label.",
+    "sample": "audit",
+    "suggestion": "<FileUpload>"
+  },
+  {
+    "fingerprint": "7663bf4ae926",
+    "run": "dub-web-configured",
+    "file": "ui/partners/edit-commission-modal.tsx",
+    "line": 208,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 2,
+    "verdict": "FP",
+    "reason": "A form field's <label> pointed at FileUpload, a file-drop component.",
+    "sample": "random",
+    "suggestion": "<FileUpload>"
+  },
+  {
+    "fingerprint": "2486e9215cee",
+    "run": "dub-web-configured",
+    "file": "app/(ee)/admin.dub.co/(dashboard)/components/delete-partner-account.tsx",
+    "line": 92,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-styled <label> where @dub/ui's Label exists.",
+    "sample": "audit",
+    "suggestion": "<Label>"
+  },
+  {
+    "fingerprint": "7663bf4ae926",
+    "run": "dub-web-configured",
+    "file": "ui/partners/edit-commission-modal.tsx",
+    "line": 208,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 2,
+    "verdict": "TP",
+    "reason": "A hand-styled <label> where @dub/ui's Label exists.",
+    "sample": "random",
+    "suggestion": "<Label>"
+  },
+  {
+    "fingerprint": "62c09bf2860b",
+    "run": "documenso",
+    "file": "app/components/tables/internal-audit-log-table.tsx",
+    "line": 106,
+    "rule": "prefer-design-system-component",
+    "source": "hr",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-styled <hr> where the design system's Separator exists.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "a7efbae643d5",
+    "run": "documenso",
+    "file": "app/components/forms/signup.tsx",
+    "line": 263,
+    "rule": "prefer-design-system-component",
+    "source": "hr",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-styled <hr> where the design system's Separator exists.",
     "sample": "random"
   }
 ]

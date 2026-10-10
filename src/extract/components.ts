@@ -326,7 +326,11 @@ function resolveExpression(
   if (!ts.isIdentifier(expr)) {
     return undefined;
   }
-  let symbol = checker.getSymbolAtLocation(expr);
+  // `Object.assign(Root, { Title })`: the shorthand's name is the property, its value the function.
+  let symbol =
+    ts.isShorthandPropertyAssignment(expr.parent) && expr.parent.name === expr
+      ? checker.getShorthandAssignmentValueSymbol(expr.parent)
+      : checker.getSymbolAtLocation(expr);
   if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
   if (!symbol || !declaration || declaration.getSourceFile().isDeclarationFile) return undefined;
@@ -366,10 +370,19 @@ function buildComponent(context: FileContext, candidate: Candidate): ComponentIn
   const { checker, sourceFile } = context;
   const param = candidate.fn?.parameters[0];
   const typeNode = candidate.propsTypeNode ?? param?.type;
-  const definitions = linkedDefinitions(context, candidate, typeNode);
-  const variants = mergeVariants(definitions.flatMap((d) => d.variants));
-
+  const { primary, nested } = linkedDefinitions(context, candidate, typeNode);
+  const definitions = [...primary, ...nested];
   const { props, inherits, openProps } = extractProps(context, candidate, typeNode, param);
+  // A definition used further in adds only the keys the component's own lack and that it
+  // takes as props: React Aria's checkbox sizes its inner box, while documenso's Button
+  // already has a `size` that its spinner's `loaderVariants` must not add classes to.
+  const own = new Set(primary.flatMap((d) => d.variants.map((v) => v.name)));
+  const variants = mergeVariants([
+    ...primary.flatMap((d) => d.variants),
+    ...nested
+      .flatMap((d) => d.variants)
+      .filter((v) => !own.has(v.name) && props.some((p) => p.name === v.name)),
+  ]);
   mergeVariantProps(props, variants);
   applyDestructuredDefaults(props, param);
 
@@ -385,7 +398,7 @@ function buildComponent(context: FileContext, candidate: Candidate): ComponentIn
     inherits,
     openProps,
     variants,
-    compoundVariants: definitions.flatMap((d) => d.compoundVariants),
+    compoundVariants: (primary.length ? primary : nested).flatMap((d) => d.compoundVariants),
     examples: [],
     classNames: [],
     cssVars: [],
@@ -423,21 +436,76 @@ function jsdocExample(text: string): ExampleInfo {
   };
 }
 
-/** cva/tv definitions that belong to this component. */
+/**
+ * cva/tv definitions that belong to this component. `primary`: those its props
+ * take through `VariantProps<typeof x>`, and those called in the className of
+ * the element it returns. `nested`: the rest it calls or names, which style
+ * something inside it (documenso's `loaderVariants` on the spinner in its
+ * Button). Without a primary one, every reference is primary, as before.
+ */
 function linkedDefinitions(
   context: FileContext,
   candidate: Candidate,
   typeNode: ts.TypeNode | undefined,
-): VariantDefinition[] {
+): { primary: VariantDefinition[]; nested: VariantDefinition[] } {
   const { definitions } = context;
-  if (!definitions.size) return [];
+  if (!definitions.size) return { primary: [], nested: [] };
   const typeText = typeNode ? expandLocalTypeText(context, typeNode) : '';
   const bodyText = candidate.fn?.getText() ?? '';
-  return [...definitions.values()].filter(
-    (d) =>
-      new RegExp(`typeof\\s+${d.name}\\b`).test(typeText) ||
-      new RegExp(`\\b${d.name}\\s*\\(`).test(bodyText),
+  const rootClasses = candidate.fn ? rootClassText(candidate.fn) : '';
+  const called = (d: VariantDefinition, text: string) =>
+    new RegExp(`\\b${d.name}\\s*\\(`).test(text);
+  const referenced = [...definitions.values()].filter(
+    (d) => new RegExp(`typeof\\s+${d.name}\\b`).test(typeText) || called(d, bodyText),
   );
+  const primary = referenced.filter(
+    (d) =>
+      new RegExp(`VariantProps\\s*<\\s*typeof\\s+${d.name}\\b`).test(typeText) ||
+      called(d, rootClasses),
+  );
+  if (!primary.length) return { primary: referenced, nested: [] };
+  return { primary, nested: referenced.filter((d) => !primary.includes(d)) };
+}
+
+/** The className (or class) expressions of the elements a render function returns, as text. */
+function rootClassText(fn: ts.SignatureDeclaration): string {
+  const returned: ts.Expression[] = [];
+  const body = (fn as { body?: ts.Node }).body;
+  if (body && !ts.isBlock(body)) returned.push(body as ts.Expression);
+  else if (body) {
+    const visit = (node: ts.Node): void => {
+      if (ts.isReturnStatement(node)) {
+        if (node.expression) returned.push(node.expression);
+        return;
+      }
+      if (ts.isFunctionLike(node)) return;
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(body, visit);
+  }
+  const texts: string[] = [];
+  const stack = [...returned];
+  for (let expr = stack.pop(); expr; expr = stack.pop()) {
+    if (ts.isParenthesizedExpression(expr)) stack.push(expr.expression);
+    else if (ts.isConditionalExpression(expr)) stack.push(expr.whenTrue, expr.whenFalse);
+    else if (ts.isBinaryExpression(expr)) stack.push(expr.left, expr.right);
+    else if (ts.isJsxElement(expr) || ts.isJsxSelfClosingElement(expr)) {
+      const opening = ts.isJsxElement(expr) ? expr.openingElement : expr;
+      for (const attribute of opening.attributes.properties) {
+        if (
+          ts.isJsxAttribute(attribute) &&
+          /^(?:className|class)$/.test(attribute.name.getText())
+        ) {
+          texts.push(attribute.initializer?.getText() ?? '');
+        }
+      }
+    } else if (ts.isJsxFragment(expr)) {
+      for (const child of expr.children) {
+        if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) stack.push(child);
+      }
+    }
+  }
+  return texts.join('\n');
 }
 
 /**

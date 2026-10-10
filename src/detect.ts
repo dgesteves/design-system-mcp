@@ -538,6 +538,38 @@ export function moduleResolver(
   };
 }
 
+/**
+ * Where an import from a workspace package points: its file, or `{}` for a
+ * subpath the package's `exports` declare but whose target is not on disk
+ * (built to `dist/`). Undefined when no such module exists. The linter tells
+ * a module the design-system model left out from an invented one with it.
+ */
+export function workspaceModule(
+  root: string,
+): (specifier: string, fromFile: string) => { file?: string } | undefined {
+  const resolve = moduleResolver(root);
+  const packages = new PackageFinder(root);
+  return (specifier, fromFile) => {
+    const file = resolve(specifier, fromFile);
+    if (file) return { file };
+    const name = packageName(specifier);
+    const dir = name ? packages.find(name) : undefined;
+    if (!name || !dir) return undefined;
+    // A package built to `dist/` keeps its sources in `src/`, under the same subpath.
+    const source = moduleFile(path.join(dir, 'src', specifier.slice(name.length + 1) || 'index'));
+    if (source) return { file: source };
+    const exports = readJson(path.join(dir, 'package.json'))?.exports;
+    if (!exports || typeof exports !== 'object' || Array.isArray(exports)) return undefined;
+    const subpath = `.${specifier.slice(name.length)}`;
+    const declared = Object.keys(exports).some((key) => {
+      const star = key.indexOf('*');
+      if (star === -1) return key === subpath;
+      return subpath.startsWith(key.slice(0, star)) && subpath.endsWith(key.slice(star + 1));
+    });
+    return declared ? {} : undefined;
+  };
+}
+
 /** `base` as a file, with an extension added, or as a directory's index. */
 function moduleFile(base: string): string | undefined {
   const candidates = [

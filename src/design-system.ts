@@ -13,6 +13,7 @@ import { extractComponents } from './extract/components.js';
 import { attachDocs, parseDoc, type ParsedDoc } from './extract/docs.js';
 import { isProjectFile, projectFiles, readProjectConfig } from './extract/program.js';
 import { checkSource, LintTarget } from './lint/index.js';
+import { ModuleResolver } from './modules.js';
 import {
   buildSearchIndex,
   searchComponents,
@@ -43,7 +44,7 @@ export class DesignSystem {
     readonly model: DesignSystemModel,
     readonly config: ResolvedConfig,
   ) {
-    this.lint = new LintTarget(model, config);
+    this.lint = new LintTarget(model, config, new ModuleResolver(config));
     this.searchIndex = buildSearchIndex(model.components);
   }
 

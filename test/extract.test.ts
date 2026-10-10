@@ -231,6 +231,63 @@ describe('extraction without node_modules (fixture)', () => {
     expect(ds.getComponent('CardHeader')?.name).toBe('Card.Header');
   });
 
+  it('takes variants from the definitions on the component, not those of what it renders inside', async () => {
+    // documenso's Button: loaderVariants sizes the spinner inside, and its size must not leak.
+    const button = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/button.tsx': `import { cva, type VariantProps } from "class-variance-authority"
+const buttonVariants = cva("inline-flex", {
+  variants: { size: { default: "h-10 px-4", sm: "h-9 px-3" } },
+  defaultVariants: { size: "default" },
+})
+const loaderVariants = cva("animate-spin", {
+  variants: { size: { default: "h-5 w-5", sm: "h-4 w-4", lg: "h-6 w-6" } },
+})
+export interface ButtonProps extends VariantProps<typeof buttonVariants> {
+  loading?: boolean
+  className?: string
+  children?: string
+}
+export function Button({ size, loading, className, children }: ButtonProps) {
+  return (
+    <button className={buttonVariants({ size, className })}>
+      {loading && <span className={loaderVariants({ size })} />}
+      {children}
+    </button>
+  )
+}`,
+      }),
+    );
+    expect(component(button, 'Button').variants).toEqual([
+      {
+        name: 'size',
+        values: ['default', 'sm'],
+        classes: { default: 'h-10 px-4', sm: 'h-9 px-3' },
+        default: 'default',
+      },
+    ]);
+  });
+
+  it('links Object.assign members written as shorthand, exported or not', async () => {
+    // dub's Sheet = Object.assign(SheetRoot, { Title, Description, Close }).
+    const sheet = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/sheet.tsx': `function SheetRoot(props: { open?: boolean; children?: string }) { return <div>{props.children}</div> }
+function Title(props: { className?: string; children?: string }) { return <h2 {...props} /> }
+function Close(props: { children?: string }) { return <button {...props} /> }
+export const Sheet = Object.assign(SheetRoot, { Title, Close })`,
+      }),
+    );
+    expect(component(sheet, 'Sheet').subcomponents).toEqual(['Sheet.Title', 'Sheet.Close']);
+    expect(component(sheet, 'Sheet.Close')).toMatchObject({ parent: 'Sheet', element: 'button' });
+    const used = sheet.check(
+      `import { Sheet } from "@/components/ui/sheet"\n<Sheet><Sheet.Title>Edit</Sheet.Title><Sheet.Close /></Sheet>`,
+    );
+    expect(used.diagnostics.filter((d) => d.ruleId === 'no-unknown-component')).toEqual([]);
+  });
+
   it('handles memo, default exports and class components, and skips non-components', () => {
     expect(component(ds, 'TextField').props.map((p) => p.name)).toEqual(['label', 'error']);
     expect(prop(component(ds, 'Legacy'), 'legacyProp').type).toBe('number');

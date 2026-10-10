@@ -211,7 +211,8 @@ export function compare(
     if (!(label.run in current)) continue;
     const finding = byFingerprint.get(label.fingerprint)?.find((f) => matches(label, f));
     if (finding) present.set(label, finding);
-    const was = snapshot.labels[labelKey(label)];
+    // A label that has just been narrowed to a suggestion was recorded under its fingerprint.
+    const was = snapshot.labels[labelKey(label)] ?? snapshot.labels[label.fingerprint];
     const is = finding !== undefined;
     const where = `${label.run} ${label.file}:${label.line} [${label.rule}] "${label.source}"`;
     if (was === undefined && !is) {

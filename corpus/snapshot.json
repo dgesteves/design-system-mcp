@@ -85,7 +85,7 @@
       "files": 279,
       "rules": {
         "icon-button-accessible-name": {
-          "errors": 2,
+          "errors": 1,
           "warnings": 0,
           "fixes": 0
         },
@@ -126,7 +126,7 @@
       "files": 569,
       "rules": {
         "icon-button-accessible-name": {
-          "errors": 105,
+          "errors": 97,
           "warnings": 0,
           "fixes": 12
         },
@@ -141,7 +141,7 @@
           "fixes": 4
         },
         "prefer-design-system-component": {
-          "errors": 108,
+          "errors": 109,
           "warnings": 0,
           "fixes": 102
         }
@@ -163,7 +163,7 @@
       "files": 506,
       "rules": {
         "icon-button-accessible-name": {
-          "errors": 41,
+          "errors": 35,
           "warnings": 0,
           "fixes": 25
         },
@@ -178,7 +178,7 @@
           "fixes": 1
         },
         "prefer-design-system-component": {
-          "errors": 104,
+          "errors": 130,
           "warnings": 0,
           "fixes": 65
         }
@@ -196,9 +196,9 @@
       "files": 1484,
       "rules": {
         "icon-button-accessible-name": {
-          "errors": 76,
+          "errors": 52,
           "warnings": 0,
-          "fixes": 47
+          "fixes": 43
         }
       }
     },
@@ -225,7 +225,7 @@
         "detected": null,
         "files": "104 component files, 2 token files, 0 docs",
         "components": 108,
-        "parts": 14,
+        "parts": 17,
         "tokens": {
           "other": 24
         },
@@ -234,19 +234,19 @@
       "files": 1484,
       "rules": {
         "icon-button-accessible-name": {
-          "errors": 76,
+          "errors": 56,
           "warnings": 0,
           "fixes": 47
         },
         "no-unknown-component": {
-          "errors": 1207,
+          "errors": 13,
           "warnings": 0,
           "fixes": 10
         },
         "prefer-design-system-component": {
-          "errors": 1126,
+          "errors": 973,
           "warnings": 0,
-          "fixes": 1121
+          "fixes": 589
         }
       }
     },
@@ -280,11 +280,6 @@
           "errors": 0,
           "warnings": 2,
           "fixes": 1
-        },
-        "prefer-design-system-component": {
-          "errors": 9,
-          "warnings": 0,
-          "fixes": 9
         }
       }
     },
@@ -313,11 +308,6 @@
           "errors": 0,
           "warnings": 2,
           "fixes": 1
-        },
-        "prefer-design-system-component": {
-          "errors": 12,
-          "warnings": 0,
-          "fixes": 12
         }
       }
     },
@@ -347,9 +337,9 @@
           "fixes": 0
         },
         "prefer-design-system-component": {
-          "errors": 9,
+          "errors": 8,
           "warnings": 0,
-          "fixes": 9
+          "fixes": 8
         }
       }
     },
@@ -384,7 +374,7 @@
           "fixes": 28
         },
         "prefer-design-system-component": {
-          "errors": 98,
+          "errors": 107,
           "warnings": 0,
           "fixes": 92
         }
@@ -407,14 +397,9 @@
           "fixes": 1
         },
         "no-unknown-component": {
-          "errors": 24,
+          "errors": 4,
           "warnings": 0,
-          "fixes": 10
-        },
-        "prefer-design-system-component": {
-          "errors": 1,
-          "warnings": 0,
-          "fixes": 1
+          "fixes": 0
         }
       }
     },
@@ -468,13 +453,7 @@
         "warnings": 2
       },
       "files": 553,
-      "rules": {
-        "icon-button-accessible-name": {
-          "errors": 16,
-          "warnings": 0,
-          "fixes": 0
-        }
-      }
+      "rules": {}
     },
     "twenty-front": {
       "inspect": {
@@ -488,13 +467,7 @@
         "warnings": 1
       },
       "files": 3765,
-      "rules": {
-        "icon-button-accessible-name": {
-          "errors": 2,
-          "warnings": 0,
-          "fixes": 0
-        }
-      }
+      "rules": {}
     },
     "react-aria-starter": {
       "inspect": {
@@ -520,28 +493,27 @@
   },
   "labels": {
     "9390be588076": true,
-    "015f2da20747": true,
+    "015f2da20747": false,
     "137617b14863": true,
     "92f74cff7f03": true,
     "5b7bd502dd6c": true,
     "d6bbf5f1279e": true,
     "14336c5ade5a": true,
     "9245343b22d0": true,
-    "32cdac44a8e9": true,
+    "32cdac44a8e9": false,
     "4de9ff833cb9": true,
     "7d66bc35128a@var(--radius)": true,
-    "022d89932328": true,
+    "022d89932328": false,
     "00b1c9afadda": true,
     "c8f17a7bf964": true,
-    "517c8696d735": true,
-    "2486e9215cee": true,
-    "aeaf3a6fba2f": true,
-    "482837efa8e8": true,
-    "127cb695bb72": true,
+    "517c8696d735": false,
+    "aeaf3a6fba2f": false,
+    "482837efa8e8": false,
+    "127cb695bb72": false,
     "818db750975b@fill-[var(--rainbow-4)]": false,
     "161c1a1f85ee": true,
     "d6ade20df6aa@text-sh-class": false,
-    "968cb54667a1": true,
+    "968cb54667a1": false,
     "13ee2a16d511": true,
     "73f196f44868": true,
     "360843387dba": true,
@@ -549,8 +521,8 @@
     "07a61c304317@variant=\"destructive\"": false,
     "02c963b7f3fe": true,
     "703c3a411509": true,
-    "e0dc49cdd748": true,
-    "0e8ed079c6c5": true,
+    "e0dc49cdd748": false,
+    "0e8ed079c6c5": false,
     "0a9155609801@bg-[var(--cal-bg-primary)]": false,
     "058d10e38701@-ml-[var(--spacing)]": true,
     "7ecfa4a8053d": true,
@@ -558,8 +530,8 @@
     "e75ccc28ba97@-ml-[var(--spacing)]": true,
     "4184374b6cad": true,
     "1b925ebede7b": true,
-    "6126756b536b": true,
-    "7e90d4ce06b5": true,
+    "6126756b536b": false,
+    "7e90d4ce06b5": false,
     "a8e944fae425": true,
     "e62478928ecd": true,
     "b3abce5b082f": true,
@@ -587,14 +559,13 @@
     "09e74bd6b97e": true,
     "7e48b3a3605a": true,
     "e1ac7f215eca": true,
-    "9a81e236971d": true,
-    "64d94510d4d1": true,
+    "9a81e236971d": false,
+    "64d94510d4d1": false,
     "66103392d4f0": true,
     "033bb54a4f89": true,
     "6638c8e9ed5c": true,
-    "7663bf4ae926": true,
-    "345d28e8b2c6": true,
-    "3dd61e0fa1a5": true,
+    "345d28e8b2c6": false,
+    "3dd61e0fa1a5": false,
     "bfb32c98b3c7": true,
     "874a45847759": true,
     "b63d5ba89965": true,
@@ -606,13 +577,13 @@
     "34104ec5ff49": true,
     "cd3d4c1eff01": true,
     "bb5532106279": true,
-    "14b8b8a2269b": true,
-    "3f64e5d56330": true,
+    "14b8b8a2269b": false,
+    "3f64e5d56330": false,
     "ba822f05da4a": true,
     "a09a11960838": true,
     "cd04a2176a9d": true,
     "07ce214a81fc": true,
-    "32c9476d729d": true,
+    "32c9476d729d": false,
     "eaa1dcde097a@text-[var(--rainbow-4)]": false,
     "b12d5a3781ca": true,
     "a286fdc59187": true,
@@ -620,10 +591,10 @@
     "9823267380b4": true,
     "edd24d65ab5c": true,
     "5567c56c84f6": true,
-    "b29178758fc4": true,
+    "b29178758fc4": false,
     "f74b614ee3aa": true,
     "5ef7d322cd00": true,
-    "78d654aa058b": true,
+    "78d654aa058b": false,
     "c3ef200c5d88": true,
     "eb5adbc95a55": true,
     "0a9f72b1d0bc": true,
@@ -634,15 +605,15 @@
     "e200a29c863c@text-destructive-foreground": false,
     "835dc3507977": true,
     "3f6ff6d4dd10": true,
-    "2064b3b4b09c": true,
+    "2064b3b4b09c": false,
     "73ad5069b787": true,
     "fb92b62f1978": true,
     "7ce9b1059947": true,
     "d2f2265ee782": true,
     "0cf42873ec1e": true,
-    "f4905fdf7382": true,
-    "031dc08572af": true,
-    "1567cbdac05a": true,
+    "f4905fdf7382": false,
+    "031dc08572af": false,
+    "1567cbdac05a": false,
     "e200a29c863c@text-primary-foreground": true,
     "acc550efb5e6": true,
     "aac95d361de8": true,
@@ -651,6 +622,12 @@
     "b54e3e6b091a": true,
     "9e7bab3e5b1f": true,
     "5b7a4161dab0": true,
-    "f28349d00ba3": true
+    "f28349d00ba3": true,
+    "2486e9215cee@<FileUpload>": false,
+    "7663bf4ae926@<FileUpload>": false,
+    "2486e9215cee@<Label>": true,
+    "7663bf4ae926@<Label>": true,
+    "62c09bf2860b": true,
+    "a7efbae643d5": true
   }
 }
