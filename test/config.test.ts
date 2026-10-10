@@ -4,7 +4,14 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { ConfigError, configJsonSchema, DEFAULT_COMPONENTS, loadConfig } from '../src/config.js';
+import {
+  ConfigError,
+  configJsonSchema,
+  DEFAULT_COMPONENTS,
+  loadConfig,
+  rulesFor,
+} from '../src/config.js';
+import { matchesGlob } from '../src/util/paths.js';
 import { ACME_ROOT, DEMO_ROOT, fixture, load } from './helpers.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-config-'));
@@ -96,6 +103,65 @@ describe('loadConfig', () => {
       'Invalid severity "warning": use "off", "warn" or "error" (did you mean "warn"?).',
     );
     expect(message).toContain('Unknown rule option "alow". Did you mean "allow"?');
+  });
+
+  it('applies overrides to the files they match, in order, and validates them', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'overrides-'));
+    const write = (config: unknown) => {
+      fs.writeFileSync(path.join(dir, 'design-system-mcp.config.json'), JSON.stringify(config));
+    };
+    write({
+      rules: { 'no-hardcoded-spacing': 'error' },
+      overrides: [
+        { files: ['app/legacy/**', 'generated/*.tsx'], rules: { 'no-hardcoded-color': 'off' } },
+        {
+          files: 'app/legacy/old.tsx',
+          rules: { 'no-hardcoded-spacing': ['warn', { allow: ['13px'] }] },
+        },
+      ],
+    });
+    const config = await loadConfig({ root: dir });
+    const severity = (file: string) => [
+      rulesFor(config, file)['no-hardcoded-color'].severity,
+      rulesFor(config, file)['no-hardcoded-spacing'],
+    ];
+    expect(severity('app/page.tsx')).toEqual(['error', { severity: 'error', options: {} }]);
+    expect(severity('app/legacy/card/image.tsx')).toEqual([
+      'off',
+      { severity: 'error', options: {} },
+    ]);
+    expect(severity('./generated/welcome.tsx')[0]).toBe('off');
+    expect(severity('generated/nested/welcome.tsx')[0]).toBe('error');
+    expect(severity('app/legacy/old.tsx')).toEqual([
+      'off',
+      { severity: 'warn', options: { allow: ['13px'] } },
+    ]);
+
+    write({ overrides: [{ file: ['app/legacy/**'], rules: { 'no-hardcoded-colour': 'off' } }] });
+    const message = await loadConfig({ root: dir }).catch((e: unknown) => (e as Error).message);
+    expect(message).toContain('Unknown override key "file". Did you mean "files"?');
+    expect(message).toContain(
+      'Unknown rule "no-hardcoded-colour". Did you mean "no-hardcoded-color"?',
+    );
+  });
+
+  it('matches globs without the disk, for code not saved yet', () => {
+    const cases: [string, string, boolean][] = [
+      ['app/og/route.tsx', 'app/og/**', true],
+      ['app/og', 'app/og/**', false],
+      ['app/page.tsx', '**/*.tsx', true],
+      ['page.tsx', '**/*.tsx', true],
+      ['app/page.jsx', 'app/*.{tsx,jsx}', true],
+      ['app/nested/page.tsx', 'app/*.tsx', false],
+      ['app/(marketing)/page.tsx', 'app/\\(marketing\\)/*.tsx', true],
+      ['src/a1.tsx', 'src/a[0-9].tsx', true],
+      ['src/ab.tsx', 'src/a[!b].tsx', false],
+      ['emails/x.email.tsx', '**/*.email.{tsx,jsx}', true],
+      ['app/x.tsx', 'app/?.tsx', true],
+    ];
+    for (const [file, glob, expected] of cases) {
+      expect([file, glob, matchesGlob(file, glob)]).toEqual([file, glob, expected]);
+    }
   });
 
   it('rejects a missing root and token files named outright, but not globs', async () => {

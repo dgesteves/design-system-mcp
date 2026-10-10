@@ -6,7 +6,7 @@ import * as z from 'zod';
 
 import { detectProject, type ImportMapping } from './detect.js';
 import { findTailwindConfig } from './tokens/tailwind-config.js';
-import { slashGlob } from './util/paths.js';
+import { matchesGlob, slashGlob, toPosix } from './util/paths.js';
 import { closest } from './util/strings.js';
 
 export const RULE_IDS = [
@@ -63,6 +63,20 @@ const ruleSettingSchema = z.union(
 );
 
 const globsSchema = z.union([z.string(), z.array(z.string())]);
+
+const rulesSchema = z.partialRecord(z.enum(RULE_IDS), ruleSettingSchema, {
+  error: unknownKeys('rule', RULE_IDS),
+});
+
+const overrideShape = {
+  files: globsSchema.describe(
+    'Globs, relative to the root, of the files these rules apply to: "app/legacy/**", "**/*.generated.tsx".',
+  ),
+  rules: rulesSchema.describe('Rule severities and options for those files, over "rules".'),
+};
+const overrideSchema = z.strictObject(overrideShape, {
+  error: unknownKeys('override key', Object.keys(overrideShape)),
+});
 const tokenSourceSchema = z.union([
   z.string(),
   z
@@ -109,10 +123,15 @@ const configShape = {
     .describe(
       "check: lint the design system's own component files too. Off by default: they implement the scale and primitives the rules enforce.",
     ),
-  rules: z
-    .partialRecord(z.enum(RULE_IDS), ruleSettingSchema, { error: unknownKeys('rule', RULE_IDS) })
+  rules: rulesSchema
     .optional()
     .describe('Rule severities and options: "off" | "warn" | "error" | [severity, { allow }].'),
+  overrides: z
+    .array(overrideSchema)
+    .optional()
+    .describe(
+      'Rules for some files: [{ "files": ["app/legacy/**"], "rules": { "no-hardcoded-color": "warn" } }]. Later entries win.',
+    ),
 };
 
 export const configSchema = z.strictObject(configShape, {
@@ -136,6 +155,12 @@ export interface ResolvedRule {
   options: RuleOptions;
 }
 
+/** Rule settings for the files that match `files` (root-relative globs). */
+export interface ResolvedOverride {
+  files: string[];
+  rules: Partial<Record<RuleId, ResolvedRule>>;
+}
+
 export interface ResolvedConfig {
   root: string;
   configFile?: string | undefined;
@@ -155,6 +180,8 @@ export interface ResolvedConfig {
   /** `check` lints the component files themselves, which it skips by default. */
   includeDesignSystem: boolean;
   rules: Record<RuleId, ResolvedRule>;
+  /** Per-file rule settings, applied in order over `rules`. */
+  overrides?: ResolvedOverride[] | undefined;
 }
 
 export const CONFIG_FILES = [
@@ -245,10 +272,17 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
   const rules = {} as Record<RuleId, ResolvedRule>;
   for (const id of RULE_IDS) {
     const setting = config.rules?.[id];
-    if (setting === undefined) rules[id] = { severity: DEFAULT_SEVERITY[id], options: {} };
-    else if (typeof setting === 'string') rules[id] = { severity: setting, options: {} };
-    else rules[id] = { severity: setting[0], options: setting[1] ?? {} };
+    rules[id] =
+      setting === undefined
+        ? { severity: DEFAULT_SEVERITY[id], options: {} }
+        : resolveRule(setting);
   }
+  const overrides: ResolvedOverride[] = (config.overrides ?? []).map((override) => ({
+    files: toArray(override.files).map(slashGlob),
+    rules: Object.fromEntries(
+      Object.entries(override.rules).map(([id, setting]) => [id, resolveRule(setting)]),
+    ),
+  }));
 
   // Paths may be written Windows-style; globs and POSIX need forward slashes.
   const tsconfig = config.tsconfig?.replaceAll('\\', '/');
@@ -316,7 +350,32 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     elements: config.elements ?? {},
     includeDesignSystem: options.includeDesignSystem ?? config.includeDesignSystem ?? false,
     rules,
+    overrides,
   };
+}
+
+function resolveRule(setting: z.infer<typeof ruleSettingSchema>): ResolvedRule {
+  if (typeof setting === 'string') return { severity: setting, options: {} };
+  return { severity: setting[0], options: setting[1] ?? {} };
+}
+
+/**
+ * The rules for one file: the config's `rules`, then every override whose
+ * `files` match the path (relative to the root), in order.
+ */
+export function rulesFor(
+  config: Pick<ResolvedConfig, 'rules' | 'overrides'>,
+  file: string | undefined,
+): Record<RuleId, ResolvedRule> {
+  if (!file || !config.overrides?.length) return config.rules;
+  const relative = toPosix(file).replace(/^\.\//, '');
+  let rules = config.rules;
+  for (const override of config.overrides) {
+    if (override.files.some((glob) => matchesGlob(relative, glob))) {
+      rules = { ...rules, ...override.rules };
+    }
+  }
+  return rules;
 }
 
 async function readConfigFile(file: string): Promise<unknown> {

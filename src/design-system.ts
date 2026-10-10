@@ -7,7 +7,7 @@ import path from 'node:path';
 import { glob } from 'tinyglobby';
 import type ts from 'typescript';
 
-import { loadConfig, type ResolvedConfig } from './config.js';
+import { loadConfig, rulesFor, type ResolvedConfig } from './config.js';
 import { moduleResolver } from './detect.js';
 import { extractComponents } from './extract/components.js';
 import { attachDocs, parseDoc, type ParsedDoc } from './extract/docs.js';
@@ -153,7 +153,7 @@ export class DesignSystem {
   }
 
   check(code: string, filename?: string): CheckResult {
-    return checkSource(code, this.lint, { filename, rules: this.config.rules });
+    return checkSource(code, this.lint, { filename, rules: rulesFor(this.config, filename) });
   }
 }
 
@@ -292,7 +292,7 @@ async function cacheKey(
     ...extra,
     ...dependencies,
   ]);
-  const { rules: _rules, ...relevant } = config;
+  const { rules: _rules, overrides: _overrides, ...relevant } = config;
   return createHash('sha256')
     .update(JSON.stringify({ version: VERSION, config: relevant, stats: await stats.of(all) }))
     .digest('hex');

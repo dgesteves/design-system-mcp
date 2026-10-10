@@ -414,6 +414,22 @@ snippet.tsx: 2 errors, 1 warning
 
 Color matches under ΔE 0.02 count as the same color; under 0.1 the fix is offered; beyond that the message names the nearest token but leaves the choice to the agent. A fix is only offered for a token of the same hue (within 15°), or a gray for a gray, whether the color is a palette class, an arbitrary value or a literal: a pale color counts as a hue by its chroma relative to its lightness, so `bg-[#fef2f2]` is never swapped for a light gray that happens to be close. Status colors (`destructive`, `warning`, `success`, `info` and their foregrounds) are only offered for nearly the same hue (within 8°), never for a gray, so a brand-orange button does not become `bg-destructive`. Among the tokens that qualify, the one made for the utility wins: `foreground` and `muted-foreground` for `text-*`, `fill-*` and `stroke-*`; surfaces such as `muted` for `bg-*`; `border`, `input` and `ring` for `border-*` and `ring-*`. `sidebar-*` and `chart-*` tokens are only suggested in a sidebar or a chart (by file, enclosing component or classes), and so is any other family that at most one design-system file uses, such as syntax-highlighting colors or one screen's background, outside that file's components; `dark:` classes are compared with dark-mode values. Likewise, a spacing or radius step that is off by more than half the value (and more than 4px) is suggested but not auto-fixed. Rules that need tokens are skipped when the design system defines none of that category; a stylesheet that imports `tailwindcss` brings Tailwind's default spacing unit and radius scale, unless the theme resets that namespace (`--spacing-*: initial`, `--radius-*: initial`), in which case only the project's own steps are suggested. Syntax errors are reported as `syntax`, and so is code nested too deeply for TypeScript's parser (thousands of levels), which is then not checked.
 
+### Suppressing findings
+
+A comment turns rules off where a finding is intended, and says why after `--`:
+
+```tsx
+// onsystem-disable-next-line no-hardcoded-color -- the brand's exact orange
+<Button className="bg-[#ff6b00]">Sign in</Button>
+
+<p className="text-[#737373]" /> // onsystem-disable-line no-hardcoded-color
+
+{/* onsystem-disable-next-line no-hardcoded-color, no-hardcoded-spacing */}
+<div className="bg-[#0a0a0a] p-[13px]" />
+```
+
+`onsystem-disable-next-line` covers the next line, `onsystem-disable-line` its own, and `/* onsystem-disable */` the rest of the file (at the top, the whole file). Without rule names they turn every rule off. A misspelled rule name is reported as a `suppression` warning, with the closest one, and suppresses nothing; syntax errors cannot be suppressed. For whole folders or kinds of files, such as legacy screens or generated code, use `overrides` in the [config](#config-file).
+
 ## Configuration
 
 ### Zero config
@@ -444,18 +460,22 @@ A candidate whose files cannot be found is skipped. Components found through `ex
     "no-hardcoded-spacing": "error",
     "no-hardcoded-color": ["error", { "allow": ["#fff"] }],
     "icon-button-accessible-name": "off"
-  }
+  },
+  "overrides": [
+    { "files": ["app/legacy/**", "**/*.generated.tsx"], "rules": { "no-hardcoded-color": "warn" } }
+  ]
 }
 ```
 
-| Field                 | Default                                                                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `components`          | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                                        |
-| `tokens`              | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json`              |
-| `docs`                | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                                            |
-| `importPath`          | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`). `@acme/ui/{path}` suggests each file by its path in its package |
-| `includeDesignSystem` | `false`: `check` skips the component files themselves ([CI](#ci))                                                                                                        |
-| `tsconfig`            | `tsconfig.json` in the root                                                                                                                                              |
+| Field                 | Default                                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components`          | [Detected](#zero-config), else `components/ui/**/*.{tsx,jsx}`, `src/components/ui/**/*.{tsx,jsx}`                                                                                        |
+| `tokens`              | Detected, else `app/globals.css`, `src/app/globals.css`, `styles/globals.css`, `src/styles/globals.css`, `src/index.css`, `app/app.css`, `**/*.tokens.json`                              |
+| `docs`                | `docs/components/**/*.{md,mdx}` and `.md`/`.mdx` files next to the components                                                                                                            |
+| `importPath`          | Inferred from package `exports` (`@acme/ui/button`), then `tsconfig` `paths` (`@/components/ui/button`). `@acme/ui/{path}` suggests each file by its path in its package                 |
+| `includeDesignSystem` | `false`: `check` skips the component files themselves ([CI](#ci))                                                                                                                        |
+| `tsconfig`            | `tsconfig.json` in the root                                                                                                                                                              |
+| `overrides`           | None. Each entry's `rules` apply over `rules` to the files its `files` globs match, relative to the root; later entries win. Unknown keys and rules are named with the closest valid one |
 
 Paths and globs are relative to the root and use forward slashes. Windows-style backslashes (`components\ui\**\*.tsx`, `.\tsconfig.app.json`) are read as separators, except in a pattern that already uses `/`, where `\` escapes glob syntax (`app/\(marketing\)/**`). A `tsconfig` that does not exist is a config error rather than a silent fallback.
 

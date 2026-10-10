@@ -39,3 +39,100 @@ export function globBase(glob: string): string {
   if (base.length === parts.length) base.pop();
   return base.join('/') || '.';
 }
+
+/**
+ * Whether a root-relative path matches a glob, without touching the disk:
+ * `**` spans folders (`**\/` also none), `*` and `?` stay within one, and
+ * `{a,b}`, `[abc]` and `\` escapes work as in other globs. For config
+ * `overrides`, which also apply to code that is not saved yet.
+ */
+export function matchesGlob(file: string, pattern: string): boolean {
+  const normalized = pattern.replace(/^\.\//, '');
+  let regex = globRegExps.get(normalized);
+  if (!regex) {
+    regex = new RegExp(`^${globSource(normalized)}$`);
+    globRegExps.set(normalized, regex);
+  }
+  return regex.test(file.replace(/^\.\//, ''));
+}
+
+const globRegExps = new Map<string, RegExp>();
+
+function globSource(pattern: string): string {
+  let out = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern.charAt(i);
+    if (c === '\\') {
+      out += escapeRegExp(pattern.charAt(++i));
+    } else if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        const folder = pattern[i + 2] === '/';
+        out += folder ? '(?:[^/]*/)*' : '.*';
+        i += folder ? 2 : 1;
+      } else {
+        out += '[^/]*';
+      }
+    } else if (c === '?') {
+      out += '[^/]';
+    } else if (c === '[') {
+      const end = pattern.indexOf(']', i + 2);
+      if (end === -1) {
+        out += '\\[';
+        continue;
+      }
+      const body = pattern
+        .slice(i + 1, end)
+        .replace(/^!/, '^')
+        .replace(/\\/g, '\\\\');
+      out += `[${body}]`;
+      i = end;
+    } else if (c === '{') {
+      const end = closingBrace(pattern, i);
+      if (end === -1) {
+        out += '\\{';
+        continue;
+      }
+      const options = splitTopLevel(pattern.slice(i + 1, end));
+      out += `(?:${options.map(globSource).join('|')})`;
+      i = end;
+    } else {
+      out += escapeRegExp(c);
+    }
+  }
+  return out;
+}
+
+function closingBrace(pattern: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < pattern.length; i++) {
+    if (pattern[i] === '\\') i++;
+    else if (pattern[i] === '{') depth++;
+    else if (pattern[i] === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charAt(i);
+    if (c === '\\') {
+      current += c + text.charAt(++i);
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    if (c === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else current += c;
+  }
+  parts.push(current);
+  return parts;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}

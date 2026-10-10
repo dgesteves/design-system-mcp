@@ -1013,6 +1013,64 @@ describe('files rendered outside the browser', () => {
   });
 });
 
+describe('suppression comments', () => {
+  const color = (code: string) =>
+    check(code)
+      .filter((d) => d.ruleId !== 'syntax')
+      .map((d) => [d.ruleId, d.line]);
+
+  it('turns rules off for the next line, the same line or the rest of the file', () => {
+    expect(
+      color(`<div>
+  {/* onsystem-disable-next-line no-hardcoded-color */}
+  <p className="text-[#737373] p-[13px]" />
+  <p className="text-[#737373]" />
+</div>`),
+    ).toEqual([
+      ['no-hardcoded-spacing', 3],
+      ['no-hardcoded-color', 4],
+    ]);
+    expect(
+      color(`// onsystem-disable-next-line no-hardcoded-color, no-hardcoded-spacing -- brand art
+const art = <p className="text-[#737373] p-[13px]" />
+const other = <p className="text-[#737373]" /> // onsystem-disable-line`),
+    ).toEqual([]);
+    expect(
+      color(`const a = <p className="text-[#737373]" />
+/* onsystem-disable no-hardcoded-color */
+const b = <p className="text-[#737373] p-[13px]" />`),
+    ).toEqual([
+      ['no-hardcoded-color', 1],
+      ['no-hardcoded-spacing', 3],
+    ]);
+    // Without rules, a directive turns every rule off.
+    expect(color(`// onsystem-disable\n<button className="bg-[#ef4444]" />`)).toEqual([]);
+  });
+
+  it('reports unknown rule names, and does not read strings or JSX text as comments', () => {
+    const [unknown, finding] = check(`// onsystem-disable-next-line no-hardcoded-colour
+<p className="text-[#737373]" />`);
+    expect(unknown).toMatchObject({
+      ruleId: 'suppression',
+      severity: 'warning',
+      line: 1,
+      source: 'no-hardcoded-colour',
+      message:
+        'Unknown rule "no-hardcoded-colour" in onsystem-disable-next-line, so nothing is suppressed for it. Did you mean "no-hardcoded-color"?',
+    });
+    expect(finding?.ruleId).toBe('no-hardcoded-color');
+    expect(
+      color(`const text = "// onsystem-disable"
+<p title="/* onsystem-disable */">// onsystem-disable</p>
+const more = <p className="text-[#737373]" />`),
+    ).toEqual([['no-hardcoded-color', 3]]);
+  });
+
+  it('never hides a syntax error', () => {
+    expect(check(`// onsystem-disable\n<p className="x"`).map((d) => d.ruleId)).toContain('syntax');
+  });
+});
+
 describe('no-unknown-component', () => {
   const rule = 'no-unknown-component';
 
