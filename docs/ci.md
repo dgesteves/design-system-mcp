@@ -28,9 +28,42 @@ jobs:
       - run: npx onsystem check . --format github --require-design-system
 ```
 
-Install the dependencies first: without them, the props of components that wrap a library (Radix, React Aria) are unknown, and `no-unknown-prop` skips those components ([troubleshooting](troubleshooting.md#components-show-0-props)). `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results. From a [monorepo root](configuration.md#monorepo-roots), `check .` checks each file against its own project's design system and keeps one baseline at the root; there, `--require-design-system` fails only when no workspace package has components and color tokens, so a job per app (`working-directory: apps/web`) is the stricter gate.
+Install the dependencies first: without them, the props of components that wrap a library (Radix, React Aria) are unknown, and `no-unknown-prop` skips those components ([troubleshooting](troubleshooting.md#components-show-0-props)). `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results, and `--format sarif` a SARIF log for [code scanning](#code-scanning-and-other-sarif-tools). From a [monorepo root](configuration.md#monorepo-roots), `check .` checks each file against its own project's design system and keeps one baseline at the root; there, `--require-design-system` fails only when no workspace package has components and color tokens, so a job per app (`working-directory: apps/web`) is the stricter gate.
 
 When no components or no color tokens are found, `check` and `check_ui` say which rules could not run and link to the [configuration docs](configuration.md), so a clean result is not mistaken for a checked one. In CI, `--require-design-system` turns that into a failure (exit code 2), for when the design system moves and the globs stop matching.
+
+## Code scanning and other SARIF tools
+
+`--format sarif` prints a [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) log: each rule with its description and a link to its entry in the rules catalog, and each finding with its level, message and location. Paths are relative to the repository root, wherever `check` runs from, and each finding carries a fingerprint built like a baseline entry (file, rule and the offending text), so an alert keeps its identity when the lines above it move. Findings in the baseline are left out. Upload it to GitHub code scanning, which shows the findings as alerts and, on a pull request, on the lines it changed:
+
+```yaml
+name: Design system
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  onsystem:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx onsystem check . --format sarif --require-design-system > onsystem.sarif
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: onsystem.sarif
+          category: onsystem
+```
+
+`continue-on-error` lets the upload run when `check` exits 1; code scanning then decides what fails, through its own check on the pull request. Code scanning is free for public repositories; private ones need GitHub Code Security.
 
 ## Adopting it in an existing codebase
 

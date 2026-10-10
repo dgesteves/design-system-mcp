@@ -68,7 +68,7 @@ Options
   --docs <glob>           Component docs (Markdown/MDX), repeatable
   --no-cache              Ignore the on-disk extraction cache
   --no-watch              serve: do not reload when files change
-  --format <format>       check: pretty | json | github (default: pretty)
+  --format <format>       check: pretty | json | github | sarif (default: pretty)
   --max-warnings <n>      check: exit 1 when there are more than n warnings
   --update-baseline       check: record the current findings as accepted, and exit 0
   --baseline <file>       check: baseline file (default: ${BASELINE_FILE} in the root,
@@ -287,8 +287,8 @@ async function check(
     return 2;
   }
   const format = values.format as OutputFormat;
-  if (!['pretty', 'json', 'github'].includes(format)) {
-    io.stderr(`check: unknown --format "${values.format}" (pretty, json, github)`);
+  if (!['pretty', 'json', 'github', 'sarif'].includes(format)) {
+    io.stderr(`check: unknown --format "${values.format}" (pretty, json, github, sarif)`);
     return 2;
   }
   const maxWarnings =
@@ -306,8 +306,7 @@ async function check(
   if (typeof selection === 'number') return selection;
   const { files, notes } = selection;
   if (!files.length) {
-    if (format === 'json') io.stdout('[]');
-    else if (format === 'pretty') {
+    if (format === 'pretty') {
       const hints = [
         selection.skipped
           ? `Pass --include-design-system to check ${selection.skipped === 1 ? 'it' : 'them'}.`
@@ -315,7 +314,7 @@ async function check(
         selection.testsLeftOut ? 'Pass --include-tests to check tests and stories.' : '',
       ].filter(Boolean);
       io.stdout(`Nothing to check: ${notes.join('; ')}. ${hints.join(' ')}`.trimEnd());
-    }
+    } else printNoResults(format, io);
     return 0;
   }
 
@@ -402,6 +401,7 @@ async function check(
     format,
     {
       color: io.color,
+      uri: format === 'sarif' ? repositoryPath(io.cwd) : undefined,
       baselined: baseline ? baselined : undefined,
       notes,
       fixedHint: fixed
@@ -425,6 +425,30 @@ async function check(
     return 1;
   }
   return 0;
+}
+
+/** What `json` and `sarif` print when there is nothing to report on: `[]`, or a log without results. */
+function printNoResults(format: OutputFormat, io: Io): void {
+  if (format === 'json') io.stdout('[]');
+  else if (format === 'sarif') io.stdout(formatDiagnostics([], 'sarif'));
+}
+
+/**
+ * Maps a path relative to the working directory to one relative to the repository root, which
+ * SARIF consumers such as GitHub code scanning resolve locations against, so `check` run from
+ * `apps/web` still reports `apps/web/app/page.tsx`. Outside a repository, or without git, paths
+ * stay relative to the working directory.
+ */
+function repositoryPath(cwd: string): (file: string) => string {
+  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  const top = result.status === 0 && typeof result.stdout === 'string' ? result.stdout.trim() : '';
+  if (!top) return toPosix;
+  const root = realPath(path.resolve(top));
+  return (file) => toPosix(path.relative(root, realPath(path.resolve(cwd, file))));
 }
 
 /** Splits the patterns into files named outright and globs (a folder: every TSX/JSX file under it). */
@@ -487,7 +511,7 @@ async function selectInProject(
   // stray custom properties of an app styled with CSS-in-JS (twenty), would block an
   // agent on rules that have nothing to compare against.
   if (values['quiet-without-design-system'] && !config.configFile && !ds.components.length) {
-    if (format === 'json') io.stdout('[]');
+    printNoResults(format, io);
     return 0;
   }
 
@@ -596,7 +620,7 @@ async function selectInWorkspace(
         Boolean(project(file).config.configFile) || designSystemOf(file).components.length > 0,
     );
     if (!files.length) {
-      if (format === 'json') io.stdout('[]');
+      printNoResults(format, io);
       return 0;
     }
   }

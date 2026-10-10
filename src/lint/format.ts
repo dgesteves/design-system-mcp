@@ -1,7 +1,8 @@
 import type { CheckResult } from '../types.js';
 import { plural } from '../util/strings.js';
+import { formatSarif } from './sarif.js';
 
-export type OutputFormat = 'pretty' | 'json' | 'github';
+export type OutputFormat = 'pretty' | 'json' | 'github' | 'sarif';
 
 const color = (code: number) => (text: string, enabled: boolean) =>
   enabled ? `\u001b[${code}m${text}\u001b[39m` : text;
@@ -14,7 +15,8 @@ const bold = (text: string, enabled: boolean) => (enabled ? `\u001b[1m${text}\u0
  * Renders check results:
  * - `pretty`: grouped by file, for terminals and agents,
  * - `json`: the raw results,
- * - `github`: workflow commands that GitHub Actions turns into PR annotations.
+ * - `github`: workflow commands that GitHub Actions turns into PR annotations,
+ * - `sarif`: a SARIF 2.1.0 log, for GitHub code scanning and other SARIF consumers.
  */
 export function formatDiagnostics(
   results: CheckResult[],
@@ -27,10 +29,13 @@ export function formatDiagnostics(
     fixedHint?: string | undefined;
     /** What the run left out: `5 design-system files skipped`, `12 tests and stories left out`. */
     notes?: readonly string[] | undefined;
+    /** `sarif`: a result's file as a path relative to the repository root. */
+    uri?: ((file: string) => string) | undefined;
   } = {},
 ): string {
   const { fixedHint } = options;
   if (format === 'json') return JSON.stringify(results, null, 2);
+  if (format === 'sarif') return formatSarif(results, options.uri);
   if (format === 'github') {
     const lines = results.flatMap((result) =>
       result.diagnostics.map((d) => {
