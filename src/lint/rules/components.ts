@@ -76,6 +76,9 @@ export const preferDesignSystemComponent: Rule = {
       }
       const component = context.target.elements.get(key);
       if (!component) continue;
+      // An element no one sees or reaches is no UI to replace: the off-screen input that
+      // carries a custom select's `required`, an `aria-hidden` proxy.
+      if (hiddenFromUser(element)) continue;
       // Inside a component of the same name (a design system's own `Table` around a <table>),
       // the element is how that component is built.
       if (enclosingComponent(element.node) === component.name) continue;
@@ -103,6 +106,57 @@ export const preferDesignSystemComponent: Rule = {
     }
   },
 };
+
+/**
+ * Whether an element is kept from the user: `hidden`, `aria-hidden`, or out of the tab
+ * order (`tabIndex={-1}`) and invisible (`opacity: 0`, `opacity-0`, `invisible`, `sr-only`).
+ */
+function hiddenFromUser(element: JsxNode): boolean {
+  const flag = (name: string) => {
+    const attribute = findAttribute(element, name);
+    if (!attribute) return false;
+    const init = attribute.initializer;
+    if (!init) return true;
+    if (ts.isStringLiteral(init))
+      return init.text === 'true' || (name === 'hidden' && init.text !== 'false');
+    return (
+      ts.isJsxExpression(init) &&
+      init.expression !== undefined &&
+      init.expression.kind === ts.SyntaxKind.TrueKeyword
+    );
+  };
+  if (flag('hidden') || flag('aria-hidden')) return true;
+  const tabIndex = findAttribute(element, 'tabIndex')?.initializer;
+  const outOfOrder =
+    tabIndex !== undefined &&
+    ((ts.isStringLiteral(tabIndex) && tabIndex.text === '-1') ||
+      (ts.isJsxExpression(tabIndex) &&
+        tabIndex.expression !== undefined &&
+        ts.isPrefixUnaryExpression(tabIndex.expression) &&
+        tabIndex.expression.operator === ts.SyntaxKind.MinusToken &&
+        ts.isNumericLiteral(tabIndex.expression.operand) &&
+        tabIndex.expression.operand.text === '1'));
+  if (!outOfOrder) return false;
+  const classes = attributeLiterals(element, 'className').flatMap((l) => l.text.split(/\s+/));
+  if (classes.some((c) => c === 'opacity-0' || c === 'invisible' || c === 'sr-only')) return true;
+  const style = findAttribute(element, 'style')?.initializer;
+  const object =
+    style &&
+    ts.isJsxExpression(style) &&
+    style.expression &&
+    ts.isObjectLiteralExpression(style.expression)
+      ? style.expression
+      : undefined;
+  return (
+    object?.properties.some(
+      (p) =>
+        ts.isPropertyAssignment(p) &&
+        propertyName(p.name) === 'opacity' &&
+        ((ts.isNumericLiteral(p.initializer) && Number(p.initializer.text) === 0) ||
+          (ts.isStringLiteral(p.initializer) && Number(p.initializer.text) === 0)),
+    ) ?? false
+  );
+}
 
 /** The PascalCase function or class component a node sits in: `Table` for `const Table = forwardRef(...)`. */
 function enclosingComponent(node: ts.Node): string | undefined {

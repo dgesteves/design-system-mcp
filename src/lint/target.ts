@@ -112,6 +112,8 @@ function namedFor(name: string): string | undefined {
 /** What the lint rules need to know about the design system. */
 export class LintTarget {
   readonly components = new Map<string, ComponentInfo>();
+  /** Every component under each name and alias, when two design systems share one (`Button`). */
+  private readonly named = new Map<string, ComponentInfo[]>();
   readonly tokens: TokenIndex;
   /** Native element → the component that replaces it. */
   readonly elements = new Map<string, ComponentInfo>();
@@ -138,8 +140,10 @@ export class LintTarget {
     private readonly resolver?: Pick<ModuleResolver, 'locate' | 'exportsOf'>,
   ) {
     for (const component of model.components) {
-      this.components.set(component.name, component);
-      for (const alias of component.aliases) this.components.set(alias, component);
+      for (const name of [component.name, ...component.aliases]) {
+        this.components.set(name, component);
+        this.named.set(name, [...(this.named.get(name) ?? []), component]);
+      }
     }
     // Without components there is no usage to tell a scoped family by.
     this.tokens = new TokenIndex(model.tokens, {
@@ -235,23 +239,65 @@ export class LintTarget {
   }
 
   /**
-   * Whether an import names another declaration than the model's component of
-   * that name: `import { Table } from "./Table"` in a package whose model has
-   * `Table` from `TableNew.tsx`, while `Table.tsx` declares a `Table` of its own.
+   * The component a JSX tag means when `name` is imported from `specifier`, among the
+   * model's components of that name: the one declared where the import leads, through
+   * barrels (`export { Button } from "./Button"`, `export *`). `undefined` when it leads to
+   * a declaration the model does not have (another package's `Button`, or a file of the
+   * same name outside the component folders), which is not ours to check. Where the import
+   * cannot be followed, the component of that name, as before.
    */
-  declaredElsewhere(
-    component: ComponentInfo,
-    name: string,
-    specifier: string,
-    fromFile: string,
-  ): boolean {
+  componentFor(name: string, specifier: string, fromFile: string): ComponentInfo | undefined {
+    const fallback = this.components.get(name);
     const { resolver } = this;
     const file = resolver?.locate(specifier, fromFile)?.file;
-    if (!resolver || !file) return false;
-    const modules = modulePaths(file);
-    if (modulePaths(component.source.file).some((module) => modules.includes(module))) return false;
-    if (modules.some((module) => this.componentModules.has(module))) return false;
-    return resolver.exportsOf(file)?.declared.includes(name) === true;
+    if (!resolver || !file) return fallback;
+    const candidates = this.named.get(name) ?? (fallback ? [fallback] : []);
+    const at = (target: string) => {
+      const modules = modulePaths(target);
+      return candidates.find((c) =>
+        modulePaths(c.source.file).some((module) => modules.includes(module)),
+      );
+    };
+    const direct = at(file);
+    if (direct) return direct;
+    // An import of a component file the model has, under another name (`export { X as Y }`).
+    if (modulePaths(file).some((module) => this.componentModules.has(module))) return fallback;
+    const origin = this.originOf(name, file, 0);
+    // Not followed to the end, or not exported there: the model's component of that name.
+    if (origin === null || origin === undefined) return fallback;
+    const declared = at(origin);
+    if (declared) return declared;
+    if (modulePaths(origin).some((module) => this.componentModules.has(module))) return fallback;
+    return undefined;
+  }
+
+  /**
+   * The file that declares what `file` exports as `name`, following re-exports: a path
+   * relative to the root, `undefined` when it does not export it, `null` when a step of the
+   * way does not resolve or cannot be read.
+   */
+  private originOf(name: string, file: string, depth: number): string | undefined | null {
+    if (depth > 8) return null;
+    const exports = this.resolver?.exportsOf(file);
+    if (!exports) return null;
+    if (exports.declared.includes(name)) return file;
+    const reexport = exports.reexports.get(name);
+    if (reexport) {
+      return reexport.from === undefined
+        ? null
+        : this.originOf(reexport.name, reexport.from, depth + 1);
+    }
+    let unknown = false;
+    for (const from of exports.starFrom) {
+      if (from === undefined) {
+        unknown = true;
+        continue;
+      }
+      const found = this.originOf(name, from, depth + 1);
+      if (typeof found === 'string') return found;
+      if (found === null) unknown = true;
+    }
+    return unknown ? null : undefined;
   }
 
   private mayExport(file: string, name: string, depth: number): boolean {
