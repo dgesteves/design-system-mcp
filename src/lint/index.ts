@@ -3,31 +3,15 @@ import ts from 'typescript';
 import type { RuleId, ResolvedRule } from '../config.js';
 import type { CheckResult, Diagnostic } from '../types.js';
 import { analyze } from './analyze.js';
-import { resolveElement, type Resolution, type Rule, type RuleContext } from './context.js';
-import {
-  iconButtonAccessibleName,
-  noUnknownComponent,
-  noUnknownProp,
-  noUnknownVariant,
-  preferDesignSystemComponent,
-} from './rules/components.js';
-import { noHardcodedColor, noHardcodedRadius, noHardcodedSpacing } from './rules/hardcoded.js';
+import { resolveElement, type Resolution, type RuleContext } from './context.js';
+import { RULES } from './rules/index.js';
 import { isSuppressed, readDirectives } from './suppress.js';
 import type { LintTarget } from './target.js';
 
 export { LintTarget } from './target.js';
 export { formatDiagnostics, type OutputFormat } from './format.js';
 
-export const RULES: readonly Rule[] = [
-  noHardcodedColor,
-  noHardcodedSpacing,
-  noHardcodedRadius,
-  preferDesignSystemComponent,
-  noUnknownComponent,
-  noUnknownProp,
-  noUnknownVariant,
-  iconButtonAccessibleName,
-];
+export { RULES };
 
 export interface CheckOptions {
   /** File name used in results and to pick TSX vs JSX parsing. Default `snippet.tsx`. */

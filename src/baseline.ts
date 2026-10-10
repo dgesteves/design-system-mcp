@@ -25,8 +25,9 @@ type Entries = Map<string, Map<string, Map<string, number>>>;
  * A finding's identity within its file and rule: the offending text with
  * whitespace collapsed, and without the quotes of a string literal, so a
  * formatter switching quote style does not make every finding look new.
+ * SARIF fingerprints use it too, so code scanning tracks a finding as a baseline does.
  */
-function key(diagnostic: Diagnostic): string {
+export function findingKey(diagnostic: Diagnostic): string {
   const text = diagnostic.source.replace(/\s+/g, ' ').trim();
   return (/^(['"`])(.*)\1$/.exec(text)?.[2] ?? text).slice(0, 200);
 }
@@ -102,7 +103,7 @@ export function applyBaseline(
   const diagnostics: Diagnostic[] = [];
   let baselined = 0;
   for (const diagnostic of result.diagnostics) {
-    const id = `${diagnostic.ruleId}\0${key(diagnostic)}`;
+    const id = `${diagnostic.ruleId}\0${findingKey(diagnostic)}`;
     const left = remaining.get(id) ?? 0;
     if (left > 0) {
       remaining.set(id, left - 1);
@@ -151,7 +152,7 @@ export function updateBaseline(
     for (const diagnostic of diagnostics) {
       let sources = rules.get(diagnostic.ruleId);
       if (!sources) rules.set(diagnostic.ruleId, (sources = new Map<string, number>()));
-      const id = key(diagnostic);
+      const id = findingKey(diagnostic);
       sources.set(id, (sources.get(id) ?? 0) + 1);
     }
     if (rules.size) next.set(file, rules);
