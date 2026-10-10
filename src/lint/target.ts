@@ -2,9 +2,11 @@ import path from 'node:path';
 
 import type { ResolvedConfig } from '../config.js';
 import { TokenIndex } from '../tokens/index.js';
-import type { ComponentInfo, DesignSystemModel } from '../types.js';
+import { tokenFamily } from '../tokens/roles.js';
+import type { ComponentInfo, DesignSystemModel, Token } from '../types.js';
 import { toPosix } from '../util/paths.js';
 import { unique } from '../util/strings.js';
+import { COLOR_UTILITY, parseUtility } from './tailwind.js';
 
 /**
  * Elements a design system typically replaces. Containers (`div`, `span`,
@@ -82,7 +84,10 @@ export class LintTarget {
       this.components.set(component.name, component);
       for (const alias of component.aliases) this.components.set(alias, component);
     }
-    this.tokens = new TokenIndex(model.tokens);
+    // Without components there is no usage to tell a scoped family by.
+    this.tokens = new TokenIndex(model.tokens, {
+      filesUsing: model.components.length ? familyUsage(model) : undefined,
+    });
     this.componentFiles = new Set(model.components.map((c) => c.source.file));
     this.exports = new Set(model.exports);
 
@@ -195,6 +200,37 @@ export class LintTarget {
   names(): string[] {
     return [...this.components.keys()];
   }
+}
+
+/**
+ * Token family → the design-system files whose classes or CSS variables use
+ * one of its colors (`bg-sidebar-accent`, `var(--sh-class)`).
+ */
+function familyUsage(model: DesignSystemModel): Map<string, Set<string>> {
+  const byKey = new Map<string, Token>();
+  const byVar = new Map<string, Token>();
+  for (const token of model.tokens) {
+    if (token.category !== 'color') continue;
+    if (token.tailwind) byKey.set(token.tailwind, token);
+    if (token.cssVar) byVar.set(token.cssVar, token);
+  }
+  const usage = new Map<string, Set<string>>();
+  const use = (token: Token | undefined, file: string) => {
+    if (!token) return;
+    const family = tokenFamily(token);
+    const files = usage.get(family) ?? new Set<string>();
+    files.add(file);
+    usage.set(family, files);
+  };
+  for (const component of model.components) {
+    const file = component.source.file;
+    for (const cls of component.classNames) {
+      const key = COLOR_UTILITY.exec(parseUtility(cls).base)?.[1];
+      if (key) use(byKey.get(key), file);
+    }
+    for (const cssVar of component.cssVars) use(byVar.get(cssVar), file);
+  }
+  return usage;
 }
 
 /**

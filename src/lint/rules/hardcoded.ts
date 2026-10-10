@@ -233,7 +233,7 @@ function reportColor(
     mode,
   });
   if (!suggestion) return;
-  const { match, nearest, reason, sameValue } = suggestion;
+  const { match, nearest, reason, sameValue, hueOff } = suggestion;
   const token = nearest.candidate.token;
 
   const cls = input.prefix && token.tailwind ? `${input.prefix}-${token.tailwind}` : undefined;
@@ -272,7 +272,7 @@ function reportColor(
     message += '.';
   } else {
     const tinted = input.tinted ?? isTinted(input.color);
-    message = `${input.what}. ${noMatch(reason, role, tinted, nearest.candidate.color, found)} Pick the semantic token that fits.`;
+    message = `${input.what}. ${noMatch(reason, role, tinted, nearest.candidate.color, found, hueOff)} Pick the semantic token that fits.`;
   }
   const owner =
     !variant && input.prefix && input.element
@@ -303,7 +303,14 @@ function noMatch(
   tinted: boolean,
   token: Oklch,
   found: string,
+  hueOff: number | undefined,
 ): string {
+  if (reason === 'status') {
+    return `Nearest is ${found}, a status color ${String(hueOff)}° away in hue; status colors are only suggested for their own hue.`;
+  }
+  if (reason === 'scoped') {
+    return `Nearest is ${found}, a token one part of the UI uses (not this one).`;
+  }
   if (reason === 'hue') {
     if (!tinted) return `No gray token is close; nearest is ${found}, which is tinted.`;
     return `No token has this hue; nearest is ${found}, ${isTinted(token) ? 'another hue' : 'a gray'}.`;
@@ -314,8 +321,8 @@ function noMatch(
 }
 
 /**
- * The scoped token families (sidebar, chart) the code is in: the file, the
- * element and the elements around it, or its classes.
+ * The scoped token families (sidebar, chart, and any a single file uses) the
+ * code is in: the file, the element and the elements around it, or its classes.
  */
 function scopes(
   context: RuleContext,
@@ -333,7 +340,19 @@ function scopes(
     // A page laid out next to the sidebar is not in it.
     if (name && !/^Sidebar(?:Provider|Inset)$/.test(name)) tags.push(name);
   }
-  return scopesIn(context.file, classes, ...tags);
+  const { tokens, components } = context.target;
+  const found = scopesIn(tokens.scopedFamilies, context.file, classes, ...tags);
+  // Inside a component that uses a family (<CodeBlock> for syntax colors), its tokens fit.
+  const files = new Set([context.file]);
+  for (const tag of tags) {
+    const file = components.get(tag)?.source.file;
+    if (file) files.add(file);
+  }
+  for (const family of tokens.scopedFamilies) {
+    const using = tokens.familyFiles.get(family);
+    if (using && [...files].some((file) => using.has(file))) found.add(family);
+  }
+  return found;
 }
 
 /** The variant prop of the element's component that already sets `prefix-*` classes, if any. */

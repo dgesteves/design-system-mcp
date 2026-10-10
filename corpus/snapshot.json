@@ -20,7 +20,7 @@
         "no-hardcoded-color": {
           "errors": 102,
           "warnings": 0,
-          "fixes": 66
+          "fixes": 60
         },
         "prefer-design-system-component": {
           "errors": 2,
@@ -92,7 +92,7 @@
         "no-hardcoded-color": {
           "errors": 96,
           "warnings": 0,
-          "fixes": 46
+          "fixes": 42
         },
         "no-hardcoded-radius": {
           "errors": 0,
@@ -133,7 +133,7 @@
         "no-hardcoded-color": {
           "errors": 1024,
           "warnings": 0,
-          "fixes": 552
+          "fixes": 550
         },
         "no-hardcoded-radius": {
           "errors": 0,
@@ -170,7 +170,7 @@
         "no-hardcoded-color": {
           "errors": 286,
           "warnings": 0,
-          "fixes": 266
+          "fixes": 93
         },
         "no-hardcoded-radius": {
           "errors": 0,
@@ -307,7 +307,7 @@
         "no-hardcoded-color": {
           "errors": 9,
           "warnings": 0,
-          "fixes": 3
+          "fixes": 0
         },
         "no-hardcoded-spacing": {
           "errors": 0,
@@ -344,7 +344,7 @@
         "no-hardcoded-color": {
           "errors": 2,
           "warnings": 0,
-          "fixes": 2
+          "fixes": 0
         },
         "prefer-design-system-component": {
           "errors": 9,
@@ -372,6 +372,11 @@
           "errors": 15,
           "warnings": 0,
           "fixes": 11
+        },
+        "no-hardcoded-color": {
+          "errors": 219,
+          "warnings": 0,
+          "fixes": 109
         },
         "no-hardcoded-radius": {
           "errors": 0,
@@ -533,20 +538,20 @@
     "aeaf3a6fba2f": true,
     "482837efa8e8": true,
     "127cb695bb72": true,
-    "818db750975b@fill-[var(--rainbow-4)]": true,
+    "818db750975b@fill-[var(--rainbow-4)]": false,
     "161c1a1f85ee": true,
-    "d6ade20df6aa@text-sh-class": true,
+    "d6ade20df6aa@text-sh-class": false,
     "968cb54667a1": true,
     "13ee2a16d511": true,
     "73f196f44868": true,
     "360843387dba": true,
-    "8c791e5894b5@variant=\"destructive\"": true,
-    "07a61c304317@variant=\"destructive\"": true,
+    "8c791e5894b5@variant=\"destructive\"": false,
+    "07a61c304317@variant=\"destructive\"": false,
     "02c963b7f3fe": true,
     "703c3a411509": true,
     "e0dc49cdd748": true,
     "0e8ed079c6c5": true,
-    "0a9155609801@bg-[var(--cal-bg-primary)]": true,
+    "0a9155609801@bg-[var(--cal-bg-primary)]": false,
     "058d10e38701@-ml-[var(--spacing)]": true,
     "7ecfa4a8053d": true,
     "6b429f7a4e16": true,
@@ -608,7 +613,7 @@
     "cd04a2176a9d": true,
     "07ce214a81fc": true,
     "32c9476d729d": true,
-    "eaa1dcde097a@text-[var(--rainbow-4)]": true,
+    "eaa1dcde097a@text-[var(--rainbow-4)]": false,
     "b12d5a3781ca": true,
     "a286fdc59187": true,
     "72b96304daff": true,
@@ -626,7 +631,7 @@
     "005b807d7c59": true,
     "084ac2c71fee": true,
     "45ba21a0fd4c": true,
-    "e200a29c863c@text-destructive-foreground": true,
+    "e200a29c863c@text-destructive-foreground": false,
     "835dc3507977": true,
     "3f6ff6d4dd10": true,
     "2064b3b4b09c": true,
@@ -637,6 +642,15 @@
     "0cf42873ec1e": true,
     "f4905fdf7382": true,
     "031dc08572af": true,
-    "1567cbdac05a": true
+    "1567cbdac05a": true,
+    "e200a29c863c@text-primary-foreground": true,
+    "acc550efb5e6": true,
+    "aac95d361de8": true,
+    "4d73900c3b63": true,
+    "2b6c6d35ba0a": true,
+    "b54e3e6b091a": true,
+    "9e7bab3e5b1f": true,
+    "5b7a4161dab0": true,
+    "f28349d00ba3": true
   }
 }
