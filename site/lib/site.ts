@@ -20,14 +20,14 @@ export function repoLink(file: string, kind: 'blob' | 'tree' = 'blob'): string {
 
 export const MORE = [
   {
-    name: 'ask-my-site',
+    name: 'ondocs',
     url: 'https://ask-my-site-demo.vercel.app',
-    description: 'A drop-in ⌘K ask agent for any website, with a build-time index.',
+    description: 'Docs answerable by people and agents from one static index: a cited Ask box, an MCP server and llms.txt.',
   },
   {
-    name: 'agent-ui-kit',
+    name: 'signoff-ui',
     url: 'https://agent-ui-kit-demo.vercel.app',
-    description: 'React components for agent runs: tool timelines, approvals, diff review.',
+    description: 'React components to review what your agent changed and approve what it may do.',
   },
 ];
 
