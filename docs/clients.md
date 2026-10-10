@@ -1,6 +1,6 @@
 # Set up your agent
 
-The server speaks MCP over stdio. It finds the project from `--root`, a config file in the working directory, or the workspace roots the client reports, and otherwise uses the working directory. Started at a [monorepo root](configuration.md#monorepo-roots), it serves every app and design-system package in it: the tools take the `path` of the file the agent is editing and answer for that file's project.
+The server speaks MCP over stdio, in both protocol eras: the 2026-07-28 revision (stateless, with `server/discover`) and the 2025 one (the `initialize` handshake), the era chosen by the client's first message. It finds the project from `--root`, a config file in the working directory, or the working directory itself when it holds a project (a `package.json` or `components.json`). MCP roots, which 2026-07-28 deprecates, are the fallback: when the working directory is none of those (Claude Desktop starts servers in `/`), a 2025-era client that reports roots has its first `file://` root used; otherwise it is the working directory. Started at a [monorepo root](configuration.md#monorepo-roots), it serves every app and design-system package in it: the tools take the `path` of the file the agent is editing and answer for that file's project.
 
 Every client gets the same five tools, including `check_ui`, which the agent runs on its own output. Only Claude Code has a hook that checks each edit as it happens, so there use the [plugin](plugin.md) instead; with other agents, add the [CI check](ci.md) so what the agent skips still gets caught.
 
@@ -45,11 +45,11 @@ One click installs it: [Install in Cursor](https://cursor.com/en/install-mcp?nam
 
 </details>
 
-A client that passes `${workspaceFolder}` through unexpanded gets a warning on stderr, and the server falls back to the workspace roots the client reports or its working directory.
+A client that passes `${workspaceFolder}` through unexpanded gets a warning on stderr, and the server falls back to its working directory, or the roots the client reports when that holds no project.
 
 ## Other clients
 
-Every client runs the same stdio command. Replace `/absolute/path/to/app` with the app's folder; the server also finds the project without `--root` when the client reports its workspace roots or starts the server in the project folder.
+Every client runs the same stdio command. Replace `/absolute/path/to/app` with the app's folder; the server also finds the project without `--root` when the client starts it in the project folder, or reports the folder as a root.
 
 <details>
 <summary><strong>Claude Desktop</strong></summary>
@@ -236,4 +236,4 @@ To share it with your team, add `--scope project`, which writes `.mcp.json` at t
 
 Any other MCP client: run `npx -y onsystem --root /absolute/path/to/app` as a stdio server. On native Windows, wrap it as `cmd /c npx ...`.
 
-The server sends usage instructions during the MCP handshake. Clients that ignore them benefit from one line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules`: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_
+The server sends usage instructions in its `initialize` result and in `server/discover`. Clients that ignore them benefit from one line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules`: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_

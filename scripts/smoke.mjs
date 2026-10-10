@@ -1,9 +1,13 @@
 // End-to-end smoke test of the built package: spawns `dist/cli.js` as a stdio
-// MCP server against examples/shadcn-demo, calls every tool through the SDK's
-// stdio client, and fails loudly if anything is off. Run after `pnpm build`.
+// MCP server against examples/shadcn-demo, calls every tool through the v1 SDK's
+// stdio client (the 2025 protocol, as hosts embed it today), then connects again
+// with the v2 client on the 2026-07-28 protocol, and fails loudly if anything is
+// off. Run after `pnpm build`.
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
+import { Client as ModernClient } from '@modelcontextprotocol/client';
+import { StdioClientTransport as ModernStdioTransport } from '@modelcontextprotocol/client/stdio';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -75,4 +79,44 @@ const prompt = await client.getPrompt({
 assert.match(prompt.messages[0].content.text, /check_ui/);
 
 await client.close();
+
+// The same server, to a client on the 2026-07-28 protocol: stateless, found through server/discover.
+const args = [
+  path.join(root, 'dist/cli.js'),
+  '--root',
+  path.join(root, 'examples/shadcn-demo'),
+  '--no-watch',
+  '--no-cache',
+];
+const modern = new ModernClient(
+  { name: 'smoke-2026', version: '1.0.0' },
+  { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+);
+await modern.connect(
+  new ModernStdioTransport({
+    command: process.execPath,
+    args,
+    stderr: verbose ? 'inherit' : 'pipe',
+  }),
+);
+assert.equal(modern.getProtocolEra(), 'modern');
+assert.equal(modern.getNegotiatedProtocolVersion(), '2026-07-28');
+const discovered = modern.getDiscoverResult();
+assert.ok(discovered?.supportedVersions.includes('2026-07-28'));
+const modernTools = await modern.listTools();
+assert.deepEqual(
+  modernTools.tools.map((t) => t.name),
+  tools.map((t) => t.name),
+  'tools/list has the same order in both eras',
+);
+const modernCheck = await modern.callTool({
+  name: 'check_ui',
+  arguments: { path: 'app/settings/danger-zone.tsx' },
+});
+assert.equal(modernCheck.structuredContent.errorCount, 8);
+console.log(
+  `\n── 2026-07-28: server/discover offers ${discovered.supportedVersions.join(', ')}; check_ui found 8 errors`,
+);
+await modern.close();
+
 console.log('\nsmoke test passed');

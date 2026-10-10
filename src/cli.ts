@@ -187,7 +187,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
   let root = values.root;
   if (root !== undefined && /\$\{[^}]*\}/.test(root)) {
     io.stderr(
-      `--root "${root}" holds a variable the client did not expand; using ${command === 'serve' ? "the client's workspace roots or " : ''}the working directory instead.`,
+      `--root "${root}" holds a variable the client did not expand; using the working directory instead${command === 'serve' ? ", or the client's roots when it holds no project" : ''}.`,
     );
     root = undefined;
   }
