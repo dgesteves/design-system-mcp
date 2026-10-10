@@ -1,5 +1,21 @@
 # onsystem (formerly @dgesteves/design-system-mcp)
 
+## 0.5.0
+
+### Minor Changes
+
+- [#73](https://github.com/dgesteves/onsystem/pull/73) [`cd4cbce`](https://github.com/dgesteves/onsystem/commit/cd4cbcec854b52c10f2bffe5af6ff8809f8b7417) Thanks [@dgesteves](https://github.com/dgesteves)! - onsystem is packaged for more agents, each pinned to the same release: `npx skills add dgesteves/onsystem` installs the skill in any agent with Agent Skills; an Agent Plugins 1.0 package (`plugins/onsystem-agent`, for GitHub Copilot CLI and other clients of the standard) and a Cursor plugin (`plugins/onsystem-cursor`) carry the MCP server and the skill; and Codex and VS Code install the plugin from the same marketplace as Claude Code. The skill has one source, copied into each package by `scripts/sync-plugins.mjs`, and a test fails when a copy drifts. The skill no longer says every agent has the Claude Code hook.
+
+- [#74](https://github.com/dgesteves/onsystem/pull/74) [`bbde609`](https://github.com/dgesteves/onsystem/commit/bbde60924f27934dc235510a8ae082ba80527b22) Thanks [@dgesteves](https://github.com/dgesteves)! - An ESLint plugin, `onsystem/eslint`, with the same rules for ESLint 9 and 10 (flat config): add `onsystem.configs.recommended` to `eslint.config.mjs`. Each file is checked as `check` checks it, against its own project's design system with that project's config and suppression comments, with the same messages, positions and fixes; `settings.onsystem.root` and `config` point it elsewhere. The design system loads once in a worker thread and is refreshed while an editor keeps ESLint running. The real-world corpus runs through it too (`pnpm corpus eslint`) and reports the same findings as `check`. The docs page "ESLint plugin" shows how to use it alongside @shadcn/lint.
+
+- [#72](https://github.com/dgesteves/onsystem/pull/72) [`9aebe5a`](https://github.com/dgesteves/onsystem/commit/9aebe5a5cfd58a1338a12877f46ab0856832a110) Thanks [@dgesteves](https://github.com/dgesteves)! - A GitHub Action: `uses: dgesteves/onsystem@v0` runs `check` on a pull request, honours the baseline, and reports only the findings on the lines the pull request changed, as annotations and in the job summary, failing on errors (`fail-on` sets the level, `only-changed-lines: false` reports every line). It runs in merge queues too, and each release of the action runs the CLI of the same version. The new docs page "Make it a required check on agent pull requests" has the workflow, how to require the check, and what to know for pull requests from Copilot, Codex and Claude.
+
+- [#71](https://github.com/dgesteves/onsystem/pull/71) [`d085878`](https://github.com/dgesteves/onsystem/commit/d085878462d503fac43af1247c04a1ff5a75cc5f) Thanks [@dgesteves](https://github.com/dgesteves)! - `check --format sarif` prints a SARIF 2.1.0 log for GitHub code scanning (`github/codeql-action/upload-sarif`) and other SARIF tools: each rule with its description and a link to its docs, and each finding with its level, message, location and a stable fingerprint. Paths are relative to the repository root, wherever `check` runs from, and baseline findings are left out.
+
+### Patch Changes
+
+- [#69](https://github.com/dgesteves/onsystem/pull/69) [`8151e7a`](https://github.com/dgesteves/onsystem/commit/8151e7a49c62196214a77230855d4c2015d382db) Thanks [@dgesteves](https://github.com/dgesteves)! - Every MCP tool now states all four annotation hints, adding `destructiveHint: false` to `readOnlyHint`, `idempotentHint` and `openWorldHint`. The spec defaults a missing `destructiveHint` to true, and some clients and directories reject tools that leave a hint out.
+
 ## 0.4.0
 
 ### Minor Changes
