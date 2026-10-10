@@ -1,4 +1,4 @@
-name: onsystem
+name: onsystem design system check
 description: Gate pull requests on your design system. Annotates invented components, props and variants and hardcoded tokens on the lines a pull request changes.
 author: Diogo Esteves
 branding:

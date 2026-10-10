@@ -278,6 +278,16 @@ describe('the GitHub Action, in parts', () => {
       expect(yml).toContain(`${variable}: \${{ inputs.${input} }}`);
     }
   });
+
+  it('has a name the GitHub Marketplace can list', () => {
+    // A Marketplace action can't be named after a GitHub user or organization it doesn't
+    // belong to, and github.com/onsystem is someone else's organization: a bare `onsystem`
+    // would be refused when the release is published to the Marketplace.
+    const yml = fs.readFileSync(path.join(import.meta.dirname, '..', 'action.yml'), 'utf8');
+    const name = /^name: (.+)$/m.exec(yml)?.[1]?.trim() ?? '';
+    expect(name).toBe('onsystem design system check');
+    expect(name.toLowerCase()).not.toBe('onsystem');
+  });
 });
 
 describe('the GitHub Action', () => {
