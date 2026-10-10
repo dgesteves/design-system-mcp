@@ -55,15 +55,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx onsystem check . --format sarif --require-design-system > onsystem.sarif
-        continue-on-error: true
+      - run: npx onsystem check . --format sarif --require-design-system > onsystem.sarif || test $? -eq 1
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: onsystem.sarif
           category: onsystem
 ```
 
-`continue-on-error` lets the upload run when `check` exits 1; code scanning then decides what fails, through its own check on the pull request. Code scanning is free for public repositories; private ones need GitHub Code Security.
+`|| test $? -eq 1` lets exit code 1 through: there are findings, and they are uploaded for code scanning to judge, through its own check on the pull request. Exit code 2 (no design system found, a broken config, a bad option) still fails the job, rather than uploading an empty log that passes. Code scanning is free for public repositories; private ones need GitHub Code Security.
 
 ## Adopting it in an existing codebase
 
