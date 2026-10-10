@@ -24,6 +24,8 @@ pnpm smoke           # the built server over stdio, every tool, against examples
 pnpm test            # Vitest, on Node 22 and 24
 ```
 
+A pull request that touches `src/` also runs the [real-world corpus](#real-world-corpus), which is not a required check yet.
+
 `pnpm smoke` spawns `dist/cli.js` the way an MCP client does, so it catches what unit tests cannot: a broken build, a tool that fails over stdio, output that no longer parses. Run it after `pnpm build`; add `--verbose` to see every response. CI also runs `check` on the demo's clean page (it must pass) and the Claude Code hook on its draft (it must block).
 
 Commit `schema.json` when `pnpm build` changes it, and `.github/assets/*.svg` when `pnpm assets` does: the hero image is rendered from real `check` output on the demo, so a changed message changes the picture.
@@ -37,6 +39,19 @@ Commit `schema.json` when `pnpm build` changes it, and `.github/assets/*.svg` wh
 5. Add a row to the Rules table in the README, and run `pnpm build` so `schema.json` lists the new id.
 
 The same pattern holds for a false positive: reproduce it as a failing test from the real code that triggered it, then fix it.
+
+## Real-world corpus
+
+Synthetic fixtures show that a rule works; they do not show how often it is wrong. `corpus/repos.json` pins public repositories by commit, and `pnpm corpus` (after `pnpm build`) fetches the folders it needs, shallow and sparse, then runs `inspect` and `check` with the built CLI on each and compares the result with two files:
+
+- `corpus/snapshot.json`: per run and per rule, the errors, warnings and fixable findings, plus what `inspect` found.
+- `corpus/labels.json`: findings labelled by hand as TP (true positive), FP (false positive) or D (debatable), with a one-line reason. Each is keyed by a fingerprint of the run, file, rule, offending text and occurrence, so it survives edits elsewhere in the file. A label with a `suggestion` applies only while that is the suggestion, for findings whose fix is the problem. `sample` says how it was picked: `random` labels estimate the false-positive rate, `audit` labels are suspicious findings picked by hand.
+
+The run fails when counts change (after a deliberate change, run `pnpm corpus --update` and commit the snapshot, as with Jest snapshots), when a TP is no longer reported, or when an FP that a change fixed comes back. Those two hold even with `--update`: relabel or remove the label if the change is intended. It ends with the false-positive rate of the random sample, raw and weighted by each run's and rule's share of the findings; that is the number to quote for a release.
+
+The repositories are untrusted: only source, styles, manifests and docs are fetched, nothing in them is installed, built or run, and a run whose folder has a `design-system-mcp.config` written in code is refused. They live outside this repository (`$TMPDIR/design-system-mcp-corpus`, or `--dir`/`CORPUS_DIR`), since the CLI looks upwards for `node_modules` and workspace roots. Other commands: `pnpm corpus fetch`, `pnpm corpus --only documenso` for one repository or run, and `pnpm corpus sample <run>` to print unlabelled findings with their code and a label to fill in (`--per-rule`, `--seed`, `--rule`, `--file`, `--line`).
+
+When a change fixes a false positive, add a label for it if there is none, run `pnpm corpus --update`, and put the changed counts (the table it prints) and the new false-positive rate in the pull request.
 
 ## Releasing
 
