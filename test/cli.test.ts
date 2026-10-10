@@ -562,15 +562,21 @@ describe('design-system-mcp check --quiet-without-design-system', () => {
     ).toBe('[]');
   });
 
-  it('still checks projects with components, their own tokens, or a config', async () => {
+  it('stays quiet with tokens but no components, as in an app styled with CSS-in-JS', async () => {
+    // twenty: three stray custom properties and no components made the hook block Claude.
+    const root = fixture({
+      'src/index.css': ':root { --accent: #1961ed; --line: #ebebeb; --bg: #fcfcfc; }\n',
+      'app/page.tsx': page,
+    });
+    expect(
+      await run(['check', 'app', '--no-cache', '--quiet-without-design-system'], root),
+    ).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('still checks projects with components or a config', async () => {
     const withComponents = fixture({
       'components/ui/button.tsx':
         'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
-      'app/page.tsx': page,
-    });
-    const withTokens = fixture({
-      'app/globals.css':
-        '@import "tailwindcss";\n:root { --primary: oklch(0.6 0.2 25); }\n@theme inline { --color-primary: var(--primary); }\n',
       'app/page.tsx': page,
     });
     const withConfig = fixture({
@@ -578,7 +584,7 @@ describe('design-system-mcp check --quiet-without-design-system', () => {
       'app/globals.css': '@import "tailwindcss";\n',
       'app/page.tsx': page,
     });
-    for (const root of [withComponents, withTokens, withConfig]) {
+    for (const root of [withComponents, withConfig]) {
       const { stdout } = await run(
         ['check', 'app', '--no-cache', '--quiet-without-design-system'],
         root,

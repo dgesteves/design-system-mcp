@@ -6,17 +6,22 @@
 //   Claude so it fixes them before moving on. For an Edit, only findings on
 //   the lines it changed are listed; older ones are counted, not pushed.
 // - Warnings only: exit 0 with `additionalContext`, a non-blocking note.
-// - Clean file, other files, a project without a design system, or anything
-//   going wrong here: exit 0 silently. A broken hook must never stall the
-//   session; the MCP server reports configuration problems itself.
+// - Clean file, other files, or a project without design-system components
+//   (tokens alone are not one): exit 0 silently.
+// - The CLI cannot run (npx fails, a min-release-age policy, offline, a private
+//   registry, a broken config): exit 0 with a one-time notice, once per session
+//   and project, on stderr and as a `systemMessage` the user sees. It never
+//   blocks the edit, and Claude is not asked to fix it.
 //
 // The CLI is the project's own install when there is one, else npx. Both run
 // through Node directly, never a shell, so paths are passed as they are.
 // DESIGN_SYSTEM_MCP_BIN points at another CLI script, for tests.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 
 const PACKAGE = '@dgesteves/design-system-mcp';
@@ -45,8 +50,9 @@ const sessionDir =
     : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
 const file = path.resolve(sessionDir, filePath);
 const root = projectRoot(path.dirname(file)) ?? sessionDir;
+const name = path.relative(root, file) || file;
 const cli = resolveCli(root);
-if (!cli) process.exit(0);
+if (!cli) cannotRun('npx was not found next to this Node.js.');
 
 const run = spawnSync(
   cli[0],
@@ -60,15 +66,16 @@ const run = spawnSync(
     windowsHide: true,
   },
 );
-// 0: clean or warnings, 1: errors. Anything else (a config error, no files,
-// npx unavailable or too old) is not Claude's to fix.
-if (run.status !== 0 && run.status !== 1) process.exit(0);
+// 0: clean or warnings, 1: errors. Anything else (a config error, npx unable to
+// fetch the package) is not Claude's to fix: tell the user once, and move on.
+if (run.error || (run.status !== 0 && run.status !== 1)) cannotRun(failure(run));
 
 let results;
 try {
   results = JSON.parse(run.stdout);
 } catch {
-  process.exit(0);
+  // npx exits 1 too when it cannot install the package, with npm's error on stderr.
+  cannotRun(failure(run));
 }
 if (!Array.isArray(results)) process.exit(0);
 const diagnostics = results.flatMap((r) => (Array.isArray(r?.diagnostics) ? r.diagnostics : []));
@@ -97,7 +104,6 @@ if (ordered.length > shown.length) {
 const note = elsewhere
   ? `\n(${elsewhere} other ${elsewhere === 1 ? 'finding' : 'findings'} elsewhere in the file predate this edit; leave them unless asked.)`
   : '';
-const name = path.relative(root, file) || file;
 
 if (errors) {
   process.stderr.write(
@@ -117,6 +123,62 @@ process.stdout.write(
 );
 process.exit(0);
 
+/**
+ * Says once per session and project that edits are not being checked, and why,
+ * on stderr (the debug log) and as a `systemMessage` the user sees. Never blocks.
+ */
+function cannotRun(reason) {
+  const usesNpx = !process.env.DESIGN_SYSTEM_MCP_BIN && !installedCli(root);
+  const advice = /config|tsconfig|Token file/i.test(reason)
+    ? 'Fix the config, or run `design-system-mcp inspect` to see the problem.'
+    : usesNpx
+      ? `Install it in the project to run it without npx: npm install --save-dev ${PACKAGE}`
+      : `Run \`design-system-mcp check ${name}\` to see why.`;
+  const text = `design-system-mcp could not check ${name}, so edits are not being checked against the design system: ${reason} ${advice}`;
+  const day = new Date().toISOString().slice(0, 10);
+  const key = createHash('sha256')
+    .update(`${input.session_id ?? day}\0${root}`)
+    .digest('hex')
+    .slice(0, 16);
+  const marker = path.join(os.tmpdir(), 'design-system-mcp', `hook-notice-${key}`);
+  if (!fs.existsSync(marker)) {
+    try {
+      fs.mkdirSync(path.dirname(marker), { recursive: true });
+      fs.writeFileSync(marker, `${text}\n`);
+    } catch {
+      // Without a marker the notice may repeat; it still never blocks.
+    }
+    process.stderr.write(`${text}\n`);
+    process.stdout.write(JSON.stringify({ systemMessage: text }));
+  }
+  process.exit(0);
+}
+
+/** Why the CLI did not run, in a sentence, without anything that could hold a credential. */
+function failure(result) {
+  if (result.error?.code === 'ENOENT') return 'npx was not found.';
+  if (result.error?.code === 'ETIMEDOUT' || result.signal)
+    return 'it did not finish within 55 seconds.';
+  const stderr = String(result.stderr ?? '');
+  if (/ENOVERSIONS|No versions available/i.test(stderr)) {
+    return `npm found no version of ${PACKAGE}@${RANGE} it may install (ENOVERSIONS), as with a min-release-age policy.`;
+  }
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|ENETUNREACH|ETIMEDOUT|network/i.test(stderr)) {
+    return 'npm could not reach the registry (offline?).';
+  }
+  if (/E401|E403|ENEEDAUTH|E404|404 Not Found/.test(stderr)) {
+    return 'the npm registry refused the package (a private registry?).';
+  }
+  const line = stderr
+    .split('\n')
+    .map((l) => l.trim())
+    .find(Boolean);
+  if (!line) return `it exited with code ${result.status}.`;
+  // URLs can carry credentials (`https://user:token@registry`); keep only what is safe to show.
+  const safe = line.replace(/\/\/[^/\s@]+@/g, '//').replace(/(_authToken|token)=\S+/gi, '$1=…');
+  return `${safe.length > 200 ? `${safe.slice(0, 199)}…` : safe}${/[.!?]$/.test(safe) ? '' : '.'}`;
+}
+
 function describe(d) {
   return `${d.line}:${d.column} ${d.severity} [${d.ruleId}] ${d.message}`;
 }
@@ -133,16 +195,8 @@ function projectRoot(dir) {
 function resolveCli(dir) {
   const override = process.env.DESIGN_SYSTEM_MCP_BIN;
   if (override) return [process.execPath, override];
-  try {
-    const manifest = createRequire(path.join(dir, 'package.json')).resolve(
-      `${PACKAGE}/package.json`,
-    );
-    const { bin } = JSON.parse(fs.readFileSync(manifest, 'utf8'));
-    const script = typeof bin === 'string' ? bin : bin?.['design-system-mcp'];
-    if (script) return [process.execPath, path.resolve(path.dirname(manifest), script)];
-  } catch {
-    // Not installed in the project: use npx.
-  }
+  const installed = installedCli(dir);
+  if (installed) return [process.execPath, installed];
   // npm's own npx script, run with this Node: no shell, so no quoting or .cmd issues on Windows.
   const nodeDir = path.dirname(process.execPath);
   const npx = [
@@ -151,6 +205,21 @@ function resolveCli(dir) {
   ].find((f) => fs.existsSync(f));
   if (npx) return [process.execPath, npx, '--yes', `${PACKAGE}@${RANGE}`];
   return process.platform === 'win32' ? undefined : ['npx', '--yes', `${PACKAGE}@${RANGE}`];
+}
+
+/** The CLI script of the project's own install, if it has one. */
+function installedCli(dir) {
+  try {
+    const manifest = createRequire(path.join(dir, 'package.json')).resolve(
+      `${PACKAGE}/package.json`,
+    );
+    const { bin } = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+    const script = typeof bin === 'string' ? bin : bin?.['design-system-mcp'];
+    return script ? path.resolve(path.dirname(manifest), script) : undefined;
+  } catch {
+    // Not installed in the project: npx runs it.
+    return undefined;
+  }
 }
 
 /** 1-based line ranges an Edit's new text occupies now, or undefined to check the whole file. */

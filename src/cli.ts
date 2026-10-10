@@ -61,8 +61,9 @@ Options
                           *.spec.tsx, *.stories.tsx) in folders and globs
   --quiet-without-design-system
                           check: print nothing and exit 0 when the project has no
-                          design system (no components, no tokens of its own, no
-                          config), for hooks installed across many projects
+                          design-system components and no config (tokens alone
+                          are not a design system), for hooks installed across
+                          many projects
   --require-design-system
                           check: exit 2 when no components or no color tokens
                           are found, so CI cannot pass by checking nothing
@@ -262,13 +263,10 @@ async function check(
   }
 
   // A hook installed for every project should not lint React apps that have no
-  // design system: Tailwind's default scale alone is not one.
-  if (
-    values['quiet-without-design-system'] &&
-    !config.configFile &&
-    !ds.components.length &&
-    ds.tokens.every((t) => t.origin === 'tailwind-default')
-  ) {
+  // design system. Tokens alone are not one: Tailwind's default scale, or the three
+  // stray custom properties of an app styled with CSS-in-JS (twenty), would block an
+  // agent on rules that have nothing to compare against.
+  if (values['quiet-without-design-system'] && !config.configFile && !ds.components.length) {
     if (format === 'json') io.stdout('[]');
     return 0;
   }
