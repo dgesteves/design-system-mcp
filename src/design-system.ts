@@ -134,22 +134,24 @@ export class DesignSystem {
    * What the rules could not check, when it matters: without components the
    * component rules find nothing, and without color tokens neither does
    * no-hardcoded-color, so a clean result says little. Undefined when both exist.
+   * `where` names the projects it applies to, at a workspace root: `in apps/web`.
    */
-  notice(): string | undefined {
+  notice(where?: string): string | undefined {
     const components = this.model.components.length > 0;
     const colors = this.tokenIndex.has('color');
     if (components && colors) return undefined;
     const see = `See ${CONFIGURATION_DOCS}`;
+    const at = where ? ` in ${where}` : '';
     if (!components && !colors) {
       const scale =
         this.tokenIndex.has('spacing') || this.tokenIndex.has('radius')
           ? ' and the spacing and radius rules'
           : '';
-      return `No design system found (no components or color tokens): only the accessibility rule${scale} ran. ${see}`;
+      return `No design system found${at} (no components or color tokens): only the accessibility rule${scale} ran. ${see}`;
     }
     return components
-      ? `No color tokens found: no-hardcoded-color did not run. ${see}`
-      : `No design-system components found: the component rules did not run. ${see}`;
+      ? `No color tokens found${at}: no-hardcoded-color did not run. ${see}`
+      : `No design-system components found${at}: the component rules did not run. ${see}`;
   }
 
   check(code: string, filename?: string): CheckResult {

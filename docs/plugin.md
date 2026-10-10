@@ -32,7 +32,7 @@ The plugin is the fastest way to keep Claude on your design system. It bundles t
 - **Quiet where there is nothing to check.** It stays silent in projects without design-system components (tokens alone don't count), so installing the plugin for every project is safe.
 - **The design system's own files are left alone.** Like `check`, it skips them: an edit to `components/ui/button.tsx` changes the design system, which is a call for you and your reviewers rather than a lint error.
 - **It says when it can't check.** When the CLI can't run (npx can't fetch it because of a [min-release-age policy](troubleshooting.md#a-min-release-age-policy-blocks-npx), a private registry or no network, or the config is broken), it says so once per session and project, as a message to you, and never blocks the edit.
-- **Monorepos work.** It finds the project from the edited file, not from where Claude started.
+- **Monorepos work.** The hook finds the project from the edited file, not from where Claude started, and the MCP server started at the root serves every project, answering for the file's own project when the tools get its `path`.
 
 ## What it runs, and what it touches
 

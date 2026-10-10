@@ -62,6 +62,11 @@ export interface RunSnapshot {
   inspect: Record<string, unknown>;
   files: number;
   rules: Record<string, RuleCounts>;
+  /**
+   * A run from a monorepo root: its findings outside the folders other runs check from
+   * inside (`sameAs`), which it reports again. The false-positive rate counts only these.
+   */
+  added?: Record<string, RuleCounts>;
 }
 
 export interface Snapshot {
@@ -189,7 +194,8 @@ export function compare(
     if (
       !before ||
       before.files !== now.files ||
-      JSON.stringify(before.inspect) !== JSON.stringify(now.inspect)
+      JSON.stringify(before.inspect) !== JSON.stringify(now.inspect) ||
+      JSON.stringify(before.added) !== JSON.stringify(now.added)
     ) {
       changedRuns.push(run);
     }
@@ -286,7 +292,7 @@ export function falsePositiveRate(
     let covered = 0;
     let fp = 0;
     for (const [run, snapshot] of Object.entries(current)) {
-      for (const [rule, counts] of Object.entries(snapshot.rules)) {
+      for (const [rule, counts] of Object.entries(snapshot.added ?? snapshot.rules)) {
         const n = counts.errors + (errorsOnly ? 0 : counts.warnings);
         total += n;
         const labelled = strata.get(`${run}\0${rule}`);
@@ -312,6 +318,66 @@ export function falsePositiveRate(
       precision: tally(random.filter(([label]) => label.rule === rule).map(([label]) => label)),
     })),
   };
+}
+
+/** A finding as a root run and a run from the project's own folder both report it. */
+function sameness(f: Finding, file: string): string {
+  return JSON.stringify([file, f.rule, f.severity, f.line, f.source, f.message, f.suggestion]);
+}
+
+/**
+ * Where a run from a workspace root differs from a run from one of its projects, for the
+ * files under `folder`: root mode routes each file to its own project, so both must report
+ * the same files and findings. Lines name each difference; none means they agree.
+ */
+export function rootDifferences(
+  root: { files: readonly string[]; findings: readonly Finding[] },
+  folder: string,
+  project: { files: readonly string[]; findings: readonly Finding[] },
+): string[] {
+  const prefix = `${folder.replace(/\/+$/, '')}/`;
+  const differences: string[] = [];
+  const rootFiles = new Set(root.files.filter((f) => f.startsWith(prefix)));
+  const projectFiles = new Set(project.files.map((f) => `${prefix}${f}`));
+  for (const file of [...projectFiles].filter((f) => !rootFiles.has(f)).sort()) {
+    differences.push(`${file}: checked from ${folder}, not from the root`);
+  }
+  for (const file of [...rootFiles].filter((f) => !projectFiles.has(f)).sort()) {
+    differences.push(`${file}: checked from the root, not from ${folder}`);
+  }
+  const fromRoot = root.findings
+    .filter((f) => f.file.startsWith(prefix))
+    .map((f) => sameness(f, f.file));
+  const fromProject = project.findings.map((f) => sameness(f, `${prefix}${f.file}`));
+  const count = (list: string[]) => {
+    const counts = new Map<string, number>();
+    for (const key of list) counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  };
+  const a = count(fromRoot);
+  const b = count(fromProject);
+  for (const key of [...new Set([...a.keys(), ...b.keys()])].sort()) {
+    const n = a.get(key) ?? 0;
+    const m = b.get(key) ?? 0;
+    if (n === m) continue;
+    const [file, rule, , line, source] = JSON.parse(key) as [
+      string,
+      string,
+      string,
+      number,
+      string,
+    ];
+    differences.push(
+      `${file}:${line} [${rule}] "${source}": ${n} from the root, ${m} from ${folder}`,
+    );
+  }
+  return differences;
+}
+
+/** Findings outside the given folders: what a root run adds to the runs from its projects. */
+export function outside(found: readonly Finding[], folders: readonly string[]): Finding[] {
+  const prefixes = folders.map((f) => `${f.replace(/\/+$/, '')}/`);
+  return found.filter((f) => !prefixes.some((prefix) => f.file.startsWith(prefix)));
 }
 
 export function percent(rate: number | undefined): string {

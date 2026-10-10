@@ -7,6 +7,8 @@ import {
   fingerprint,
   invalidLabels,
   labelKey,
+  outside,
+  rootDifferences,
   ruleCounts,
   type CheckFileResult,
   type Label,
@@ -197,5 +199,46 @@ describe('corpus comparison', () => {
     // Colors: 4 findings at 50%; icons: 1 finding at 0%.
     expect(rate.estimate).toBeCloseTo(2 / 5);
     expect(rate.coverage).toBe(1);
+  });
+
+  it('compares a run from a monorepo root with the run from a project, file for file', () => {
+    const at = (file: string, ...diagnostics: [string, string, number][]): CheckFileResult => ({
+      file,
+      diagnostics: diagnostics.map(([ruleId, source, line]) => ({
+        ruleId,
+        severity: 'error',
+        message: `${source} is wrong`,
+        line,
+        source,
+      })),
+    });
+    const project = [at('app/page.tsx', ['no-hardcoded-color', 'bg-red-500', 1]), at('app/x.tsx')];
+    const same = [
+      at('apps/web/app/page.tsx', ['no-hardcoded-color', 'bg-red-500', 1]),
+      at('apps/web/app/x.tsx'),
+      at('packages/ui/button.tsx', ['no-hardcoded-color', 'red', 2]),
+    ];
+    const run = (name: string, list: CheckFileResult[]) => ({
+      files: list.map((r) => r.file),
+      findings: findings(name, list),
+    });
+    expect(rootDifferences(run('root', same), 'apps/web', run('web', project))).toEqual([]);
+    const differ = [
+      at(
+        'apps/web/app/page.tsx',
+        ['no-hardcoded-color', 'bg-red-500', 1],
+        ['no-hardcoded-color', 'bg-red-500', 1],
+      ),
+      at('apps/web/app/y.tsx'),
+    ];
+    expect(rootDifferences(run('root', differ), 'apps/web/', run('web', project))).toEqual([
+      'apps/web/app/x.tsx: checked from apps/web/, not from the root',
+      'apps/web/app/y.tsx: checked from the root, not from apps/web/',
+      'apps/web/app/page.tsx:1 [no-hardcoded-color] "bg-red-500": 2 from the root, 1 from apps/web/',
+    ]);
+    // What the root adds, for the false-positive rate: outside the folders other runs cover.
+    expect(outside(findings('root', same), ['apps/web']).map((f) => f.file)).toEqual([
+      'packages/ui/button.tsx',
+    ]);
   });
 });

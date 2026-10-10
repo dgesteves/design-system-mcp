@@ -15,6 +15,8 @@ The `onsystem` MCP server reads this project's components (props, `cva` variants
 4. Prefer a variant over overriding a component's classes, and a design-system component over a native element (`<Button>`, not `<button>`).
 5. Give icon-only buttons an accessible name (`aria-label`).
 
+In a monorepo, apps can use different design systems. Pass the file you are editing as `path` to `list_components`, `get_component`, `search_components` and `get_tokens`, and as `filename` (or `path`) to `check_ui`, so the answers come from that file's own project.
+
 ## After writing UI
 
 Run `check_ui` on every file you changed and fix every error. Each finding has a rule id, a location and usually the exact fix. The plugin's hook also runs the same check after each edit and reports errors back to you; fix them before moving on rather than working around them.

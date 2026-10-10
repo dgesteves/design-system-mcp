@@ -33,7 +33,8 @@ const PACKAGE = 'onsystem';
 const VERSION = '0.3.3';
 const UI_FILE = /\.[jt]sx$/i;
 const MAX_FINDINGS = 30;
-// Where the CLI looks for the design system: the nearest of these marks the project.
+// Where the CLI looks for the design system: the nearest of these marks the project. `check`
+// from a monorepo root finds each file's project the same way (src/workspace.ts).
 const PROJECT_FILES = [
   'onsystem.config.json',
   'onsystem.config.ts',
@@ -48,6 +49,8 @@ const PROJECT_FILES = [
   'design-system-mcp.config.mjs',
   'components.json',
   'package.json',
+  // An Nx project without a package.json of its own.
+  'project.json',
 ];
 const BIN = process.env.ONSYSTEM_BIN || process.env.DESIGN_SYSTEM_MCP_BIN || undefined;
 
@@ -207,7 +210,7 @@ function describe(d) {
   return `${d.line}:${d.column} ${d.severity} [${d.ruleId}] ${d.message}`;
 }
 
-/** The nearest folder at or above `dir` with a design-system config, components.json or package.json. */
+/** The nearest folder at or above `dir` with a design-system config, components.json, package.json or project.json. */
 function projectRoot(dir) {
   for (let current = dir; ; current = path.dirname(current)) {
     if (PROJECT_FILES.some((f) => fs.existsSync(path.join(current, f)))) return current;

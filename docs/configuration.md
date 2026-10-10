@@ -13,6 +13,14 @@ Without a config file (or with one that leaves `components` unset), the server l
 
 A candidate whose files cannot be found is skipped. Components found through `exports` are suggested with the specifier apps use (`import { Button } from "@acme/ui/button"`, or `@acme/ui` for a package that exports a barrel). Detected stylesheets replace the stylesheet guesses below, while `*.tokens.json` files are still read, and Markdown next to detected components counts as docs. While serving, edits to `components.json`, `package.json` or the tsconfig re-run detection, and workspace packages outside the root are watched like local folders.
 
+## Monorepo roots
+
+A workspace root (a `pnpm-workspace.yaml`, `workspaces` in `package.json` for npm, Yarn and Bun, a `lerna.json`, or an `nx.json`, so Turborepo and Nx repositories too) with no design system of its own is read as the monorepo it is. Every workspace package (and with Nx, every folder with a `project.json`) goes through zero config, or its own config file, and each one where components are found is a project: the apps that use a design system, and the design-system packages themselves. `inspect` at the root lists each project with what was found in it, and the packages without one.
+
+Each file is checked by its own project: the nearest folder at or above it with a config, a `components.json`, a `package.json` or a `project.json`, the same folder the Claude Code hook runs the check from. `check .` at the root reports exactly what `check .` in each of those folders would, file for file; the corpus checks this on Documenso, Dub, openstatus and Cal.com. Each folder's own design-system files are skipped, and one baseline at the root covers every project. The MCP server started there takes a `path` to pick the project ([tools](tools.md)), and without one lists every project's components together, each with its package.
+
+The root stays one project, as before, when it has a design system of its own (a `components.json`, for one), when its config sets `components`, or when `--config`, `--components`, `--tokens` or `--docs` is passed. A config file at the root that does not set `components` applies to every project that has no config of its own, with its paths and `overrides` globs still relative to the root (`"files": ["apps/admin/**"]`) and `exclude` patterns that start with `**/` or with the project's folder. The list of projects is read when the server starts.
+
 ## Config file
 
 `onsystem.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](../schema.json) gives editor completion.

@@ -1,8 +1,8 @@
 # Quickstart
 
-No config is needed in a shadcn/ui project (Tailwind v3 or v4), an app whose components live in a workspace package, or the design-system package itself ([how it finds them](configuration.md#zero-config)). Other layouts take a [config file](configuration.md#config-file). It needs Node.js 20.19 or later. Run it from the app's folder: a monorepo root is [not supported yet](troubleshooting.md#a-monorepo-root-finds-nothing).
+No config is needed in a shadcn/ui project (Tailwind v3 or v4), an app whose components live in a workspace package, or the design-system package itself ([how it finds them](configuration.md#zero-config)). Other layouts take a [config file](configuration.md#config-file). It needs Node.js 20.19 or later. Run it from the app's folder, or from a [monorepo root](configuration.md#monorepo-roots), where it finds every app and design-system package and checks each file against its own project.
 
-**1. See what it found**, from the app's folder:
+**1. See what it found**, from the app's folder or the monorepo root:
 
 ```sh
 npx -y onsystem inspect

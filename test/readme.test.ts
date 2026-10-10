@@ -37,8 +37,9 @@ describe('the README', () => {
     let covered = 0;
     let weighted = 0;
     let unknown = 0;
-    for (const [run, { rules }] of Object.entries(snapshot.runs)) {
-      for (const [rule, counts] of Object.entries(rules)) {
+    // A run from a monorepo root counts only the findings it adds to the runs from its projects.
+    for (const [run, { rules, added }] of Object.entries(snapshot.runs)) {
+      for (const [rule, counts] of Object.entries(added ?? rules)) {
         const n = counts.errors + counts.warnings;
         findings += n;
         if (/^no-unknown-(component|prop|variant)$/.test(rule)) unknown += n;

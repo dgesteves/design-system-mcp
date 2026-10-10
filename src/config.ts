@@ -183,6 +183,13 @@ export interface ResolvedConfig {
   /** Per-file rule settings, applied in order over `rules`. */
   overrides?: ResolvedOverride[] | undefined;
   /**
+   * The folder `overrides` globs are relative to, when it is not the root: the workspace
+   * root, for a project that takes its settings from a config there.
+   */
+  base?: string | undefined;
+  /** `components` comes from the config file or `--components`, not from detection or the defaults. */
+  configured?: boolean | undefined;
+  /**
    * What to tell the user about the config's name: a config file found under its name from
    * before the rename to onsystem. The CLI prints these once per run, the server logs them once.
    */
@@ -246,6 +253,11 @@ export interface LoadConfigOptions {
   root?: string | undefined;
   /** Explicit config file path. */
   config?: string | undefined;
+  /**
+   * The folder the config file's paths and globs are written relative to, when it is not
+   * the root: a workspace root whose config a project in it takes on.
+   */
+  base?: string | undefined;
   /** CLI overrides; replace the config file's values when set. */
   components?: string[] | undefined;
   tokens?: string[] | undefined;
@@ -291,6 +303,18 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
       ? path.dirname(configFile)
       : cwd;
   if (!isDirectory(root)) throw new ConfigError(`Project root not found: ${root}`);
+  // A workspace root's config, taken on by a project in it: its paths are relative to the
+  // workspace root. Files and token globs are rebased onto the project's folder; `exclude`
+  // keeps the patterns that can match in it; `overrides` are matched from the workspace root.
+  const base = options.base ? path.resolve(cwd, options.base) : root;
+  const inherited = base !== root;
+  const fromBase = (p: string) =>
+    inherited ? toPosix(path.relative(root, path.resolve(base, slashGlob(p)))) || '.' : p;
+  const toProject = toPosix(path.relative(base, root));
+  const excludeFromBase = (e: string): string | undefined => {
+    if (!inherited || e.startsWith('**/')) return e;
+    return e.startsWith(`${toProject}/`) ? e.slice(toProject.length + 1) : undefined;
+  };
 
   const rules = {} as Record<RuleId, ResolvedRule>;
   for (const id of RULE_IDS) {
@@ -308,7 +332,8 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
   }));
 
   // Paths may be written Windows-style; globs and POSIX need forward slashes.
-  const tsconfig = config.tsconfig?.replaceAll('\\', '/');
+  const tsconfig =
+    config.tsconfig === undefined ? undefined : fromBase(config.tsconfig.replaceAll('\\', '/'));
   if (tsconfig !== undefined && !fs.existsSync(path.resolve(root, tsconfig))) {
     // Without it, path aliases do not resolve and most checks go quiet.
     throw new ConfigError(
@@ -325,7 +350,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     ? { paths: options.tokens, from: '--tokens' }
     : config.tokens !== undefined
       ? {
-          paths: toArray(config.tokens).map((t) => (typeof t === 'string' ? t : t.path)),
+          paths: toArray(config.tokens).map((t) => fromBase(typeof t === 'string' ? t : t.path)),
           from: `"tokens" in ${configFile ?? 'the config'}`,
         }
       : undefined;
@@ -339,7 +364,9 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
   const tokenSources = options.tokens?.length
     ? options.tokens.map((p) => ({ path: p }))
     : config.tokens !== undefined
-      ? toArray(config.tokens).map((t) => (typeof t === 'string' ? { path: t } : t))
+      ? toArray(config.tokens).map((t) =>
+          typeof t === 'string' ? { path: fromBase(t) } : { ...t, path: fromBase(t.path) },
+        )
       : // Detected stylesheets replace the stylesheet guesses, not DTCG files.
         (detection?.tokens.length
           ? [...detection.tokens, ...DEFAULT_TOKENS.filter((t) => t.endsWith('.json'))]
@@ -357,13 +384,16 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
           ? [...(detection.withDefaults ? DEFAULT_COMPONENTS : []), ...detection.components]
           : DEFAULT_COMPONENTS
     ).map(slashGlob),
-    exclude: (config.exclude ?? DEFAULT_EXCLUDE).map(slashGlob),
+    exclude: (config.exclude ?? DEFAULT_EXCLUDE)
+      .map(slashGlob)
+      .map(excludeFromBase)
+      .filter((e): e is string => e !== undefined),
     tokens: tokenSources.map((t) => ({ ...t, path: slashGlob(t.path) })),
     docs: (options.docs?.length
       ? options.docs
       : config.docs === undefined
         ? [...DEFAULT_DOCS, ...(detection?.docs ?? [])]
-        : toArray(config.docs)
+        : toArray(config.docs).map(fromBase)
     ).map(slashGlob),
     tsconfig,
     importPath: config.importPath,
@@ -374,6 +404,8 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     includeDesignSystem: options.includeDesignSystem ?? config.includeDesignSystem ?? false,
     rules,
     overrides,
+    ...(inherited ? { base } : {}),
+    configured: componentsSet,
     ...(deprecations.length ? { deprecations } : {}),
   };
 }
@@ -398,11 +430,17 @@ function resolveRule(setting: z.infer<typeof ruleSettingSchema>): ResolvedRule {
  * `files` match the path (relative to the root), in order.
  */
 export function rulesFor(
-  config: Pick<ResolvedConfig, 'rules' | 'overrides'>,
+  config: Pick<ResolvedConfig, 'rules' | 'overrides'> &
+    Partial<Pick<ResolvedConfig, 'root' | 'base'>>,
   file: string | undefined,
 ): Record<RuleId, ResolvedRule> {
   if (!file || !config.overrides?.length) return config.rules;
-  const relative = toPosix(file).replace(/^\.\//, '');
+  // Globs of a config at the workspace root are relative to it, not to the project.
+  const fromBase =
+    config.base && config.root
+      ? toPosix(path.relative(config.base, path.resolve(config.root, file)))
+      : file;
+  const relative = toPosix(fromBase).replace(/^\.\//, '');
   let rules = config.rules;
   for (const override of config.overrides) {
     if (override.files.some((glob) => matchesGlob(relative, glob))) {

@@ -404,8 +404,9 @@ const sample = readCorpus('labels.json').filter(
 let corpusFindings = 0;
 let corpusCovered = 0;
 let corpusWeighted = 0;
-for (const [run, { rules }] of Object.entries(corpusSnapshot.runs)) {
-  for (const [rule, counts] of Object.entries(rules)) {
+// A run from a monorepo root counts only the findings it adds to the runs from its projects.
+for (const [run, { rules, added }] of Object.entries(corpusSnapshot.runs)) {
+  for (const [rule, counts] of Object.entries(added ?? rules)) {
     const n = counts.errors + counts.warnings;
     corpusFindings += n;
     const stratum = sample.filter((label) => label.run === run && label.rule === rule);

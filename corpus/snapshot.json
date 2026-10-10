@@ -184,6 +184,56 @@
         }
       }
     },
+    "documenso-root": {
+      "inspect": {
+        "workspace": "16 packages (package.json workspaces, turbo.json), 1 project with a design system",
+        "projects": {
+          "apps/remix": {
+            "detected": "workspace package @documenso/ui, imported by path",
+            "files": "94 component files, 1 token file, 0 docs",
+            "components": 99,
+            "parts": 108,
+            "tokens": {
+              "color": 102,
+              "other": 1,
+              "radius": 1
+            },
+            "warnings": 0
+          }
+        },
+        "others": 15
+      },
+      "files": 693,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 42,
+          "warnings": 0,
+          "fixes": 31
+        },
+        "no-hardcoded-color": {
+          "errors": 283,
+          "warnings": 0,
+          "fixes": 90
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 7,
+          "fixes": 1
+        },
+        "prefer-design-system-component": {
+          "errors": 130,
+          "warnings": 0,
+          "fixes": 65
+        }
+      },
+      "added": {
+        "icon-button-accessible-name": {
+          "errors": 7,
+          "warnings": 0,
+          "fixes": 6
+        }
+      }
+    },
     "dub-web": {
       "inspect": {
         "detected": null,
@@ -238,17 +288,37 @@
           "warnings": 0,
           "fixes": 47
         },
-        "no-unknown-component": {
-          "errors": 13,
-          "warnings": 0,
-          "fixes": 10
-        },
         "prefer-design-system-component": {
           "errors": 973,
           "warnings": 0,
           "fixes": 589
         }
       }
+    },
+    "dub-root": {
+      "inspect": {
+        "workspace": "11 packages (pnpm-workspace.yaml, turbo.json), 1 project with a design system",
+        "projects": {
+          "packages/email": {
+            "detected": "package.json exports of @dub/email",
+            "files": "114 component files, 0 token files, 0 docs",
+            "components": 114,
+            "parts": 0,
+            "tokens": {},
+            "warnings": 1
+          }
+        },
+        "others": 10
+      },
+      "files": 1951,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 54,
+          "warnings": 0,
+          "fixes": 45
+        }
+      },
+      "added": {}
     },
     "openstatus-dashboard": {
       "inspect": {
@@ -343,6 +413,93 @@
         }
       }
     },
+    "openstatus-root": {
+      "inspect": {
+        "workspace": "45 packages (pnpm-workspace.yaml, turbo.json), 4 projects with a design system",
+        "projects": {
+          "apps/dashboard": {
+            "detected": "components.json (ui: @/components/ui → src/components/ui)",
+            "files": "10 component files, 1 token file, 0 docs",
+            "components": 14,
+            "parts": 8,
+            "tokens": {
+              "spacing": 3,
+              "typography": 4,
+              "color": 4,
+              "radius": 8
+            },
+            "warnings": 0
+          },
+          "apps/status-page": {
+            "detected": "workspace package @openstatus/ui",
+            "files": "102 component files, 1 token file, 1 doc",
+            "components": 118,
+            "parts": 238,
+            "tokens": {
+              "color": 51,
+              "radius": 8,
+              "spacing": 1
+            },
+            "warnings": 1
+          },
+          "apps/web": {
+            "detected": "components.json (ui: @/components/ui → src/components/ui)",
+            "files": "2 component files, 1 token file, 0 docs",
+            "components": 2,
+            "parts": 0,
+            "tokens": {
+              "color": 9,
+              "typography": 3,
+              "radius": 9,
+              "spacing": 1
+            },
+            "warnings": 0
+          },
+          "packages/ui": {
+            "detected": "components.json (ui: @openstatus/ui/components/ui → src/components/ui)",
+            "files": "42 component files, 1 token file, 0 docs",
+            "components": 47,
+            "parts": 158,
+            "tokens": {
+              "color": 51,
+              "radius": 8,
+              "spacing": 1
+            },
+            "warnings": 0
+          }
+        },
+        "others": 41
+      },
+      "files": 857,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 6,
+          "warnings": 0,
+          "fixes": 2
+        },
+        "no-hardcoded-color": {
+          "errors": 7,
+          "warnings": 0,
+          "fixes": 0
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 2,
+          "fixes": 2
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 3,
+          "fixes": 2
+        },
+        "prefer-design-system-component": {
+          "errors": 8,
+          "warnings": 0,
+          "fixes": 8
+        }
+      },
+      "added": {}
+    },
     "calcom-web": {
       "inspect": {
         "detected": "components.json (ui: @coss/ui/components → ../../packages/coss-ui/src/components)",
@@ -435,6 +592,176 @@
           "errors": 0,
           "warnings": 1,
           "fixes": 0
+        }
+      }
+    },
+    "calcom-root": {
+      "inspect": {
+        "workspace": "113 packages (package.json workspaces, turbo.json), 11 projects with a design system",
+        "projects": {
+          "apps/web": {
+            "detected": "components.json (ui: @coss/ui/components → ../../packages/coss-ui/src/components)",
+            "files": "50 component files, 1 token file, 0 docs",
+            "components": 55,
+            "parts": 222,
+            "tokens": {
+              "color": 41,
+              "typography": 3,
+              "radius": 4
+            },
+            "warnings": 0
+          },
+          "packages/app-store": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/app-store/caldavcalendar": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/app-store/exchange2013calendar": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/app-store/exchange2016calendar": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/app-store/ics-feedcalendar": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/coss-ui": {
+            "detected": "components.json (ui: @coss/ui/components → src/components)",
+            "files": "50 component files, 1 token file, 0 docs",
+            "components": 55,
+            "parts": 222,
+            "tokens": {
+              "color": 41,
+              "typography": 3,
+              "radius": 4
+            },
+            "warnings": 0
+          },
+          "packages/features": {
+            "detected": "workspace package @calcom/ui, @coss/ui",
+            "files": "57 component files, 1 token file, 0 docs",
+            "components": 61,
+            "parts": 242,
+            "tokens": {
+              "color": 41,
+              "typography": 3,
+              "radius": 4
+            },
+            "warnings": 0
+          },
+          "packages/features/auth": {
+            "detected": "workspace package @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          },
+          "packages/platform/atoms": {
+            "detected": "components.json (ui: @/components/ui → src/components/ui)",
+            "files": "8 component files, 1 token file, 0 docs",
+            "components": 29,
+            "parts": 26,
+            "tokens": {
+              "typography": 30,
+              "color": 182,
+              "spacing": 1,
+              "other": 41,
+              "radius": 8,
+              "shadow": 18
+            },
+            "warnings": 0
+          },
+          "packages/ui": {
+            "detected": "package.json exports of @calcom/ui",
+            "files": "4 component files, 0 token files, 0 docs",
+            "components": 4,
+            "parts": 10,
+            "tokens": {},
+            "warnings": 1
+          }
+        },
+        "others": 102
+      },
+      "files": 1026,
+      "rules": {
+        "icon-button-accessible-name": {
+          "errors": 23,
+          "warnings": 0,
+          "fixes": 12
+        },
+        "no-hardcoded-color": {
+          "errors": 402,
+          "warnings": 0,
+          "fixes": 122
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 38,
+          "fixes": 33
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 7,
+          "fixes": 7
+        },
+        "no-unknown-component": {
+          "errors": 2,
+          "warnings": 1,
+          "fixes": 0
+        },
+        "prefer-design-system-component": {
+          "errors": 105,
+          "warnings": 0,
+          "fixes": 92
+        }
+      },
+      "added": {
+        "no-hardcoded-color": {
+          "errors": 172,
+          "warnings": 0,
+          "fixes": 2
+        },
+        "no-hardcoded-radius": {
+          "errors": 0,
+          "warnings": 5,
+          "fixes": 5
+        },
+        "no-hardcoded-spacing": {
+          "errors": 0,
+          "warnings": 5,
+          "fixes": 5
+        },
+        "prefer-design-system-component": {
+          "errors": 6,
+          "warnings": 0,
+          "fixes": 4
         }
       }
     },
@@ -623,6 +950,21 @@
     "2486e9215cee@<Label>": true,
     "7663bf4ae926@<Label>": true,
     "62c09bf2860b": true,
-    "a7efbae643d5": true
+    "a7efbae643d5": true,
+    "a79caf88738b": true,
+    "613e6a7cadb2": true,
+    "141a3fc0de93": true,
+    "4e43ac956922": true,
+    "129460d9b89e": true,
+    "d688be700701": true,
+    "eed4c895141f": true,
+    "ac885772c0b0": true,
+    "e1affa7c9c83": true,
+    "976730638a12": true,
+    "e210d0140f27": true,
+    "7eae15cb962a": false,
+    "a2ade9d4e64e": true,
+    "446fb705a2da": true,
+    "5f76acaa43f5": true
   }
 }

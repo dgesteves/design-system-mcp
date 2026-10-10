@@ -15,15 +15,22 @@ import {
   updateBaseline,
   writeBaseline,
 } from './baseline.js';
-import { ConfigError, DEFAULT_TEST_EXCLUDE, loadConfig, rulesFor } from './config.js';
-import { componentFiles, loadDesignSystem } from './design-system.js';
+import {
+  ConfigError,
+  DEFAULT_TEST_EXCLUDE,
+  rulesFor,
+  type LoadConfigOptions,
+  type ResolvedConfig,
+} from './config.js';
+import { componentFiles, loadDesignSystem, type DesignSystem } from './design-system.js';
 import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
-import type { CheckResult, Diagnostic } from './types.js';
+import type { CheckResult, DesignSystemModel, Diagnostic } from './types.js';
 import { stderrLogger, silentLogger } from './util/log.js';
-import { relativePath, toPosix } from './util/paths.js';
+import { matchesGlob, relativePath, toPosix } from './util/paths.js';
 import { plural, unique } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
+import { loadTarget, type Project, type Workspace } from './workspace.js';
 
 const DOCS = 'https://design-system-mcp-demo.vercel.app/docs';
 
@@ -39,6 +46,10 @@ Usage
                                  (for CI)
   onsystem inspect               Print what was extracted from the project
   onsystem help                  Show this help
+
+At a monorepo root with no design system of its own, every command works per
+project: each file is checked against the design system of the nearest folder
+with a config, components.json or package.json, and inspect lists every project.
 
 Options
   --root <dir>            Project root (default: the config file's directory, or cwd)
@@ -188,20 +199,37 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
   }
 }
 
+interface CheckValues {
+  cache: boolean;
+  format: string;
+  'max-warnings'?: string | undefined;
+  baseline?: string | undefined;
+  'update-baseline': boolean;
+  'ignore-baseline': boolean;
+  'quiet-without-design-system': boolean;
+  'require-design-system': boolean;
+  'include-tests': boolean;
+}
+
+/** The files a run checks, and what to say about the rest. */
+interface Selection {
+  files: string[];
+  /** The design system each file is checked against. */
+  designSystemOf: (file: string) => DesignSystem;
+  /** The folder baseline keys are relative to, where the default baseline lives. */
+  root: string;
+  notes: string[];
+  /** Rules that could not run, said once after the findings. */
+  notices: string[];
+  /** Design-system files left out, for the hint when nothing is left. */
+  skipped: number;
+  testsLeftOut: number;
+}
+
 async function check(
   patterns: string[],
-  configOptions: Parameters<typeof loadConfig>[0],
-  values: {
-    cache: boolean;
-    format: string;
-    'max-warnings'?: string | undefined;
-    baseline?: string | undefined;
-    'update-baseline': boolean;
-    'ignore-baseline': boolean;
-    'quiet-without-design-system': boolean;
-    'require-design-system': boolean;
-    'include-tests': boolean;
-  },
+  configOptions: LoadConfigOptions,
+  values: CheckValues,
   io: Io,
 ): Promise<number> {
   if (values['quiet-without-design-system'] && values['require-design-system']) {
@@ -224,24 +252,165 @@ async function check(
     return 2;
   }
 
-  const config = await loadConfig(configOptions);
-  warnDeprecated(config.deprecations, format, io);
-  const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
+  const target = await loadTarget(configOptions);
+  warnDeprecated(target.config.deprecations, format, io);
+  const selection = target.workspace
+    ? await selectInWorkspace(target.workspace, patterns, values, format, io)
+    : await selectInProject(target.config, patterns, values, format, io);
+  if (typeof selection === 'number') return selection;
+  const { files, notes } = selection;
+  if (!files.length) {
+    if (format === 'json') io.stdout('[]');
+    else if (format === 'pretty') {
+      const hints = [
+        selection.skipped
+          ? `Pass --include-design-system to check ${selection.skipped === 1 ? 'it' : 'them'}.`
+          : '',
+        selection.testsLeftOut ? 'Pass --include-tests to check tests and stories.' : '',
+      ].filter(Boolean);
+      io.stdout(`Nothing to check: ${notes.join('; ')}. ${hints.join(' ')}`.trimEnd());
+    }
+    return 0;
+  }
+
+  const update = values['update-baseline'];
+  const baselineFile = values.baseline
+    ? path.resolve(io.cwd, values.baseline)
+    : defaultBaseline(
+        selection.root,
+        values['ignore-baseline']
+          ? undefined
+          : (text) => {
+              warnDeprecated([text], format, io);
+            },
+      );
+  // Read before an update too: a baseline mangled by a merge conflict must not be overwritten silently.
+  const baseline = values['ignore-baseline'] ? undefined : readBaseline(baselineFile);
+  if (values.baseline && !update && !values['ignore-baseline'] && !baseline) {
+    io.stderr(`check: baseline not found: ${displayPath(io.cwd, baselineFile)}`);
+    return 2;
+  }
+  // Entries of rules that are off for a file (in `rules` or an override) are kept, not reported as fixed.
+  const disabledFor = (file: string) => {
+    const ds = selection.designSystemOf(file);
+    return new Set(
+      Object.entries(rulesFor(ds.config, relativePath(ds.root, file)))
+        .filter(([, rule]) => rule.severity === 'off')
+        .map(([id]) => id),
+    );
+  };
+  const disabledByKey = new Map<string, Set<string>>();
+  // Keys are relative to the real root, with the on-disk spelling of each path and
+  // NFC names, so `APP/`, a linked root or a decomposed `café.tsx` find the same entry.
+  const realRoot = fs.realpathSync.native(selection.root);
+  const baselineKey = (file: string) =>
+    relativePath(realRoot, fs.realpathSync.native(file)).normalize('NFC');
+
+  const results: CheckResult[] = [];
+  const checked = new Map<string, Diagnostic[]>();
+  let baselined = 0;
+  let fixed = 0;
+  for (const file of files) {
+    const code = await fsp.readFile(file, 'utf8');
+    const ds = selection.designSystemOf(file);
+    let result = ds.check(code, relativePath(ds.root, file));
+    const key = baselineKey(file);
+    const disabled = disabledFor(file);
+    disabledByKey.set(key, disabled);
+    if (update) checked.set(key, result.diagnostics);
+    if (baseline && !update) {
+      const match = applyBaseline(baseline, key, result, disabled);
+      result = { ...match.result, baselined: match.baselined };
+      baselined += match.baselined;
+      fixed += match.fixed;
+    }
+    results.push({ ...result, file: relativePath(io.cwd, file) });
+  }
+  const elsewhere = results.filter((r) => r.skipped).length;
+  if (elsewhere) {
+    notes.push(`${plural(elsewhere, 'image or email file')} not checked`);
+  }
+
+  // Components the model leaves out were not checked: say so once, not in every file.
+  const unchecked = uncheckedNotice(results);
+
+  if (update) {
+    const next = updateBaseline(
+      baseline,
+      checked,
+      realRoot,
+      (key) => disabledByKey.get(key) ?? new Set(),
+    );
+    writeBaseline(baselineFile, next);
+    const counts = countBaseline(next);
+    io.stdout(
+      `Baseline: ${count(counts.findings, 'finding')} in ${count(counts.files, 'file')} → ${displayPath(io.cwd, baselineFile)}`,
+    );
+    for (const text of selection.notices) io.stderr(text);
+    if (unchecked) io.stderr(unchecked);
+    return 0;
+  }
+
+  const output = formatDiagnostics(
+    format === 'json' ? results : results.filter((r) => !r.skipped),
+    format,
+    {
+      color: io.color,
+      baselined: baseline ? baselined : undefined,
+      notes,
+      fixedHint: fixed
+        ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
+        : undefined,
+    },
+  );
+  if (output) io.stdout(output);
+  for (const text of [...selection.notices, unchecked]) {
+    if (!text) continue;
+    if (format === 'pretty') io.stdout(text);
+    else if (format === 'github') io.stdout(`::warning title=${NAME}::${text}`);
+    else io.stderr(text);
+  }
+
+  const errors = results.reduce((n, r) => n + r.errorCount, 0);
+  const warnings = results.reduce((n, r) => n + r.warningCount, 0);
+  if (errors > 0) return 1;
+  if (maxWarnings !== undefined && warnings > maxWarnings) {
+    if (format === 'pretty') io.stderr(`Too many warnings (${warnings}, max ${maxWarnings}).`);
+    return 1;
+  }
+  return 0;
+}
+
+/** Splits the patterns into files named outright and globs (a folder: every TSX/JSX file under it). */
+function expandPatterns(patterns: string[], cwd: string): { named: string[]; globs: string[] } {
   // An existing path is taken literally, so `app/(marketing)` and `[slug]` are not
-  // glob syntax. A directory means every TSX/JSX file under it. A file named outright
-  // is always checked; folders and globs leave out what the config excludes (tests and
-  // stories by default) and what git ignores.
+  // glob syntax. A directory means every TSX/JSX file under it.
   const named: string[] = [];
   const globs: string[] = [];
   for (const pattern of patterns) {
-    const stat = fs.statSync(path.resolve(io.cwd, pattern), { throwIfNoEntry: false });
+    const stat = fs.statSync(path.resolve(cwd, pattern), { throwIfNoEntry: false });
     if (stat && !stat.isDirectory()) {
-      named.push(path.resolve(io.cwd, pattern));
+      named.push(path.resolve(cwd, pattern));
       continue;
     }
     const literal = stat ? escapePath(toPosix(path.join(pattern, '.'))) : toPosix(pattern);
     globs.push(!stat ? literal : literal === '.' ? '**/*.{tsx,jsx}' : `${literal}/**/*.{tsx,jsx}`);
   }
+  return { named, globs };
+}
+
+/** One project: the root's config and design system for every file. */
+async function selectInProject(
+  config: ResolvedConfig,
+  patterns: string[],
+  values: CheckValues,
+  format: OutputFormat,
+  io: Io,
+): Promise<Selection | number> {
+  const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
+  // A file named outright is always checked; folders and globs leave out what the
+  // config excludes (tests and stories by default) and what git ignores.
+  const { named, globs } = expandPatterns(patterns, io.cwd);
   const options = { cwd: io.cwd, absolute: true, expandDirectories: false };
   const all = globs.length ? await glob(globs, { ...options, ignore: ['**/node_modules/**'] }) : [];
   const excludes = config.exclude
@@ -291,131 +460,168 @@ async function check(
     skipped = files.length - rest.length;
     files = rest;
   }
-  const notes = scopeNotes(skipped, left);
-  if (!files.length) {
-    if (format === 'json') io.stdout('[]');
-    else if (format === 'pretty') {
-      const hints = [
-        skipped ? `Pass --include-design-system to check ${skipped === 1 ? 'it' : 'them'}.` : '',
-        left.tests ? 'Pass --include-tests to check tests and stories.' : '',
-      ].filter(Boolean);
-      io.stdout(`Nothing to check: ${notes.join('; ')}. ${hints.join(' ')}`.trimEnd());
-    }
-    return 0;
-  }
+  return {
+    files,
+    designSystemOf: () => ds,
+    root: ds.root,
+    notes: scopeNotes(skipped, left),
+    notices: notice ? [notice] : [],
+    skipped,
+    testsLeftOut: left.tests,
+  };
+}
 
-  const update = values['update-baseline'];
-  const baselineFile = values.baseline
-    ? path.resolve(io.cwd, values.baseline)
-    : defaultBaseline(
-        ds.root,
-        values['ignore-baseline']
-          ? undefined
-          : (text) => {
-              warnDeprecated([text], format, io);
-            },
-      );
-  // Read before an update too: a baseline mangled by a merge conflict must not be overwritten silently.
-  const baseline = values['ignore-baseline'] ? undefined : readBaseline(baselineFile);
-  if (values.baseline && !update && !values['ignore-baseline'] && !baseline) {
-    io.stderr(`check: baseline not found: ${displayPath(io.cwd, baselineFile)}`);
+/**
+ * A workspace root: each file is checked by the design system of its own project, the
+ * nearest folder with a config, a components.json or a package.json, with that project's
+ * config, exactly as `check` from that folder (and the Claude Code hook) would check it.
+ */
+async function selectInWorkspace(
+  workspace: Workspace,
+  patterns: string[],
+  values: CheckValues,
+  format: OutputFormat,
+  io: Io,
+): Promise<Selection | number> {
+  const { named, globs } = expandPatterns(patterns, io.cwd);
+  const all = globs.length
+    ? await glob(globs, {
+        cwd: io.cwd,
+        absolute: true,
+        expandDirectories: false,
+        ignore: ['**/node_modules/**'],
+      })
+    : [];
+  const projectOf = new Map<string, Project>();
+  for (const file of unique([...named, ...all])) {
+    projectOf.set(file, await workspace.projectFor(file));
+  }
+  const project = (file: string): Project => {
+    const found = projectOf.get(file);
+    if (!found) throw new Error(`No project for ${file}`);
+    return found;
+  };
+  const designSystems = new Map<string, Promise<DesignSystem>>();
+  const load = (p: Project) => {
+    let ds = designSystems.get(p.root);
+    if (!ds) {
+      ds = loadDesignSystem(p.config, { cache: values.cache, logger: silentLogger });
+      designSystems.set(p.root, ds);
+    }
+    return ds;
+  };
+
+  // Each project's `exclude` applies to its own files, relative to its folder.
+  const leftOut = all.filter((file) => {
+    const { root, config } = project(file);
+    const relative = relativePath(root, file);
+    return config.exclude.some(
+      (e) => !(values['include-tests'] && e === DEFAULT_TEST_EXCLUDE) && matchesGlob(relative, e),
+    );
+  });
+  const leftOutSet = new Set(leftOut);
+  const kept = all.filter((file) => !leftOutSet.has(file));
+  const ignored = gitIgnored(io.cwd, kept);
+  const left = {
+    tests: leftOut.filter((file) => TEST_FILE.test(file)).length,
+    excluded: leftOut.filter((file) => !TEST_FILE.test(file)).length,
+    gitignored: ignored.size,
+  };
+  let files = unique([...named, ...kept.filter((file) => !ignored.has(file))]).sort();
+  if (!files.length && !all.length) {
+    io.stderr(`check: no files match ${patterns.join(' ')}`);
     return 2;
   }
-  // Entries of rules that are off for a file (in `rules` or an override) are kept, not reported as fixed.
-  const disabledFor = (file: string) =>
-    new Set(
-      Object.entries(rulesFor(ds.config, relativePath(ds.root, file)))
-        .filter(([, rule]) => rule.severity === 'off')
-        .map(([id]) => id),
-    );
-  const disabledByKey = new Map<string, Set<string>>();
-  // Keys are relative to the real root, with the on-disk spelling of each path and
-  // NFC names, so `APP/`, a linked root or a decomposed `café.tsx` find the same entry.
-  const realRoot = fs.realpathSync.native(ds.root);
-  const baselineKey = (file: string) =>
-    relativePath(realRoot, fs.realpathSync.native(file)).normalize('NFC');
 
-  const results: CheckResult[] = [];
-  const checked = new Map<string, Diagnostic[]>();
-  let baselined = 0;
-  let fixed = 0;
-  for (const file of files) {
-    const code = await fsp.readFile(file, 'utf8');
-    let result = ds.check(code, relativePath(ds.root, file));
-    const key = baselineKey(file);
-    const disabled = disabledFor(file);
-    disabledByKey.set(key, disabled);
-    if (update) checked.set(key, result.diagnostics);
-    if (baseline && !update) {
-      const match = applyBaseline(baseline, key, result, disabled);
-      result = { ...match.result, baselined: match.baselined };
-      baselined += match.baselined;
-      fixed += match.fixed;
+  const loaded = new Map<string, DesignSystem>();
+  for (const p of unique(files.map(project))) loaded.set(p.root, await load(p));
+  const designSystemOf = (file: string): DesignSystem => {
+    const ds = loaded.get(project(file).root);
+    if (!ds) throw new Error(`No design system loaded for ${file}`);
+    return ds;
+  };
+
+  // The hook's rule, per project: no config and no components, nothing to say.
+  if (values['quiet-without-design-system']) {
+    files = files.filter(
+      (file) =>
+        Boolean(project(file).config.configFile) || designSystemOf(file).components.length > 0,
+    );
+    if (!files.length) {
+      if (format === 'json') io.stdout('[]');
+      return 0;
     }
-    results.push({ ...result, file: relativePath(io.cwd, file) });
-  }
-  const elsewhere = results.filter((r) => r.skipped).length;
-  if (elsewhere) {
-    notes.push(`${plural(elsewhere, 'image or email file')} not checked`);
   }
 
-  // Components the model leaves out were not checked: say so once, not in every file.
-  const unchecked = uncheckedNotice(results);
-
-  if (update) {
-    const next = updateBaseline(
-      baseline,
-      checked,
-      realRoot,
-      (key) => disabledByKey.get(key) ?? new Set(),
-    );
-    writeBaseline(baselineFile, next);
-    const counts = countBaseline(next);
-    io.stdout(
-      `Baseline: ${count(counts.findings, 'finding')} in ${count(counts.files, 'file')} → ${displayPath(io.cwd, baselineFile)}`,
-    );
-    if (notice) io.stderr(notice);
-    if (unchecked) io.stderr(unchecked);
-    return 0;
+  // At a root, the gate is that some project has components and color tokens to check against.
+  if (values['require-design-system']) {
+    let complete = false;
+    for (const p of workspace.projects) {
+      if (!(await load(p)).notice()) {
+        complete = true;
+        break;
+      }
+    }
+    if (!complete) {
+      const packages = workspace.projects.length + workspace.others.length;
+      io.stderr(
+        `check --require-design-system: no workspace package has a design system with components and color tokens (${plural(packages, 'package')} looked at). See ${DOCS}/troubleshooting`,
+      );
+      return 2;
+    }
   }
 
-  const output = formatDiagnostics(
-    format === 'json' ? results : results.filter((r) => !r.skipped),
-    format,
-    {
-      color: io.color,
-      baselined: baseline ? baselined : undefined,
-      notes,
-      fixedHint: fixed
-        ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
-        : undefined,
-    },
-  );
-  if (output) io.stdout(output);
-  for (const text of [notice, unchecked]) {
-    if (!text) continue;
-    if (format === 'pretty') io.stdout(text);
-    else if (format === 'github') io.stdout(`::warning title=${NAME}::${text}`);
-    else io.stderr(text);
+  // A project's design-system files implement its scale and primitives. Only a file's own
+  // project counts: a package's files are checked as `check` in its folder checks them,
+  // even when an app uses them as its design system.
+  const own = new Map<string, Set<string>>();
+  for (const p of unique(files.map(project))) {
+    if (p.config.includeDesignSystem) continue;
+    own.set(p.root, new Set((await componentFiles(p.config)).map(realPath)));
   }
+  const rest = files.filter((file) => !own.get(project(file).root)?.has(realPath(file)));
+  const skipped = files.length - rest.length;
+  files = rest;
 
-  const errors = results.reduce((n, r) => n + r.errorCount, 0);
-  const warnings = results.reduce((n, r) => n + r.warningCount, 0);
-  if (errors > 0) return 1;
-  if (maxWarnings !== undefined && warnings > maxWarnings) {
-    if (format === 'pretty') io.stderr(`Too many warnings (${warnings}, max ${maxWarnings}).`);
-    return 1;
+  // What could not run, once per kind of gap, naming the projects.
+  const gaps = new Map<string, { ds: DesignSystem; dirs: string[] }>();
+  for (const p of unique(files.map(project))) {
+    const ds = loaded.get(p.root);
+    const notice = ds?.notice();
+    if (!ds || !notice) continue;
+    const gap = gaps.get(notice) ?? { ds, dirs: [] };
+    gap.dirs.push(p.dir);
+    gaps.set(notice, gap);
   }
-  return 0;
+  const notices = [...gaps.values()].map(({ ds, dirs }) => ds.notice(listOf(dirs)) ?? '');
+  const used = unique(files.map((file) => project(file).root)).length;
+  return {
+    files,
+    designSystemOf,
+    root: workspace.root,
+    notes: [...(used > 1 ? [plural(used, 'project')] : []), ...scopeNotes(skipped, left)],
+    notices: notices.filter(Boolean),
+    skipped,
+    testsLeftOut: left.tests,
+  };
+}
+
+/** `apps/web`, `apps/web and packages/ui`, `a, b, c and 4 more`. */
+function listOf(items: readonly string[], max = 3): string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length <= max) return `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`;
+  return `${items.slice(0, max).join(', ')} and ${items.length - max} more`;
 }
 
 async function inspect(
-  configOptions: Parameters<typeof loadConfig>[0],
+  configOptions: LoadConfigOptions,
   values: { cache: boolean; format: string },
   io: Io,
 ): Promise<number> {
-  const config = await loadConfig(configOptions);
+  const target = await loadTarget(configOptions);
+  const { config } = target;
   warnDeprecated(config.deprecations, 'pretty', io);
+  if (target.workspace) return inspectWorkspace(target.workspace, values, io);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
   const { model } = ds;
   if (values.format === 'json') {
@@ -443,16 +649,109 @@ async function inspect(
     ].filter(Boolean);
     lines.push(`  ${c.name.padEnd(18)} ${meta.join(' · ')}`);
   }
-  const counts = new Map<string, number>();
-  for (const t of model.tokens) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
   lines.push('', `Tokens (${model.tokens.length})`);
-  for (const [category, n] of counts) lines.push(`  ${category.padEnd(18)} ${n}`);
+  for (const [category, n] of tokenCounts(model)) lines.push(`  ${category.padEnd(18)} ${n}`);
   if (model.warnings.length) {
     lines.push('', 'Warnings');
     for (const warning of model.warnings) lines.push(`  ${warning}`);
   }
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+function tokenCounts(model: DesignSystemModel): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const t of model.tokens) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
+  return counts;
+}
+
+/** Every project of a workspace root, with what was found in each, and the packages without one. */
+async function inspectWorkspace(
+  workspace: Workspace,
+  values: { cache: boolean; format: string },
+  io: Io,
+): Promise<number> {
+  const loaded = [];
+  for (const project of workspace.projects) {
+    loaded.push({
+      project,
+      ds: await loadDesignSystem(project.config, { cache: values.cache, logger: silentLogger }),
+    });
+  }
+  if (values.format === 'json') {
+    io.stdout(
+      JSON.stringify(
+        {
+          root: workspace.root,
+          workspace: workspace.source,
+          projects: loaded.map(({ project, ds }) => ({
+            dir: project.dir,
+            ...(project.name ? { name: project.name } : {}),
+            ...(project.config.configFile
+              ? { config: relativePath(workspace.root, project.config.configFile) }
+              : {}),
+            ...(project.config.detected ? { detected: project.config.detected } : {}),
+            model: ds.model,
+          })),
+          others: workspace.others,
+        },
+        null,
+        2,
+      ),
+    );
+    return 0;
+  }
+  const packages = workspace.projects.length + workspace.others.length;
+  const lines: string[] = [
+    `root      ${workspace.root}`,
+    `workspace ${plural(packages, 'package')} (${workspace.source}), ${plural(workspace.projects.length, 'project')} with a design system`,
+    `config    ${workspace.configFile ? displayPath(io.cwd, workspace.configFile) : '(defaults)'}`,
+  ];
+  for (const { project, ds } of loaded) {
+    const { model } = ds;
+    const roots = ds.roots();
+    const tokens = [...tokenCounts(model)].map(([category, n]) => `${category} ${n}`);
+    const own =
+      project.config.configFile && project.config.configFile !== workspace.configFile
+        ? displayPath(workspace.root, project.config.configFile)
+        : undefined;
+    lines.push(
+      '',
+      `${project.dir}${project.name ? ` (${project.name})` : ''}`,
+      ...(own ? [`  config     ${own}`] : []),
+      ...(project.config.detected ? [`  detected   ${project.config.detected}`] : []),
+      `  files      ${plural(model.stats.files.components, 'component file')}, ${plural(model.stats.files.tokens, 'token file')}, ${plural(model.stats.files.docs, 'doc')}`,
+      `  components ${roots.length} + ${model.components.length - roots.length} parts${roots.length ? `: ${listNames(roots.map((c) => c.name))}` : ''}`,
+      `  tokens     ${tokens.length ? tokens.join(', ') : 'none'}`,
+      ...(model.warnings.length
+        ? [`  warnings   ${model.warnings.length}: ${model.warnings[0] ?? ''}`]
+        : []),
+    );
+  }
+  if (!loaded.length) {
+    lines.push(
+      '',
+      `No workspace package has a design system that zero config finds. See ${DOCS}/troubleshooting`,
+    );
+  }
+  if (workspace.others.length) {
+    lines.push(
+      '',
+      `Without a design system (${workspace.others.length}): ${listNames(workspace.others)}`,
+    );
+  }
+  lines.push(
+    '',
+    `Each file is checked by its project's design system. For one project's components, tokens and warnings: ${NAME} inspect --root <folder>`,
+  );
+  io.stdout(lines.join('\n'));
+  return 0;
+}
+
+/** `A, B, C` up to a dozen names, then `and 40 more`. */
+function listNames(names: readonly string[], max = 12): string {
+  const shown = names.slice(0, max).join(', ');
+  return names.length > max ? `${shown} and ${names.length - max} more` : shown;
 }
 
 /**

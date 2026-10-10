@@ -43,11 +43,11 @@ onsystem reads your components, `cva` and `tv` variants, parts and tokens from s
 | `no-hardcoded-spacing`           | warn    | Arbitrary padding, margin and gap (`p-[13px]` → `p-3`)                          |
 | `no-hardcoded-radius`            | warn    | Arbitrary radius (`rounded-[7px]` → `rounded-sm`)                               |
 
-**How often it is wrong.** The [corpus](corpus) job runs `check` on 10 public repositories pinned by commit (Documenso, Dub, Cal.com, midday and others: 17 runs, 3,498 findings) and compares the findings with hand labels. In a random sample of 81 findings, 5 are false positives (6.2%) and 25 are debatable; weighted by each run's and rule's share of all findings, about 1.7% are false positives. Shipped code rarely invents components, props or variants, so those three rules have 16 findings in the corpus and none in the sample; their precision comes from the test suite. The [rules reference](https://design-system-mcp-demo.vercel.app/rules) shows each rule on an example and how to [suppress a finding](https://design-system-mcp-demo.vercel.app/rules#suppressing-findings).
+**How often it is wrong.** The [corpus](corpus) job runs `check` on 10 public repositories pinned by commit (Documenso, Dub, Cal.com, midday and others, the four monorepos also from their root: 21 runs, 3,680 findings) and compares the findings with hand labels. In a random sample of 95 findings, 5 are false positives (5.3%) and 36 are debatable; weighted by each run's and rule's share of all findings, about 1.6% are false positives. Shipped code rarely invents components, props or variants, so those three rules have 3 findings in the corpus and none in the sample; their precision comes from the test suite. The [rules reference](https://design-system-mcp-demo.vercel.app/rules) shows each rule on an example and how to [suppress a finding](https://design-system-mcp-demo.vercel.app/rules#suppressing-findings).
 
 ## Quickstart
 
-Run it from the app's folder, with Node.js 20.19 or later; a monorepo root is [not supported yet](https://design-system-mcp-demo.vercel.app/docs/troubleshooting#a-monorepo-root-finds-nothing). `npx onsystem inspect` shows what it found.
+Run it from the app's folder or from the monorepo root, with Node.js 20.19 or later. `npx onsystem inspect` shows what it found; at a [monorepo root](https://design-system-mcp-demo.vercel.app/docs/configuration#monorepo-roots), every app and design-system package, each file checked by its own project's design system.
 
 **Claude Code.** The plugin brings the hook, the MCP server and a skill:
 

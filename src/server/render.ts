@@ -1,3 +1,4 @@
+import type { Catalog, CatalogEntry, CatalogToken } from '../catalog.js';
 import type { DesignSystem } from '../design-system.js';
 import type { SearchHit } from '../search/index.js';
 import { formatPx } from '../tokens/units.js';
@@ -28,26 +29,84 @@ function variantSummary(component: ComponentInfo): string[] {
   );
 }
 
-export function renderComponentList(ds: DesignSystem): string {
+/** `project`: the folder of a workspace root's project the list is for. */
+export function renderComponentList(ds: DesignSystem, project?: string): string {
   const roots = ds.roots();
   if (!roots.length) {
-    return `No components found. Check the "components" globs in the config (root: ${ds.root}).`;
+    return `No components found${project ? ` in ${project}` : ''}. Check the "components" globs in the config (root: ${ds.root}).`;
   }
   const parts = ds.components.length - roots.length;
   const lines = [
-    `${plural(roots.length, 'component')}${parts ? ` (+${plural(parts, 'part')})` : ''}. Call get_component before using one.`,
+    `${plural(roots.length, 'component')}${parts ? ` (+${plural(parts, 'part')})` : ''}${project ? ` in ${project}` : ''}. Call get_component before using one.`,
     '',
   ];
-  for (const component of roots) {
-    const element = component.element ? ` <${component.element}>` : '';
-    lines.push(
-      `${component.name}${element} — ${firstSentence(component.description) || 'No description.'}`,
-    );
-    for (const variant of variantSummary(component)) lines.push(`  ${variant}`);
-    if (component.subcomponents.length)
-      lines.push(`  parts: ${component.subcomponents.join(', ')}`);
-    lines.push(`  ${importStatement(component)}`);
+  for (const component of roots) lines.push(...listItem(component));
+  return lines.join('\n');
+}
+
+function listItem(component: ComponentInfo, note = ''): string[] {
+  const element = component.element ? ` <${component.element}>` : '';
+  const lines = [
+    `${component.name}${element}${note} — ${firstSentence(component.description) || 'No description.'}`,
+  ];
+  for (const variant of variantSummary(component)) lines.push(`  ${variant}`);
+  if (component.subcomponents.length) lines.push(`  parts: ${component.subcomponents.join(', ')}`);
+  lines.push(`  ${importStatement(component)}`);
+  return lines;
+}
+
+/** `apps/web`, `apps/web and packages/ui`, `a, b, c and 4 more`. */
+function listOf(items: readonly string[], max = 3): string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length <= max) return `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`;
+  return `${items.slice(0, max).join(', ')} and ${items.length - max} more`;
+}
+
+const PICK_PROJECT =
+  'This is a monorepo root: pass `path`, the file you are editing, to get_component, get_tokens and check_ui so they answer for its project.';
+
+/** Every project's components at a workspace root, grouped by the package they come from. */
+export function renderCatalogList(catalog: Catalog): string {
+  const roots = catalog.roots();
+  if (!roots.length) {
+    return `No components found in any project of this monorepo (root: ${catalog.root}). Run \`onsystem inspect\` there to see what was looked at.`;
   }
+  const byPackage = new Map<string, CatalogEntry[]>();
+  for (const entry of roots)
+    byPackage.set(entry.package, [...(byPackage.get(entry.package) ?? []), entry]);
+  const parts = catalog.entries.length - roots.length;
+  const lines = [
+    `${plural(roots.length, 'component')}${parts ? ` (+${plural(parts, 'part')})` : ''} from ${plural(byPackage.size, 'package')}, used by ${plural(catalog.projects.length, 'project')}. ${PICK_PROJECT}`,
+  ];
+  for (const [pkg, entries] of byPackage) {
+    const projects = [...new Set(entries.flatMap((e) => e.projects))];
+    lines.push('', `## ${pkg} (used by ${listOf(projects)})`);
+    for (const entry of entries) {
+      const others = entry.ambiguous
+        ? catalog.roots().filter((e) => e !== entry && e.component.name === entry.component.name)
+        : [];
+      const note = others.length
+        ? ` (also in ${[...new Set(others.map((e) => e.package))].join(', ')})`
+        : '';
+      lines.push(...listItem(entry.component, note));
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Several components under one name at a workspace root, and how to pick one. */
+export function renderAmbiguous(name: string, entries: readonly CatalogEntry[]): string {
+  const lines = [`"${name}" is the name of ${entries.length} components in this monorepo:`];
+  for (const entry of entries) {
+    lines.push(
+      `- ${entry.package}: ${entry.component.source.file}, used by ${listOf(entry.projects)} (${importStatement(entry.component)})`,
+    );
+  }
+  const dirs = [...new Set(entries.flatMap((e) => e.projects))];
+  lines.push(
+    '',
+    `Pass \`path\`: the file you are editing, or its project folder (${dirs.join(', ')}), to get the one that project uses.`,
+  );
   return lines.join('\n');
 }
 
@@ -98,7 +157,12 @@ function renderProp(prop: PropInfo): string {
   return `- ${prop.name}${optional}: ${prop.type}${fallback}${description}${deprecated}`;
 }
 
-export function renderComponent(ds: DesignSystem, component: ComponentInfo): string {
+/** `origin`: at a workspace root, the package the component comes from and who uses it. */
+export function renderComponent(
+  ds: DesignSystem,
+  component: ComponentInfo,
+  origin?: Pick<CatalogEntry, 'package' | 'projects'>,
+): string {
   const lines: string[] = [`# ${component.name}`];
   if (component.deprecated) {
     lines.push(`DEPRECATED${component.deprecated === true ? '' : `: ${component.deprecated}`}`);
@@ -113,6 +177,7 @@ export function renderComponent(ds: DesignSystem, component: ComponentInfo): str
     component.docs ? `docs: ${component.docs.file}` : undefined,
   ].filter(Boolean);
   lines.push(facts.join(' · '));
+  if (origin) lines.push(`From ${origin.package}, used by ${listOf(origin.projects)}.`);
 
   lines.push('', '## Props');
   if (!component.props.length && !component.inherits.length) lines.push('No props.');
@@ -200,6 +265,57 @@ export function renderSearch(query: string, hits: SearchHit[]): string {
   });
   lines.push('', 'Call get_component for props, variants and examples.');
   return lines.join('\n');
+}
+
+/** Search hits at a workspace root, each with the package it comes from. */
+export function renderCatalogSearch(
+  query: string,
+  hits: readonly (SearchHit & { entry: CatalogEntry })[],
+): string {
+  if (!hits.length) {
+    return `No components match "${query}" in any project. Try other words, or list_components to browse.`;
+  }
+  const lines = [`Components for "${query}" across the monorepo's projects, best first:`, ''];
+  hits.forEach((hit, i) => {
+    const c = hit.component;
+    const parent = c.parent ? ` (part of ${c.parent})` : '';
+    lines.push(
+      `${i + 1}. ${c.name}${parent} from ${hit.entry.package} — ${firstSentence(c.description) || 'No description.'}`,
+    );
+    lines.push(
+      `   score ${hit.score} · matched: ${hit.matched.join(', ')} · used by ${listOf(hit.entry.projects)} · ${importStatement(c)}`,
+    );
+  });
+  lines.push('', `Call get_component for props, variants and examples. ${PICK_PROJECT}`);
+  return lines.join('\n');
+}
+
+/** Tokens at a workspace root, grouped by category, each with the package that defines it. */
+export function renderCatalogTokens(
+  catalog: Catalog,
+  tokens: readonly CatalogToken[],
+  filter: { category?: string | undefined; query?: string | undefined } = {},
+): string {
+  if (!catalog.tokens.length) {
+    return `No design tokens found in any project of this monorepo (root: ${catalog.root}). Set "tokens" in a project's config: https://design-system-mcp-demo.vercel.app/docs/configuration`;
+  }
+  if (!tokens.length) {
+    const what = [filter.category, filter.query && `"${filter.query}"`].filter(Boolean).join(' ');
+    return `No tokens match${what ? ` ${what}` : ''} in any project; call get_tokens without filters to see them.`;
+  }
+  const groups = new Map<string, CatalogToken[]>();
+  for (const t of tokens)
+    groups.set(t.token.category, [...(groups.get(t.token.category) ?? []), t]);
+  const lines: string[] = [PICK_PROJECT, ''];
+  for (const [category, list] of groups) {
+    lines.push(`## ${category} (${list.length})`);
+    for (const { token, package: pkg } of list) {
+      const usage = token.usage.length ? ` → ${token.usage.join(', ')}` : '';
+      lines.push(`- ${token.name}: ${token.value}${usage} (${pkg})`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
 }
 
 export function renderTokens(

@@ -59,4 +59,5 @@ These tools work at different layers, and several combine well:
 - Composition is inferred from naming and static members; other patterns need explicit exports.
 - A UI package imported by path is read from what the app already imports (in its first 5,000 source files), so components nobody imports yet are not offered.
 - While the server runs, it rebuilds on changes in the component, token and docs folders, the config file, the tsconfig and the tsconfigs it extends. An edit to another file the components import (a shared `lib/types.ts`) is picked up on the next start.
+- At a monorepo root, the server reads the list of projects when it starts; a package that gains a design system while it runs is listed from the next start, though its files are checked by it right away.
 - No typography or shadow rules yet, and stdio is the only transport.
