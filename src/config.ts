@@ -247,7 +247,7 @@ export const DEFAULT_DOCS = [
   'src/components/ui/**/*.{md,mdx}',
 ];
 
-const DEFAULT_SEVERITY: Record<RuleId, RuleSeverity> = {
+export const DEFAULT_SEVERITY: Record<RuleId, RuleSeverity> = {
   'no-hardcoded-color': 'error',
   'no-hardcoded-spacing': 'warn',
   'no-hardcoded-radius': 'warn',

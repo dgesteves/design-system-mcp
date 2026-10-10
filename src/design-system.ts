@@ -228,6 +228,11 @@ export function componentFiles(config: ResolvedConfig): Promise<string[]> {
   return find(config, config.components);
 }
 
+/** The token files a config finds, as absolute paths. */
+export async function tokenFiles(config: ResolvedConfig): Promise<string[]> {
+  return (await resolveFiles(config)).tokens.map((t) => t.file);
+}
+
 async function resolveFiles(config: ResolvedConfig): Promise<ResolvedFiles> {
   const components = await find(config, config.components);
   const docs = await find(config, config.docs);

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
 import { escapePath, glob } from 'tinyglobby';
@@ -24,6 +25,8 @@ import {
   type ResolvedConfig,
 } from './config.js';
 import { componentFiles, loadDesignSystem, type DesignSystem } from './design-system.js';
+import { explainProject } from './explain.js';
+import { init } from './init.js';
 import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
 import type { CheckResult, DesignSystemModel, Diagnostic } from './types.js';
@@ -32,6 +35,7 @@ import { matchesGlob, relativePath, toPosix } from './util/paths.js';
 import { plural, unique } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
 import { loadTarget, type Project, type Workspace } from './workspace.js';
+import { detectProject, type DetectionStep } from './detect.js';
 
 const DOCS = 'https://design-system-mcp-demo.vercel.app/docs';
 
@@ -46,6 +50,8 @@ Usage
   onsystem check <paths...>      Lint files, folders or globs with the check_ui rules
                                  (for CI)
   onsystem inspect               Print what was extracted from the project
+  onsystem init                  Write onsystem.config.json from what was found, run a
+                                 dry-run check and offer a baseline
   onsystem help                  Show this help
 
 At a monorepo root with no design system of its own, every command works per
@@ -81,11 +87,17 @@ Options
   --require-design-system
                           check: exit 2 when no components or no color tokens
                           are found, so CI cannot pass by checking nothing
+  --explain               inspect: every candidate zero config looked at and why
+                          it was taken or not, the resolved config, unresolved
+                          tokens, and components whose props did not resolve
+  -y, --yes               init: write without asking, and record the baseline
+  --force                 init: replace an existing config file
   -h, --help              Show this help
   -v, --version           Show the version
 
 Examples
-  npx -y ${NAME} inspect
+  npx -y ${NAME} inspect --explain
+  npx -y ${NAME} init
   npx -y ${NAME} check . --format github --require-design-system
   npx -y ${NAME} check . --update-baseline   # adopt in an existing codebase
 
@@ -97,6 +109,8 @@ export interface Io {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   color: boolean;
+  /** Asks a question in the terminal (`init`); undefined when there is none to ask in. */
+  prompt?: ((question: string) => Promise<string>) | undefined;
 }
 
 const defaultIo: Io = {
@@ -104,7 +118,18 @@ const defaultIo: Io = {
   stdout: (text) => process.stdout.write(`${text}\n`),
   stderr: (text) => process.stderr.write(`${text}\n`),
   color: process.stdout.isTTY && !process.env.NO_COLOR,
+  prompt: process.stdin.isTTY && process.stdout.isTTY ? askInTerminal : undefined,
 };
+
+/** One question on the terminal, answered with a line. */
+async function askInTerminal(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(question);
+  } finally {
+    rl.close();
+  }
+}
 
 /** Runs the CLI. Resolves to an exit code; `serve` resolves once the server is listening. */
 export async function main(argv: string[], io: Io = defaultIo): Promise<number> {
@@ -131,6 +156,9 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         'include-design-system': { type: 'boolean' },
         'include-tests': { type: 'boolean', default: false },
         'require-design-system': { type: 'boolean', default: false },
+        explain: { type: 'boolean', default: false },
+        yes: { type: 'boolean', short: 'y', default: false },
+        force: { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -187,6 +215,23 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         return await check(rest, configOptions, values, io);
       case 'inspect':
         return await inspect(configOptions, values, io);
+      case 'init':
+        return await init(
+          configOptions,
+          { yes: values.yes, force: values.force, cache: values.cache },
+          io,
+          async (args, checkIo) => {
+            const out: string[] = [];
+            const err: string[] = [];
+            const code = await main(args, {
+              cwd: checkIo.cwd,
+              color: false,
+              stdout: (t) => out.push(t),
+              stderr: (t) => err.push(t),
+            });
+            return { code, stdout: out.join('\n'), stderr: err.join('\n') };
+          },
+        );
       default:
         io.stderr(`Unknown command "${command}". Run ${NAME} --help for usage.`);
         return 2;
@@ -616,7 +661,7 @@ function listOf(items: readonly string[], max = 3): string {
 
 async function inspect(
   configOptions: LoadConfigOptions,
-  values: { cache: boolean; format: string },
+  values: { cache: boolean; format: string; explain: boolean },
   io: Io,
 ): Promise<number> {
   const target = await loadTarget(configOptions);
@@ -656,6 +701,7 @@ async function inspect(
     lines.push('', 'Warnings');
     for (const warning of model.warnings) lines.push(`  ${warning}`);
   }
+  if (values.explain) lines.push('', ...explainProject(ds, io.cwd));
   io.stdout(lines.join('\n'));
   return 0;
 }
@@ -669,7 +715,7 @@ function tokenCounts(model: DesignSystemModel): Map<string, number> {
 /** Every project of a workspace root, with what was found in each, and the packages without one. */
 async function inspectWorkspace(
   workspace: Workspace,
-  values: { cache: boolean; format: string },
+  values: { cache: boolean; format: string; explain: boolean },
   io: Io,
 ): Promise<number> {
   const loaded = [];
@@ -745,8 +791,33 @@ async function inspectWorkspace(
     '',
     `Each file is checked by its project's design system. For one project's components, tokens and warnings: ${NAME} inspect --root <folder>`,
   );
+  if (values.explain) lines.push('', ...explainWorkspace(workspace, loaded, io.cwd));
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+/** Why the root is read as a monorepo, then each project's explanation. */
+function explainWorkspace(
+  workspace: Workspace,
+  loaded: { project: Project; ds: DesignSystem }[],
+  cwd: string,
+): string[] {
+  const { rootConfig } = workspace;
+  const steps: DetectionStep[] = [];
+  detectProject(rootConfig.root, rootConfig.tsconfig, steps);
+  const lines = [
+    `Why this is read as a monorepo root: it declares workspace packages (${workspace.source}), no config there sets components, and zero config finds no design system in the root itself:`,
+    ...steps.map((s) => `  ${(s.accepted ? 'found' : 'no').padEnd(6)} ${s.candidate}: ${s.reason}`),
+    `  no     ${rootConfig.components.join(', ')}: no file matches`,
+  ];
+  for (const { project, ds } of loaded) {
+    lines.push(
+      '',
+      `${project.dir}${project.name ? ` (${project.name})` : ''}`,
+      ...explainProject(ds, cwd, '  '),
+    );
+  }
+  return lines;
 }
 
 /** `A, B, C` up to a dozen names, then `and 40 more`. */
