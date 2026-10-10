@@ -5,7 +5,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
-import { escapePath, glob } from 'tinyglobby';
+import { escapePath, glob, type GlobOptions } from 'tinyglobby';
 
 import {
   applyBaseline,
@@ -458,13 +458,15 @@ async function selectInProject(
   // config excludes (tests and stories by default) and what git ignores.
   const { named, globs } = expandPatterns(patterns, io.cwd);
   const options = { cwd: io.cwd, absolute: true, expandDirectories: false };
-  const all = globs.length ? await glob(globs, { ...options, ignore: ['**/node_modules/**'] }) : [];
+  const all = globs.length
+    ? await findFiles(globs, { ...options, ignore: ['**/node_modules/**'] })
+    : [];
   const excludes = config.exclude
     .filter((e) => !(values['include-tests'] && isTestPattern(e)))
     .map((e) => excludeFromCwd(e, config.root, io.cwd))
     .filter((e): e is string => e !== undefined);
   const kept = globs.length
-    ? await glob(globs, { ...options, ignore: unique(['**/node_modules/**', ...excludes]) })
+    ? await findFiles(globs, { ...options, ignore: unique(['**/node_modules/**', ...excludes]) })
     : [];
   const ignored = gitIgnored(io.cwd, kept);
   const keptSet = new Set(kept);
@@ -531,7 +533,7 @@ async function selectInWorkspace(
 ): Promise<Selection | number> {
   const { named, globs } = expandPatterns(patterns, io.cwd);
   const all = globs.length
-    ? await glob(globs, {
+    ? await findFiles(globs, {
         cwd: io.cwd,
         absolute: true,
         expandDirectories: false,
@@ -891,6 +893,14 @@ function excludeFromCwd(pattern: string, root: string, cwd: string): string | un
   if (!fromRoot) return pattern;
   if (fromRoot.startsWith('..')) return toPosix(path.join(path.relative(cwd, root), pattern));
   return pattern.startsWith(`${fromRoot}/`) ? pattern.slice(fromRoot.length + 1) : undefined;
+}
+
+/**
+ * Files a glob matches, as Node spells absolute paths (with backslashes on Windows, where
+ * tinyglobby gives forward slashes), so they compare equal to `path.resolve` and git's.
+ */
+async function findFiles(globs: string[], options: GlobOptions): Promise<string[]> {
+  return (await glob(globs, options)).map((file) => path.resolve(file));
 }
 
 /**

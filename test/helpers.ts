@@ -29,9 +29,22 @@ export function fixture(
   if (options.nodeModules) {
     const installed = path.join(DEMO_ROOT, 'node_modules');
     fs.mkdirSync(path.join(dir, 'node_modules'));
+    // Each package is linked to where it really is. pnpm's scope folders (`@types`) hold links
+    // with relative targets, which Windows resolves from the path a junction is reached by, so
+    // a link to the whole scope folder would lead nowhere there.
+    const link = (from: string, to: string) => {
+      fs.symlinkSync(fs.realpathSync(from), to, 'junction');
+    };
     for (const name of fs.readdirSync(installed)) {
       if (name.startsWith('.')) continue;
-      fs.symlinkSync(path.join(installed, name), path.join(dir, 'node_modules', name), 'junction');
+      if (!name.startsWith('@')) {
+        link(path.join(installed, name), path.join(dir, 'node_modules', name));
+        continue;
+      }
+      fs.mkdirSync(path.join(dir, 'node_modules', name));
+      for (const scoped of fs.readdirSync(path.join(installed, name))) {
+        link(path.join(installed, name, scoped), path.join(dir, 'node_modules', name, scoped));
+      }
     }
   }
   for (const [file, content] of Object.entries(files)) {

@@ -19,6 +19,8 @@ describe('the README on npm', () => {
         execFileSync('npm', ['pack', '--json', '--pack-destination', dir], {
           cwd: root,
           encoding: 'utf8',
+          // npm is npm.cmd on Windows, which only a shell runs.
+          shell: process.platform === 'win32',
         }),
       ) as { filename: string }[];
       const filename = packed[0]?.filename;

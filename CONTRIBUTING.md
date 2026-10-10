@@ -21,12 +21,15 @@ pnpm format:check    # Prettier (pnpm format writes)
 pnpm typecheck       # tsc --noEmit
 pnpm build           # tsdown, then schema.json from the config schema
 pnpm smoke           # the built server over stdio, every tool, against examples/shadcn-demo
-pnpm test            # Vitest, on Node 22 and 24
+pnpm test            # Vitest, on Node 22 and 24 (Linux), and on Windows and macOS
+pnpm pack-test       # npm pack, install into a new project, run it (Linux, Windows, macOS)
 ```
 
 A pull request that touches `src/` also runs the [real-world corpus](#real-world-corpus), which is not a required check yet.
 
-`pnpm smoke` spawns `dist/cli.js` the way an MCP client does, so it catches what unit tests cannot: a broken build, a tool that fails over stdio, output that no longer parses. Run it after `pnpm build`; add `--verbose` to see every response. CI also runs `check` on the demo's clean page (it must pass) and the Claude Code hook on its draft (it must block).
+`pnpm smoke` spawns `dist/cli.js` the way an MCP client does, so it catches what unit tests cannot: a broken build, a tool that fails over stdio, output that no longer parses. It connects twice, on the 2025 protocol and on 2026-07-28. Run it after `pnpm build`; add `--verbose` to see every response. CI also runs `check` on the demo's clean page (it must pass) and the Claude Code hook on its draft (it must block).
+
+`pnpm pack-test` (after `pnpm build`) tests the package as a user gets it: it packs the repository with `npm pack`, so the publish hooks run, installs the tarball into a new project in the system temp folder, and runs the installed `onsystem` bin (`--version`, `inspect`, `check`), an MCP stdio handshake with the installed server in both protocol eras, and the Claude Code hook, which picks up the project's own install. It needs the npm registry for the package's dependencies.
 
 Commit `schema.json` when `pnpm build` changes it, and `.github/assets/*.svg` when `pnpm assets` does: the hero image is rendered from real `check` output on the demo, so a changed message changes the picture.
 
