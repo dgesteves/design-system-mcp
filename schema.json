@@ -22,7 +22,7 @@
       ]
     },
     "exclude": {
-      "description": "Globs to ignore (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.",
+      "description": "Globs to ignore when finding components and when `check` expands folders and globs (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.",
       "type": "array",
       "items": {
         "type": "string"

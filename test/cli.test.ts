@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -120,6 +121,74 @@ describe("design-system-mcp check and the design system's own files", () => {
     );
     const included = await run(['check', '.', '--include-design-system', '--no-cache']);
     expect(included.stdout).toContain('in 1 of 7 files checked');
+  });
+
+  it('leaves out tests, stories, excluded files and what git ignores, unless named', async () => {
+    const button = '<button className="px-3">Go</button>';
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'design-system-mcp.config.json': JSON.stringify({
+        exclude: ['**/*.{test,spec,stories}.{ts,tsx,js,jsx}', 'app/legacy/**'],
+      }),
+      '.gitignore': 'dist/\n',
+      'app/page.tsx': `export default () => ${button}`,
+      'app/page.test.tsx': `export default () => ${button}`,
+      'app/button.stories.tsx': `export default () => ${button}`,
+      'app/legacy/old.tsx': `export default () => ${button}`,
+      'dist/page.tsx': `export default () => ${button}`,
+    });
+    spawnSync('git', ['init', '-q'], { cwd: root });
+    const { stdout } = await run(['check', '.', '--no-cache'], root);
+    expect(stdout).toContain('app/page.tsx');
+    for (const file of ['page.test.tsx', 'button.stories.tsx', 'legacy/old.tsx', 'dist/page.tsx']) {
+      expect(stdout).not.toContain(file);
+    }
+    expect(stdout.split('\n').find((line) => /^\d+ errors?,/.test(line))).toBe(
+      '1 error, 0 warnings in 1 file (1 design-system file skipped; 2 tests and stories left out; 1 excluded file left out; 1 file git ignores left out)',
+    );
+    const tests = await run(['check', '.', '--include-tests', '--no-cache'], root);
+    expect(tests.stdout).toContain('app/page.test.tsx');
+    expect(tests.stdout).toContain('app/button.stories.tsx');
+    expect(tests.stdout).not.toContain('legacy/old.tsx');
+    // A file named outright is checked whatever the excludes say.
+    const named = await run(
+      ['check', 'app/button.stories.tsx', 'dist/page.tsx', '--no-cache'],
+      root,
+    );
+    expect(named.stdout).toContain('app/button.stories.tsx');
+    expect(named.stdout).toContain('dist/page.tsx');
+    // Only tests in the folder: nothing to check, and how to check them.
+    fs.rmSync(path.join(root, 'app/page.tsx'));
+    const none = await run(['check', 'app', '--no-cache'], root);
+    expect(none).toMatchObject({ code: 0 });
+    expect(none.stdout).toBe(
+      'Nothing to check: 2 tests and stories left out; 1 excluded file left out. Pass --include-tests to check tests and stories.',
+    );
+  });
+
+  it('counts the image and email files it did not check', async () => {
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/page.tsx': 'export default () => <button>Go</button>',
+      'app/opengraph-image.tsx': 'export default () => <div style={{ background: "#000" }} />',
+    });
+    const { stdout } = await run(['check', 'app', '--no-cache'], root);
+    expect(stdout).not.toContain('opengraph-image');
+    expect(stdout.split('\n').find((line) => /^\d+ errors?,/.test(line))).toBe(
+      '1 error, 0 warnings in 1 file (1 image or email file not checked)',
+    );
+    const json = await run(['check', 'app', '--format', 'json', '--no-cache'], root);
+    expect(
+      (JSON.parse(json.stdout) as { file: string; skipped?: string }[]).map((r) => [
+        r.file,
+        Boolean(r.skipped),
+      ]),
+    ).toEqual([
+      ['app/opengraph-image.tsx', true],
+      ['app/page.tsx', false],
+    ]);
   });
 
   it('exits 0 when only design-system files match, with [] for the hook', async () => {

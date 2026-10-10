@@ -1,5 +1,5 @@
 {
-  "$comment": "Public repositories pinned by commit, checked by scripts/corpus.mjs. `paths` limits the sparse fetch to those folders (plus root files and every package.json, tsconfig and components.json); without it the whole repository is fetched. Only source, styles, manifests and docs are fetched, and nothing in them is installed, built or run.",
+  "$comment": "Public repositories pinned by commit, checked by scripts/corpus.mjs. `paths` limits the sparse fetch to those folders (plus root files and every package.json, tsconfig and components.json); without it the whole repository is fetched. A run's `args` are extra flags for `check`. Only source, styles, manifests and docs are fetched, and nothing in them is installed, built or run.",
   "repos": [
     {
       "name": "saas-starter",
@@ -87,7 +87,14 @@
       "url": "https://github.com/adobe/react-spectrum",
       "sha": "740c6c5c4a717ca8c82fc4d15d199f6166cd42dc",
       "paths": ["starters/tailwind"],
-      "runs": [{ "name": "react-aria-starter", "cwd": "starters/tailwind", "check": ["."] }]
+      "runs": [
+        {
+          "name": "react-aria-starter",
+          "cwd": "starters/tailwind",
+          "check": ["."],
+          "args": ["--include-tests"]
+        }
+      ]
     }
   ]
 }

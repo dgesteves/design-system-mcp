@@ -11,6 +11,7 @@ import { TOKEN_CATEGORIES } from '../types.js';
 import { isInside, relativePath } from '../util/paths.js';
 import { NAME, VERSION } from '../version.js';
 import {
+  capDiagnostics,
   importStatement,
   renderCheck,
   renderComponent,
@@ -34,6 +35,9 @@ const MAX_QUERY = 1000;
 const MAX_PATH = 4096;
 /** Larger than any hand-written source file; generated bundles are not UI to check. */
 const MAX_CODE = 1_000_000;
+/** Diagnostics check_ui returns by default: a 3,000-line file can have thousands, more than a context holds. */
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 1000;
 
 const diagnosticSchema = z.object({
   ruleId: z.string(),
@@ -261,13 +265,34 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
           .max(MAX_PATH)
           .optional()
           .describe('Name to report `code` under; a .jsx extension parses it as JSX.'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_LIMIT)
+          .default(DEFAULT_LIMIT)
+          .describe(
+            `Most diagnostics to return, errors first (default ${DEFAULT_LIMIT}). The counts and byRule cover all of them.`,
+          ),
       },
       outputSchema: {
         file: z.string(),
         ok: z.boolean().describe('True when there are no errors.'),
         errorCount: z.number().int(),
         warningCount: z.number().int(),
-        diagnostics: z.array(diagnosticSchema),
+        diagnostics: z
+          .array(diagnosticSchema)
+          .describe(
+            'Up to `limit` diagnostics, errors first; `omitted` says how many more there are.',
+          ),
+        omitted: z.number().int().min(0).describe('Diagnostics left out by `limit`.'),
+        byRule: z
+          .record(z.string(), z.object({ errors: z.number().int(), warnings: z.number().int() }))
+          .describe('Every finding per rule, shown or not.'),
+        skipped: z
+          .string()
+          .optional()
+          .describe('Why the file was not checked: it renders an image (next/og) or an email.'),
         unchecked: z
           .object({ names: z.array(z.string()), modules: z.array(z.string()) })
           .optional()
@@ -281,7 +306,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       },
       annotations: READ_ONLY,
     },
-    async ({ code, path: filePath, filename }): Promise<CallToolResult> => {
+    async ({ code, path: filePath, filename, limit }): Promise<CallToolResult> => {
       const ds = await getDesignSystem();
       let source = code;
       let file = filename ?? 'snippet.tsx';
@@ -317,14 +342,21 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         file = relativePath(ds.root, absolute);
       }
       const result = ds.check(source, file);
+      const capped = capDiagnostics(result, limit);
       // A clean result without components or color tokens, or with components the model
       // leaves out, says little.
-      const notice =
-        [ds.notice(), uncheckedNotice([result])].filter(Boolean).join('\n\n') || undefined;
+      const notice = result.skipped
+        ? undefined
+        : [ds.notice(), uncheckedNotice([result])].filter(Boolean).join('\n\n') || undefined;
       return {
-        content: [{ type: 'text', text: renderCheck(result) + (notice ? `\n\n${notice}` : '') }],
+        content: [
+          { type: 'text', text: renderCheck(result, capped) + (notice ? `\n\n${notice}` : '') },
+        ],
         structuredContent: {
           ...result,
+          diagnostics: capped.shown,
+          omitted: capped.omitted,
+          byRule: capped.byRule,
           ok: result.errorCount === 0,
           ...(notice ? { notice } : {}),
         },

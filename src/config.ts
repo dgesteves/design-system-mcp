@@ -85,7 +85,7 @@ const configShape = {
     .array(z.string())
     .optional()
     .describe(
-      'Globs to ignore (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.',
+      'Globs to ignore when finding components and when `check` expands folders and globs (stories, tests). Replaces the defaults; node_modules is skipped either way unless a pattern names it.',
     ),
   tokens: z
     .union([tokenSourceSchema, z.array(tokenSourceSchema)])
@@ -169,11 +169,9 @@ export const DEFAULT_COMPONENTS = [
   'components/ui/**/*.{tsx,jsx}',
   'src/components/ui/**/*.{tsx,jsx}',
 ];
-export const DEFAULT_EXCLUDE = [
-  '**/node_modules/**',
-  '**/*.d.ts',
-  '**/*.{test,spec,stories}.{ts,tsx,js,jsx}',
-];
+/** Tests and stories: neither component sources nor UI that `check` lints by default. */
+export const DEFAULT_TEST_EXCLUDE = '**/*.{test,spec,stories}.{ts,tsx,js,jsx}';
+export const DEFAULT_EXCLUDE = ['**/node_modules/**', '**/*.d.ts', DEFAULT_TEST_EXCLUDE];
 export const DEFAULT_TOKENS = [
   'app/globals.css',
   'src/app/globals.css',

@@ -200,4 +200,10 @@ export interface CheckResult {
    * (extraction is incomplete), which the rules could not check.
    */
   unchecked?: { names: string[]; modules: string[] };
+  /**
+   * Why the file was not checked: it renders outside the browser's CSS (an
+   * Open Graph image through next/og, an email through React Email), where
+   * design tokens and classes do not apply.
+   */
+  skipped?: string;
 }

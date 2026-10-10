@@ -219,7 +219,7 @@ function check(selected) {
       const before = snapshot.runs[run];
       lines.push(
         before
-          ? `${run}: inspect or files checked changed: ${JSON.stringify({ files: before.files, ...before.inspect })} → ${JSON.stringify({ files: current[run].files, ...current[run].inspect })}`
+          ? `${run}: inspect or files checked changed: ${JSON.stringify({ checked: before.files, ...before.inspect })} → ${JSON.stringify({ checked: current[run].files, ...current[run].inspect })}`
           : `${run}: new run`,
       );
     }
@@ -308,7 +308,10 @@ function runOne(run) {
   const inspect = cli(['inspect', '--no-cache', ...config], cwd);
   if (inspect.status !== 0)
     throw new Error(`${run.name}: inspect exited ${inspect.status}\n${inspect.stderr}`);
-  const checked = cli(['check', ...run.check, '--format', 'json', '--no-cache', ...config], cwd);
+  const checked = cli(
+    ['check', ...run.check, ...(run.args ?? []), '--format', 'json', '--no-cache', ...config],
+    cwd,
+  );
   if (checked.status !== 0 && checked.status !== 1) {
     throw new Error(`${run.name}: check exited ${checked.status}\n${checked.stderr}`);
   }

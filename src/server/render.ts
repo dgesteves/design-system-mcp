@@ -1,7 +1,7 @@
 import type { DesignSystem } from '../design-system.js';
 import type { SearchHit } from '../search/index.js';
 import { formatPx } from '../tokens/units.js';
-import type { CheckResult, ComponentInfo, PropInfo, Token } from '../types.js';
+import type { CheckResult, ComponentInfo, Diagnostic, PropInfo, Token } from '../types.js';
 import { plural, truncate } from '../util/strings.js';
 
 /**
@@ -235,7 +235,34 @@ export function renderTokens(ds: DesignSystem, tokens: Token[]): string {
   return lines.join('\n').trimEnd();
 }
 
-export function renderCheck(result: CheckResult): string {
+/** Diagnostics an agent sees at once: errors first, in source order, then warnings. */
+export interface CappedCheck {
+  shown: Diagnostic[];
+  omitted: number;
+  /** Every finding per rule, shown or not. */
+  byRule: Record<string, { errors: number; warnings: number }>;
+}
+
+export function capDiagnostics(result: CheckResult, limit: number): CappedCheck {
+  const ordered = [
+    ...result.diagnostics.filter((d) => d.severity === 'error'),
+    ...result.diagnostics.filter((d) => d.severity !== 'error'),
+  ];
+  const byRule: CappedCheck['byRule'] = {};
+  for (const d of result.diagnostics) {
+    const counts = (byRule[d.ruleId] ??= { errors: 0, warnings: 0 });
+    if (d.severity === 'error') counts.errors++;
+    else counts.warnings++;
+  }
+  const shown = ordered.slice(0, limit);
+  return { shown, omitted: ordered.length - shown.length, byRule };
+}
+
+export function renderCheck(
+  result: CheckResult,
+  capped = capDiagnostics(result, Infinity),
+): string {
+  if (result.skipped) return `${result.file}: not checked. ${result.skipped}`;
   if (!result.diagnostics.length) {
     return `${result.file}: no design-system problems found.`;
   }
@@ -243,8 +270,19 @@ export function renderCheck(result: CheckResult): string {
     `${result.file}: ${plural(result.errorCount, 'error')}, ${plural(result.warningCount, 'warning')}`,
     '',
   ];
-  for (const d of result.diagnostics) {
+  for (const d of capped.shown) {
     lines.push(`${d.line}:${d.column} ${d.severity} [${d.ruleId}] ${d.message}`);
+  }
+  if (capped.omitted) {
+    const rules = Object.entries(capped.byRule)
+      .sort(([, a], [, b]) => b.errors + b.warnings - (a.errors + a.warnings))
+      .map(([rule, c]) => `${rule} ${(c.errors + c.warnings).toLocaleString('en-US')}`)
+      .join(', ');
+    lines.push(
+      '',
+      `Showing ${capped.shown.length} of ${result.diagnostics.length.toLocaleString('en-US')} (errors first). By rule: ${rules}.`,
+      `${capped.omitted.toLocaleString('en-US')} more not shown: fix these, then run check_ui again, or pass a higher \`limit\`.`,
+    );
   }
   lines.push(
     '',

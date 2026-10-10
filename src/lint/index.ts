@@ -86,6 +86,8 @@ function checkParsed(
       : ts.ScriptKind.TSX;
   const sourceFile = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, kind);
   const analysis = analyze(sourceFile);
+  const skipped = renderedElsewhere(file, analysis.imports);
+  if (skipped) return { file, diagnostics: [], errorCount: 0, warningCount: 0, skipped };
   const diagnostics: Diagnostic[] = [];
   const cache = new Map<unknown, Resolution>();
   const unchecked = { names: new Set<string>(), modules: new Set<string>() };
@@ -197,6 +199,41 @@ export function uncheckedNotice(results: readonly CheckResult[]): string | undef
     `${shown.join(', ')}${more} ${list.length === 1 ? 'comes' : 'come'} from ${from.join(', ')}${moreModules}, which the design-system model does not include, so ${list.length === 1 ? 'it was' : 'they were'} not checked${where}. ` +
     'Extraction looks incomplete: `inspect` lists what was found; add the missing files to "components" in the config.'
   );
+}
+
+/** Modules that render JSX to an image or an email, where CSS variables and Tailwind classes do not work. */
+const ELSEWHERE_MODULES: [RegExp, string][] = [
+  [/^(?:next\/og|@vercel\/og)$/, 'an image (next/og)'],
+  [/^satori(?:\/.*)?$/, 'an image (Satori)'],
+  [/^(?:@react-email\/.+|react-email)$/, 'an email (React Email)'],
+];
+
+/** Next.js routes that generate an image: `app/opengraph-image.tsx`, `app/(site)/icon.tsx`. */
+const IMAGE_ROUTE =
+  /(?:^|\/)app\/(?:.+\/)?(?:opengraph-image|twitter-image|icon|apple-icon)\d*\.[cm]?[jt]sx?$/;
+/** The pieces of such images, kept together in an `og` folder (`app/api/og/_components/background.tsx`). */
+const IMAGE_FOLDER = /(?:^|\/)og\//;
+
+/**
+ * Why a file is not checked, when it renders outside the browser's CSS: an
+ * Open Graph image drawn by next/og or Satori, or an email, where design
+ * tokens and classes do not apply and hex colors and px values are right.
+ */
+export function renderedElsewhere(
+  file: string,
+  imports: ReadonlyMap<string, { source: string }>,
+): string | undefined {
+  const sources = new Set([...imports.values()].map((binding) => binding.source));
+  for (const [pattern, what] of ELSEWHERE_MODULES) {
+    if ([...sources].some((source) => pattern.test(source))) {
+      return `It renders ${what}, where design tokens and classes do not apply.`;
+    }
+  }
+  const posix = file.replaceAll('\\', '/');
+  if (IMAGE_ROUTE.test(posix) || IMAGE_FOLDER.test(posix)) {
+    return 'It is part of a Next.js image route, rendered by next/og, where design tokens and classes do not apply.';
+  }
+  return undefined;
 }
 
 /** Syntax errors through the public API: a one-file program with no libs or resolution. */
