@@ -60,7 +60,9 @@ When a change fixes a false positive, add a label for it if there is none, run `
 
 Releases use [Changesets](https://github.com/changesets/changesets). For any user-facing change, run `pnpm changeset`, pick patch or minor, and describe the change for someone upgrading. Docs-only and internal changes need none.
 
-On merge to `main`, the release workflow opens a "chore: release" pull request: `changeset version` bumps `package.json` and writes `CHANGELOG.md`, and `scripts/sync-versions.mjs` copies the version into `server.json` (MCP Registry), the Claude Code plugin's `plugin.json`, and the exact `onsystem@<version>` the plugin's server and hook run. A test (`node scripts/sync-versions.mjs --check`) fails when they drift from `package.json`. Merging that pull request publishes to npm with provenance (npm trusted publishing, no token), and the same run publishes `server.json` to the MCP Registry. Do not edit `CHANGELOG.md` or those versions by hand.
+On merge to `main`, the release workflow opens a "chore: release" pull request: `changeset version` bumps `package.json` and writes `CHANGELOG.md`, and `scripts/sync-versions.mjs` copies the version into `server.json` (MCP Registry), the Claude Code plugin's `plugin.json`, the exact `onsystem@<version>` the plugin's server and hook run, and the same in the Agent Plugins and Cursor packages (`plugins/onsystem-agent`, `plugins/onsystem-cursor`). A test (`node scripts/sync-versions.mjs --check`) fails when they drift from `package.json`. Merging that pull request publishes to npm with provenance (npm trusted publishing, no token), and the same run publishes `server.json` to the MCP Registry. Do not edit `CHANGELOG.md` or those versions by hand.
+
+The skill has one source, `plugins/onsystem/skills/onsystem/SKILL.md`. After editing it, run `pnpm sync-plugins` to copy it into the other packages; a test fails when a copy differs.
 
 ### Retiring the old names (one-off, after onsystem 0.4.0 is on npm)
 

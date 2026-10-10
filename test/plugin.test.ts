@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import { randomUUID } from 'node:crypto';
 
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 
 import { fixture } from './helpers.js';
@@ -13,6 +14,10 @@ const REPO = path.resolve(import.meta.dirname, '..');
 const PLUGIN = path.join(REPO, 'plugins/onsystem');
 const HOOK = path.join(PLUGIN, 'hooks/check-ui.mjs');
 const SYNC = path.join(REPO, 'scripts/sync-versions.mjs');
+const SYNC_PLUGINS = path.join(REPO, 'scripts/sync-plugins.mjs');
+const AGENT = path.join(REPO, 'plugins/onsystem-agent');
+const CURSOR = path.join(REPO, 'plugins/onsystem-cursor');
+const SKILL = 'skills/onsystem/SKILL.md';
 
 const readJson = (file: string) =>
   JSON.parse(fs.readFileSync(path.join(REPO, file), 'utf8')) as Record<string, unknown>;
@@ -126,6 +131,10 @@ describe('Claude Code plugin manifests', () => {
         'plugins/onsystem/.claude-plugin/plugin.json',
         'plugins/onsystem/.mcp.json',
         'plugins/onsystem/hooks/check-ui.mjs',
+        'plugins/onsystem-agent/plugin.json',
+        'plugins/onsystem-agent/mcp.json',
+        'plugins/onsystem-cursor/.cursor-plugin/plugin.json',
+        'plugins/onsystem-cursor/mcp.json',
       ]) {
         fs.mkdirSync(path.dirname(path.join(copy, file)), { recursive: true });
         fs.copyFileSync(path.join(REPO, file), path.join(copy, file));
@@ -147,10 +156,137 @@ describe('Claude Code plugin manifests', () => {
       expect(JSON.parse(read('plugins/onsystem/.claude-plugin/plugin.json'))).toMatchObject({
         version: '9.8.7',
       });
+      // Every package for other agents moves with it.
+      for (const file of ['plugins/onsystem-agent/mcp.json', 'plugins/onsystem-cursor/mcp.json']) {
+        expect(read(file), file).toContain('"onsystem@9.8.7"');
+      }
+      for (const file of [
+        'plugins/onsystem-agent/plugin.json',
+        'plugins/onsystem-cursor/.cursor-plugin/plugin.json',
+      ]) {
+        expect(JSON.parse(read(file)), file).toMatchObject({ version: '9.8.7' });
+      }
       expect(JSON.parse(read('server.json'))).toMatchObject({
         version: '9.8.7',
         packages: [{ identifier: 'onsystem', version: '9.8.7' }],
       });
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  });
+});
+
+/** The YAML front matter of a SKILL.md, as flat `key: value` pairs. */
+function frontMatter(file: string): Record<string, string> {
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const block = /^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '';
+  return Object.fromEntries(
+    block
+      .split('\n')
+      .filter((line) => line.includes(':'))
+      .map((line) => [
+        line.slice(0, line.indexOf(':')).trim(),
+        line.slice(line.indexOf(':') + 1).trim(),
+      ]),
+  );
+}
+
+/** Every file in a package, relative to it, with forward slashes. */
+function filesOf(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'),
+    )
+    .sort();
+}
+
+describe('packages for other agents', () => {
+  const { version } = readJson('package.json') as { version: string };
+
+  it('ships an Agent Plugins 1.0 package that validates against the official schemas', () => {
+    // From agentplugins/agent-plugins-spec (schemas/1.0.0), vendored so the test needs no network.
+    const ajv = new Ajv2020({ allErrors: true });
+    for (const kind of ['plugin', 'mcp']) {
+      const schema = JSON.parse(
+        fs.readFileSync(path.join(REPO, `test/fixtures/agent-plugins/${kind}.schema.json`), 'utf8'),
+      ) as object;
+      const validate = ajv.compile(schema);
+      const value = readJson(`plugins/onsystem-agent/${kind}.json`);
+      validate(value);
+      expect(validate.errors ?? [], kind).toEqual([]);
+      // The schemas are strict enough to fail: an unknown field is rejected.
+      expect(validate({ ...value, icon: './icon.svg' }), kind).toBe(false);
+    }
+
+    const plugin = readJson('plugins/onsystem-agent/plugin.json');
+    expect(plugin).toMatchObject({ name: 'onsystem', version, license: 'MIT' });
+    // The server runs exactly this release, as in the Claude Code plugin; `command` is a bare
+    // executable, the only form the spec allows besides a path inside the plugin.
+    expect(readJson('plugins/onsystem-agent/mcp.json').mcpServers).toEqual({
+      onsystem: { type: 'stdio', command: 'npx', args: ['-y', `onsystem@${version}`] },
+    });
+    // Components are found at fixed places only: skills/<name>/SKILL.md, named as its folder.
+    expect(filesOf(AGENT)).toEqual(['README.md', 'mcp.json', 'plugin.json', SKILL]);
+    expect(frontMatter(path.join(AGENT, SKILL)).name).toBe('onsystem');
+  });
+
+  it("ships a Cursor plugin that passes the checks of Cursor's plugin template", () => {
+    // The checks of cursor/plugin-template's scripts/validate-template.mjs, for this repository.
+    const marketplace = readJson('.cursor-plugin/marketplace.json') as {
+      name: string;
+      owner: { name: string };
+      plugins: { name: string; source: string }[];
+    };
+    expect(marketplace.name).toMatch(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+    expect(marketplace.owner.name).toBe('Diogo Esteves');
+    expect(marketplace.plugins).toEqual([
+      expect.objectContaining({ name: 'onsystem', source: './plugins/onsystem-cursor' }),
+    ]);
+    const plugin = readJson('plugins/onsystem-cursor/.cursor-plugin/plugin.json');
+    expect(plugin).toMatchObject({ name: 'onsystem', version, logo: 'icon.svg' });
+    expect(plugin.name).toMatch(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/);
+    expect(fs.existsSync(path.join(CURSOR, 'icon.svg'))).toBe(true);
+    const skill = frontMatter(path.join(CURSOR, SKILL));
+    expect(skill.name).toBe('onsystem');
+    expect(skill.description?.length).toBeGreaterThan(50);
+
+    expect(readJson('plugins/onsystem-cursor/mcp.json')).toEqual({
+      mcpServers: { onsystem: { command: 'npx', args: ['-y', `onsystem@${version}`] } },
+    });
+    // No hooks: Cursor reads hooks/hooks.json in its own format, and the Claude Code hook is not one.
+    expect(filesOf(CURSOR)).toEqual([
+      '.cursor-plugin/plugin.json',
+      'README.md',
+      'icon.svg',
+      'mcp.json',
+      SKILL,
+    ]);
+  });
+
+  it('keeps one skill text in every package, and says when a copy drifts', () => {
+    const source = fs.readFileSync(path.join(PLUGIN, SKILL), 'utf8');
+    for (const dir of [AGENT, CURSOR]) {
+      expect(fs.readFileSync(path.join(dir, SKILL), 'utf8'), dir).toBe(source);
+    }
+    const sync = (...args: string[]) =>
+      spawnSync(process.execPath, [SYNC_PLUGINS, ...args], { encoding: 'utf8' });
+    expect(sync('--check').status).toBe(0);
+
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'onsystem-skills-'));
+    try {
+      fs.cpSync(path.join(REPO, 'plugins'), path.join(copy, 'plugins'), { recursive: true });
+      const edited = path.join(copy, 'plugins/onsystem-cursor', SKILL);
+      fs.writeFileSync(edited, source.replace('Run `check_ui`', 'Maybe run `check_ui`'));
+      const drift = sync('--check', '--root', copy);
+      expect(drift.status).toBe(1);
+      expect(drift.stderr).toContain(
+        'Not the same as plugins/onsystem: plugins/onsystem-cursor/skills/onsystem/SKILL.md.',
+      );
+      expect(sync('--root', copy).status).toBe(0);
+      expect(fs.readFileSync(edited, 'utf8')).toBe(source);
+      expect(sync('--check', '--root', copy).status).toBe(0);
     } finally {
       fs.rmSync(copy, { recursive: true, force: true });
     }

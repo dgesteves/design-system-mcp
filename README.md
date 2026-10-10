@@ -60,6 +60,8 @@ After each Write or Edit of a `.tsx` or `.jsx` file, the hook runs `onsystem che
 
 **Cursor or VS Code.** [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=onsystem&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9uc3lzdGVtIiwiLS1yb290IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19) [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=onsystem&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22onsystem%22%5D%7D), or commit the [config](https://design-system-mcp-demo.vercel.app/docs/clients#cursor-and-vs-code). The agent gets the tools and runs `check_ui` on what it writes.
 
+**Other agents.** `npx skills add dgesteves/onsystem` adds the skill to any agent with Agent Skills, and there are [plugins for Codex, GitHub Copilot CLI, VS Code and Cursor](https://design-system-mcp-demo.vercel.app/docs/clients#plugins-for-other-agents).
+
 **Any MCP client.** Run `npx -y onsystem` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](https://design-system-mcp-demo.vercel.app/docs/clients#other-clients).
 
 **CI.** Install it as a dev dependency, accept the findings the codebase already has once, and fail pull requests only on new ones:
