@@ -45,6 +45,7 @@ export const DOCS_FILES: Record<string, string> = {
   'required-check.md': '/docs/required-check',
   'clients.md': '/docs/clients',
   'configuration.md': '/docs/configuration',
+  'eslint.md': '/docs/eslint',
   'tools.md': '/docs/tools',
   'troubleshooting.md': '/docs/troubleshooting',
   'how-it-works.md': '/docs/how-it-works',

@@ -37,6 +37,12 @@ export const DOCS_PAGES = [
       'How the design system is found with zero config, and the config file for other layouts.',
   },
   {
+    href: '/docs/eslint',
+    title: 'ESLint plugin',
+    description:
+      'The same rules in ESLint 9 and 10, checked against each file’s design system, and how to run them alongside @shadcn/lint.',
+  },
+  {
     href: '/docs/tools',
     title: 'Tools',
     description: 'The five MCP tools, the resources and the prompt, with real responses.',

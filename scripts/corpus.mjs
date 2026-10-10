@@ -5,6 +5,8 @@
 //   node scripts/corpus.mjs --update         the same, then record the new counts in the snapshot
 //   node scripts/corpus.mjs fetch            only fetch
 //   node scripts/corpus.mjs sample <run>     print unlabelled findings with their code, to label
+//   node scripts/corpus.mjs eslint           lint the files each run checks through the ESLint
+//                                            plugin, and compare its findings with check's
 //
 // It fails when the counts differ from the snapshot (pass --update to accept them, as with Jest
 // snapshots), when a finding labelled TP is no longer reported, when one labelled FP comes
@@ -20,6 +22,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import {
@@ -101,13 +104,16 @@ try {
   } else if (command === 'check') {
     fetchAll(wanted);
     process.exitCode = check(wanted);
+  } else if (command === 'eslint') {
+    fetchAll(wanted);
+    process.exitCode = await eslintParity(wanted);
   } else if (command === 'sample') {
     const run = runs.find((r) => r.name === args[0]);
     if (!run) fail(`sample: pass a run, one of ${runs.map((r) => r.name).join(', ')}.`);
     fetchAll([run]);
     sample(run);
   } else {
-    fail(`Unknown command "${command}": check (default), fetch or sample <run>.`);
+    fail(`Unknown command "${command}": check (default), fetch, eslint or sample <run>.`);
   }
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
@@ -338,6 +344,112 @@ function check(selected) {
     return 1;
   }
   return 0;
+}
+
+// ─── Through ESLint ───────────────────────────────────────────────────────────
+
+/**
+ * Each run again through the ESLint plugin (dist/eslint.js, `onsystem/eslint`): the files
+ * `check` reported on, linted from the run's folder with the recommended config and
+ * typescript-eslint's parser, must get the same findings, rule for rule and position for
+ * position. The repository's own ESLint config is not read.
+ */
+async function eslintParity(selected) {
+  const pluginFile = path.join(ROOT, 'dist', 'eslint.js');
+  if (!fs.existsSync(pluginFile))
+    throw new Error(`${path.relative(ROOT, pluginFile)} is missing: run pnpm build first.`);
+  const { ESLint } = await import('eslint');
+  const { default: tseslint } = await import('typescript-eslint');
+  const { default: onsystem } = await import(pathToFileURL(pluginFile).href);
+  // Findings that are not rules of the plugin: ESLint's parser reports syntax errors itself.
+  const notInEslint = new Set(['syntax', 'suppression']);
+  const failures = [];
+  for (const run of selected) {
+    const started = performance.now();
+    const { results } = runOne(run);
+    const cwd = path.join(dir, run.repo.name, run.cwd);
+    const files = results.filter((r) => !r.skipped).map((r) => r.file);
+    const key = (file, line, column, rule) => `${file}:${line}:${column} ${rule}`;
+    const want = results.flatMap((r) =>
+      r.diagnostics
+        .filter((d) => !notInEslint.has(d.ruleId))
+        .map((d) => key(r.file, d.line, d.column, d.ruleId)),
+    );
+    const eslint = new ESLint({
+      cwd,
+      overrideConfigFile: true,
+      overrideConfig: [
+        {
+          files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+          languageOptions: {
+            parser: tseslint.parser,
+            parserOptions: { ecmaFeatures: { jsx: true } },
+          },
+        },
+        {
+          ...onsystem.configs.recommended,
+          // `--include-tests` checks tests and stories, which the recommended config ignores.
+          ...((run.args ?? []).includes('--include-tests') ? { ignores: [] } : {}),
+          ...(run.config
+            ? { settings: { onsystem: { root: '.', config: path.join(CORPUS, run.config) } } }
+            : {}),
+        },
+      ],
+    });
+    const linted = await eslint.lintFiles(files);
+    const got = [];
+    const unparsed = [];
+    for (const result of linted) {
+      const file = path.relative(cwd, result.filePath).split(path.sep).join('/');
+      for (const message of result.messages) {
+        if (message.fatal) unparsed.push(`${file}: ${message.message}`);
+        else if (message.ruleId?.startsWith('onsystem/'))
+          got.push(
+            key(file, message.line, message.column, message.ruleId.slice('onsystem/'.length)),
+          );
+      }
+    }
+    const missing = without(want, got);
+    const extra = without(got, want);
+    const same = !missing.length && !extra.length && !unparsed.length;
+    console.log(
+      `${run.name.padEnd(22)} ${String(files.length).padStart(5)} files  ${String(got.length).padStart(5)} findings  ${same ? 'same as check' : 'DIFFERENT'}  ${seconds(started)}`,
+    );
+    if (same) continue;
+    const list = (title, items) =>
+      items.length
+        ? [
+            `  ${title} (${items.length}):`,
+            ...items.slice(0, 10).map((i) => `    ${i}`),
+            ...(items.length > 10 ? [`    …and ${items.length - 10} more`] : []),
+          ]
+        : [];
+    failures.push(
+      [
+        `${run.name}:`,
+        ...list('reported by check, not by ESLint', missing),
+        ...list('reported by ESLint, not by check', extra),
+        ...list('not parsed by ESLint', unparsed),
+      ].join('\n'),
+    );
+  }
+  if (failures.length) {
+    console.error(`\n${failures.map((f) => `✗ ${f}`).join('\n')}`);
+    return 1;
+  }
+  console.log(`\nThe ESLint plugin reports what check reports in ${selected.length} runs.`);
+  return 0;
+}
+
+/** The items of `a` that `b` does not account for, counting repeats. */
+function without(a, b) {
+  const left = new Map();
+  for (const item of b) left.set(item, (left.get(item) ?? 0) + 1);
+  return a.filter((item) => {
+    const n = left.get(item) ?? 0;
+    if (n) left.set(item, n - 1);
+    return !n;
+  });
 }
 
 /** `inspect` and `check --format json` with the built CLI, from the run's folder. */

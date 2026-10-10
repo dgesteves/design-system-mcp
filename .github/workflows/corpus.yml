@@ -64,3 +64,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+      # The same runs through the ESLint plugin, which must report what check reports.
+      - name: Check the corpus through ESLint
+        run: pnpm --silent corpus eslint
