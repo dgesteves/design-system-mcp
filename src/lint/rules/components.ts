@@ -242,7 +242,7 @@ const PROP_SYNONYMS: Record<string, string[]> = {
 
 /**
  * Props that mean the same thing in different conventions: native elements and Radix on one
- * side, React Aria Components on the other. Whichever spelling an agent writes, the one the
+ * side, React Aria Components on the other. A native field states `isInvalid` as `aria-invalid`. Whichever spelling an agent writes, the one the
  * component takes is suggested, in either direction. Event handlers are left out: their
  * arguments differ (`onCheckedChange(checked)` against an input's `onChange(event)`).
  */
@@ -250,7 +250,7 @@ const PROP_EQUIVALENTS: string[][] = [
   ['disabled', 'isDisabled'],
   ['required', 'isRequired'],
   ['readOnly', 'isReadOnly'],
-  ['invalid', 'isInvalid'],
+  ['invalid', 'isInvalid', 'aria-invalid'],
   ['open', 'isOpen'],
   ['checked', 'isSelected', 'selected'],
   ['defaultChecked', 'defaultSelected'],

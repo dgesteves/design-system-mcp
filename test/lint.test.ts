@@ -1463,6 +1463,13 @@ import Link from "next/link"
     expect(check(`${IMPORTS}<Button isDisabled />`, rule)[0]?.suggestion).toBe('disabled');
   });
 
+  it('suggests aria-invalid for isInvalid on a native field, not onInvalid', () => {
+    const code = `import { Input } from "@/components/ui/input"\n<Input isInvalid={!!error} />`;
+    const [d] = check(code, rule);
+    expect(d?.message).toBe('<Input> has no prop "isInvalid". Did you mean "aria-invalid"?');
+    expect(applyFixes(code, d ? [d] : [])).toContain('<Input aria-invalid={!!error} />');
+  });
+
   it('skips components whose props could not be fully resolved', async () => {
     const acme = await loadOnce(ACME_ROOT);
     expect(

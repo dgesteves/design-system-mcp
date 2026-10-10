@@ -46,7 +46,15 @@ describe('MCP server over the in-memory transport', () => {
       expect(tool.description?.length).toBeGreaterThan(80);
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
       expect(tool.inputSchema.type).toBe('object');
+      // The README says every tool has one.
+      expect([tool.name, tool.outputSchema?.type]).toEqual([tool.name, 'object']);
     }
+    // Integers carry no ±(2^53 - 1) bounds, which every client would read for nothing.
+    expect(JSON.stringify(tools)).not.toContain('9007199254740991');
+    const component = tools.find((t) => t.name === 'get_component');
+    expect(Object.keys(component?.outputSchema?.properties ?? {})).toEqual(
+      expect.arrayContaining(['name', 'importPath', 'props', 'variants', 'import', 'tokens']),
+    );
     const check = tools.find((t) => t.name === 'check_ui');
     expect(Object.keys(check?.inputSchema.properties ?? {})).toEqual([
       'code',
@@ -125,6 +133,23 @@ describe('MCP server over the in-memory transport', () => {
     );
     const { tokens } = all.structuredContent as { tokens: unknown[] };
     expect(tokens).toHaveLength(31);
+    const none = await client.callTool({ name: 'get_tokens', arguments: { category: 'shadow' } });
+    expect(text(none)).toMatch(
+      /^No tokens match shadow\. The design system has color \(\d+\), .*; call get_tokens without filters to see them\.$/,
+    );
+  });
+
+  it('get_tokens says when the project has no tokens at all', async () => {
+    const ds = await load(fixture({ 'package.json': '{ "name": "plain" }' }));
+    const server = createServer({ getDesignSystem: () => Promise.resolve(ds) });
+    const other = new Client({ name: 'empty', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), other.connect(clientTransport)]);
+    const result = await other.callTool({ name: 'get_tokens', arguments: {} });
+    expect(text(result)).toContain('No design tokens found in this project');
+    expect(text(result)).toContain('Set "tokens" in the config');
+    expect(text(result)).not.toContain('without filters');
+    await other.close();
   });
 
   it('check_ui on code and on a project file', async () => {

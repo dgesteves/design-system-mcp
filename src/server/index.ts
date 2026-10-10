@@ -39,21 +39,98 @@ const MAX_CODE = 1_000_000;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 1000;
 
+/**
+ * An integer, without the ±9007199254740991 bounds zod adds to the JSON Schema,
+ * which every client would otherwise read in each tool definition.
+ */
+const int = () => z.number().int().meta({ minimum: undefined, maximum: undefined });
+
 const diagnosticSchema = z.object({
   ruleId: z.string(),
   severity: z.enum(['error', 'warning']),
   message: z.string(),
-  line: z.number().int(),
-  column: z.number().int(),
-  endLine: z.number().int(),
-  endColumn: z.number().int(),
+  line: int(),
+  column: int(),
+  endLine: int(),
+  endColumn: int(),
   source: z.string(),
   suggestion: z.string().optional(),
   fix: z
-    .array(z.object({ range: z.tuple([z.number().int(), z.number().int()]), text: z.string() }))
+    .array(z.object({ range: z.tuple([int(), int()]), text: z.string() }))
     .optional()
     .describe('Edits (0-based offsets into the checked code) that apply the suggestion.'),
 });
+
+const deprecatedSchema = z.union([z.string(), z.literal(true)]).optional();
+const componentSchema = {
+  name: z.string().describe('How the component is written in JSX: Button, CardHeader, Tabs.List.'),
+  aliases: z.array(z.string()),
+  description: z.string().optional(),
+  deprecated: deprecatedSchema,
+  importPath: z.string(),
+  exportName: z.string(),
+  source: z.object({ file: z.string(), line: int() }),
+  parent: z.string().optional(),
+  subcomponents: z.array(z.string()),
+  element: z.string().optional().describe('The native element it renders or wraps.'),
+  props: z.array(
+    z.object({
+      name: z.string(),
+      type: z.string(),
+      required: z.boolean(),
+      default: z.string().optional(),
+      description: z.string().optional(),
+      values: z.array(z.string()).optional(),
+      deprecated: deprecatedSchema,
+      kind: z.enum(['prop', 'variant']),
+    }),
+  ),
+  inherits: z.array(
+    z.object({
+      from: z.string(),
+      count: int(),
+      set: z.string(),
+      deprecated: z.array(z.string()).optional(),
+    }),
+  ),
+  openProps: z
+    .boolean()
+    .describe('Part of the props type did not resolve; extra props may be accepted.'),
+  variants: z.array(
+    z.object({
+      name: z.string(),
+      values: z.array(z.string()),
+      default: z.string().optional(),
+      classes: z.record(z.string(), z.string()),
+    }),
+  ),
+  compoundVariants: z.array(
+    z.object({
+      when: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+      classes: z.string(),
+    }),
+  ),
+  examples: z.array(
+    z.object({
+      title: z.string().optional(),
+      code: z.string(),
+      lang: z.string(),
+      source: z.enum(['docs', 'jsdoc']),
+    }),
+  ),
+  docs: z
+    .object({
+      file: z.string(),
+      description: z.string().optional(),
+      sections: z.array(z.object({ heading: z.string(), body: z.string() })),
+      frontmatter: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+    })
+    .optional(),
+  classNames: z.array(z.string()),
+  cssVars: z.array(z.string()),
+  import: z.string().describe('The import statement to use.'),
+  tokens: z.array(z.string()).describe('Names of the design tokens its classes use.'),
+};
 
 const componentSummarySchema = z.object({
   name: z.string(),
@@ -128,6 +205,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
           .max(MAX_NAME)
           .describe('Component name, e.g. "Button" or "CardHeader".'),
       },
+      outputSchema: componentSchema,
       annotations: READ_ONLY,
     },
     async ({ name }): Promise<CallToolResult> => {
@@ -226,7 +304,7 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       const ds = await getDesignSystem();
       const tokens = ds.getTokens({ category, query });
       return {
-        content: [{ type: 'text', text: renderTokens(ds, tokens) }],
+        content: [{ type: 'text', text: renderTokens(ds, tokens, { category, query }) }],
         structuredContent: {
           tokens: tokens.map((t) => ({
             name: t.name,
@@ -278,16 +356,16 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
       outputSchema: {
         file: z.string(),
         ok: z.boolean().describe('True when there are no errors.'),
-        errorCount: z.number().int(),
-        warningCount: z.number().int(),
+        errorCount: int(),
+        warningCount: int(),
         diagnostics: z
           .array(diagnosticSchema)
           .describe(
             'Up to `limit` diagnostics, errors first; `omitted` says how many more there are.',
           ),
-        omitted: z.number().int().min(0).describe('Diagnostics left out by `limit`.'),
+        omitted: int().describe('Diagnostics left out by `limit`.'),
         byRule: z
-          .record(z.string(), z.object({ errors: z.number().int(), warnings: z.number().int() }))
+          .record(z.string(), z.object({ errors: int(), warnings: int() }))
           .describe('Every finding per rule, shown or not.'),
         skipped: z
           .string()
