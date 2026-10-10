@@ -14,7 +14,7 @@ import {
   updateBaseline,
   writeBaseline,
 } from './baseline.js';
-import { ConfigError, DEFAULT_TEST_EXCLUDE, loadConfig } from './config.js';
+import { ConfigError, DEFAULT_TEST_EXCLUDE, loadConfig, rulesFor } from './config.js';
 import { componentFiles, loadDesignSystem } from './design-system.js';
 import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
@@ -311,12 +311,14 @@ async function check(
     io.stderr(`check: baseline not found: ${displayPath(io.cwd, baselineFile)}`);
     return 2;
   }
-  // Entries of rules that are off are kept, not reported as fixed.
-  const disabled = new Set(
-    Object.entries(ds.config.rules)
-      .filter(([, rule]) => rule.severity === 'off')
-      .map(([id]) => id),
-  );
+  // Entries of rules that are off for a file (in `rules` or an override) are kept, not reported as fixed.
+  const disabledFor = (file: string) =>
+    new Set(
+      Object.entries(rulesFor(ds.config, relativePath(ds.root, file)))
+        .filter(([, rule]) => rule.severity === 'off')
+        .map(([id]) => id),
+    );
+  const disabledByKey = new Map<string, Set<string>>();
   // Keys are relative to the real root, with the on-disk spelling of each path and
   // NFC names, so `APP/`, a linked root or a decomposed `café.tsx` find the same entry.
   const realRoot = fs.realpathSync.native(ds.root);
@@ -331,6 +333,8 @@ async function check(
     const code = await fsp.readFile(file, 'utf8');
     let result = ds.check(code, relativePath(ds.root, file));
     const key = baselineKey(file);
+    const disabled = disabledFor(file);
+    disabledByKey.set(key, disabled);
     if (update) checked.set(key, result.diagnostics);
     if (baseline && !update) {
       const match = applyBaseline(baseline, key, result, disabled);
@@ -349,7 +353,12 @@ async function check(
   const unchecked = uncheckedNotice(results);
 
   if (update) {
-    const next = updateBaseline(baseline, checked, realRoot, disabled);
+    const next = updateBaseline(
+      baseline,
+      checked,
+      realRoot,
+      (key) => disabledByKey.get(key) ?? new Set(),
+    );
     writeBaseline(baselineFile, next);
     const counts = countBaseline(next);
     io.stdout(

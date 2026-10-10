@@ -273,6 +273,40 @@ describe('design-system-mcp without a design system', () => {
     expect(json.stderr).toContain(notice);
   });
 
+  it('applies config overrides by path, and keeps baseline entries of rules they turn off', async () => {
+    const page = 'export default () => <div className="bg-[#ef4444]"><button>Go</button></div>';
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'app/globals.css': ':root { --destructive: #ef4444; }',
+      'app/page.tsx': page,
+      'app/legacy/card.tsx': page,
+    });
+    const before = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+    expect(before.stdout).toMatch(/^Baseline: 4 findings in 2 files/);
+    fs.writeFileSync(
+      path.join(root, 'design-system-mcp.config.json'),
+      JSON.stringify({
+        tokens: ['app/globals.css'],
+        overrides: [{ files: ['app/legacy/**'], rules: { 'no-hardcoded-color': 'off' } }],
+      }),
+    );
+    const all = await run(
+      ['check', 'app', '--ignore-baseline', '--no-cache', '--format', 'json'],
+      root,
+    );
+    const findings = (
+      JSON.parse(all.stdout) as { file: string; diagnostics: { ruleId: string }[] }[]
+    ).map((r) => [r.file, r.diagnostics.map((d) => d.ruleId)]);
+    expect(findings).toEqual([
+      ['app/legacy/card.tsx', ['prefer-design-system-component']],
+      ['app/page.tsx', ['no-hardcoded-color', 'prefer-design-system-component']],
+    ]);
+    // The legacy file's color entry is not reported as fixed: the rule is off there, not passing.
+    const withBaseline = await run(['check', 'app', '--no-cache'], root);
+    expect(withBaseline.stdout).not.toContain('no longer');
+  });
+
   it('fails with --require-design-system, and names what is missing', async () => {
     expect(await run(['check', '.', '--require-design-system', '--no-cache'], plain())).toEqual({
       code: 2,

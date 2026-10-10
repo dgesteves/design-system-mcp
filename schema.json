@@ -193,6 +193,108 @@
           }
         ]
       }
+    },
+    "overrides": {
+      "description": "Rules for some files: [{ \"files\": [\"app/legacy/**\"], \"rules\": { \"no-hardcoded-color\": \"warn\" } }]. Later entries win.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "Globs, relative to the root, of the files these rules apply to: \"app/legacy/**\", \"**/*.generated.tsx\"."
+          },
+          "rules": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "no-hardcoded-color",
+                "no-hardcoded-spacing",
+                "no-hardcoded-radius",
+                "prefer-design-system-component",
+                "no-unknown-component",
+                "no-unknown-prop",
+                "no-unknown-variant",
+                "icon-button-accessible-name"
+              ]
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "off",
+                    "warn",
+                    "error"
+                  ]
+                },
+                {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "warn",
+                        "error"
+                      ]
+                    }
+                  ],
+                  "additionalItems": false,
+                  "minItems": 1,
+                  "maxItems": 1
+                },
+                {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "warn",
+                        "error"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "allow": {
+                          "description": "Values the rule accepts anyway: colors, lengths, element or component names.",
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ],
+                  "additionalItems": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              ]
+            },
+            "description": "Rule severities and options for those files, over \"rules\"."
+          }
+        },
+        "required": [
+          "files",
+          "rules"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

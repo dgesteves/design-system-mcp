@@ -12,6 +12,7 @@ import {
   preferDesignSystemComponent,
 } from './rules/components.js';
 import { noHardcodedColor, noHardcodedRadius, noHardcodedSpacing } from './rules/hardcoded.js';
+import { isSuppressed, readDirectives } from './suppress.js';
 import type { LintTarget } from './target.js';
 
 export { LintTarget } from './target.js';
@@ -143,6 +144,15 @@ function checkParsed(
     };
     rule.run(context);
   }
+
+  // `// onsystem-disable-next-line <rule>` and friends; an unknown rule name is reported.
+  const { directives, problems } = readDirectives(sourceFile);
+  if (directives.length) {
+    const kept = diagnostics.filter((d) => !isSuppressed(d, directives));
+    diagnostics.length = 0;
+    diagnostics.push(...kept);
+  }
+  diagnostics.push(...problems);
 
   // Syntax errors make every other finding suspect; surface them first.
   for (const error of syntaxErrors(sourceFile)) {

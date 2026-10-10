@@ -133,16 +133,18 @@ export function updateBaseline(
   previous: Entries | undefined,
   checked: ReadonlyMap<string, Diagnostic[]>,
   root: string,
-  disabled: ReadonlySet<string> = new Set(),
+  disabled: ReadonlySet<string> | ((file: string) => ReadonlySet<string>) = new Set(),
 ): Entries {
+  const disabledIn = typeof disabled === 'function' ? disabled : () => disabled;
   const next: Entries = new Map();
   for (const [file, rules] of previous ?? []) {
     if (!checked.has(file) && fs.existsSync(path.resolve(root, file))) next.set(file, rules);
   }
   for (const [file, diagnostics] of checked) {
     const rules = new Map<string, Map<string, number>>();
+    const off = disabledIn(file);
     for (const [rule, sources] of previous?.get(file) ?? []) {
-      if (disabled.has(rule)) rules.set(rule, sources);
+      if (off.has(rule)) rules.set(rule, sources);
     }
     for (const diagnostic of diagnostics) {
       let sources = rules.get(diagnostic.ruleId);
