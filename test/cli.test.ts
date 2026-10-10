@@ -354,7 +354,7 @@ describe('onsystem errors and help', () => {
       expect({ code, stdout, stderr }).toEqual({
         code: 2,
         stdout: '',
-        stderr: 'Project root not found: /nope/not-here',
+        stderr: `Project root not found: ${path.resolve('/nope/not-here')}`,
       });
     }
   });

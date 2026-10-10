@@ -123,6 +123,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Debug fixture links (temporary)
+        if: runner.os == 'Windows'
+        run: node scripts/debug-fixture.mjs
       - run: pnpm test
 
   pack:

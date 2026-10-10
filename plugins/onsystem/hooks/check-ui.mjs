@@ -64,7 +64,8 @@ const sessionDir =
     : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
 const file = path.resolve(sessionDir, filePath);
 const root = projectRoot(path.dirname(file)) ?? sessionDir;
-const name = path.relative(root, file) || file;
+// Forward slashes, as the CLI prints paths, on Windows too.
+const name = path.relative(root, file).split(path.sep).join('/') || file;
 if (!process.env.ONSYSTEM_BIN && process.env.DESIGN_SYSTEM_MCP_BIN) {
   // On stderr, the debug log, and only when the hook passes: a blocked edit's stderr is Claude's.
   const text = 'DESIGN_SYSTEM_MCP_BIN is the name ONSYSTEM_BIN had before the rename: rename it.';
