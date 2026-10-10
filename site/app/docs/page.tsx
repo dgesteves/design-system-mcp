@@ -11,11 +11,11 @@ export default function QuickstartPage() {
   return (
     <DocPage
       href="/docs"
-      source={['quickstart']}
+      file="docs/quickstart.md"
       lead={
         <p>
-          From nothing to an agent that looks your design system up before writing UI, and checks
-          what it wrote. Four steps, a couple of minutes.
+          From nothing to an agent that is held to your design system, and pull requests that are
+          checked against it. Four steps, a couple of minutes.
         </p>
       }
     >

@@ -8,11 +8,8 @@ export const metadata: Metadata = docsMetadata('/docs/ci');
 
 export default function CiPage() {
   return (
-    <DocPage href="/docs/ci" source={['ci', 'adopting-it-in-an-existing-codebase']}>
-      <MarkdownBlocks
-        markdown={`${docs.ci}\n\n### Adopting it in an existing codebase\n\n${docs.baseline}`}
-        shift={1}
-      />
+    <DocPage href="/docs/ci" file="docs/ci.md">
+      <MarkdownBlocks markdown={docs.ci} />
     </DocPage>
   );
 }

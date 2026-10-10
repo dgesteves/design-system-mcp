@@ -2,35 +2,42 @@ import type { Metadata } from 'next';
 
 import { DocPage, docsMetadata } from '@/components/doc-page';
 import { InlineMarkdown } from '@/components/markdown';
-import { MarkdownBlocks, slug } from '@/components/markdown-blocks';
-import { docs } from '@/lib/data';
+import { slug } from '@/components/markdown-blocks';
 
 export const metadata: Metadata = docsMetadata('/docs/faq');
 
 const FAQ: [question: string, answer: string][] = [
   [
     'Does my code leave my machine?',
-    'No. The server and the CLI run where you run them: they read your files with the TypeScript compiler and apply the rules, with no model calls, no API key and no network requests. Your agent sends its context to its own model, as it does with any tool. The [playground](/playground) is the one exception: it sends what you type to this site, which checks it and does not store it.',
+    'No. The hook, the CLI and the server run where you run them: they read your files with the TypeScript compiler and apply the rules, with no model calls, no API key and no network requests. Your agent sends its context to its own model, as it does with any tool. The [playground](/playground) is the one exception: it sends what you type to this site, which checks it and does not store it.',
   ],
   [
     'Is there a model behind it?',
     'No. The agent is already the model; what it lacks is ground truth. Everything here is deterministic static analysis that takes milliseconds and can be tested rule by rule. The trade-off: it cannot judge intent, such as whether a `Dialog` was the right call. That stays with the agent and the reviewer.',
   ],
   [
+    'Does it work with agents other than Claude Code?',
+    'Yes. Any MCP client gets the tools, including `check_ui`, which the agent runs on its own output, and `onsystem check` in CI gates the pull request whichever agent wrote it. The hook that checks each edit as it happens ships for Claude Code only so far. [Set up your agent](/docs/clients) has a config for each client.',
+  ],
+  [
+    'How often is it wrong?',
+    'It is measured: every pull request that touches the rules runs them on 10 public repositories pinned by commit and compares the findings with a hand-labelled sample, and the [corpus](https://github.com/dgesteves/onsystem/tree/main/corpus) has the labels. The README quotes the current false-positive rate. When it flags something that is fine, [suppress it](/rules#suppressing-findings) with a comment, turn the rule down in the [config](/rules#configure), and please open an issue with the snippet and the output of `inspect`: those are the reports I most want.',
+  ],
+  [
     'How is it different from @shadcn/lint?',
-    '@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values), native elements the design system wraps and icon buttons without a name, on Tailwind v3 or v4. Running both in CI is a sensible setup.',
+    '@shadcn/lint checks the Tailwind classes written against a component and the theme (restyling a component, raw colors, arbitrary and unknown classes), in React, Svelte and Vue, on Tailwind v4. onsystem checks that the components, props and variant values exist, that native elements the design system wraps are not used, and that icon buttons have a name, on Tailwind v3 or v4, and gives the agent the design system before it writes. They overlap on raw colors and arbitrary values; run both.',
   ],
   [
     'Why not Storybook MCP?',
-    'It is a good fit if you run Storybook: it serves stories and a component manifest from a running instance, and can run component tests. onsystem reads the source, so it works in projects without Storybook, and in CI.',
+    'It is a good fit if you run Storybook: it serves stories and a component manifest from a running instance, and can run component tests. onsystem reads the source, so it works in projects without Storybook, in a hook, and in CI.',
   ],
   [
     'Why not describe the design system in CLAUDE.md or AGENTS.md?',
-    'A static list goes stale, and agents still guess prop values and colors. Here the agent asks for the component it is about to use and gets checked afterwards. One line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` still helps clients that ignore the server\'s instructions: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_',
+    'A static list goes stale, and agents still guess prop values and colors. Here the agent is checked on what it actually wrote. One line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` still helps clients that ignore the server\'s instructions: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_',
   ],
   [
     'My components are not in components/ui. Do I need a config?',
-    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), is the design-system package itself, or keeps its components in a flat `src/` that wraps React Aria, Radix or another primitives library: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y onsystem inspect` prints what was found.',
+    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), is the design-system package itself, or keeps its components in a flat `src/` that wraps React Aria, Radix or another primitives library: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y onsystem inspect` prints what was found, and [troubleshooting](/docs/troubleshooting) covers what to do when it finds nothing.',
   ],
   [
     "Will check fail on my design system's own components?",
@@ -38,15 +45,11 @@ const FAQ: [question: string, answer: string][] = [
   ],
   [
     'Is the Claude Code plugin safe to install everywhere?',
-    'Yes. The hook stays quiet in projects without a design system, only reports on what Claude just changed, and honours a baseline.',
+    'Yes. The hook stays quiet in projects without a design system, only reports on what Claude just changed, honours a baseline, and never blocks an edit because it could not run.',
   ],
   [
     'Does it work with Vue, Svelte or Angular?',
-    'Not yet: React only (`.tsx` and `.jsx`). Angular and Web Components extraction is first on the roadmap.',
-  ],
-  [
-    'It flagged something that is fine. What now?',
-    'Turn the rule off or allow the value in the [config](/rules#configure), and please open an issue with the snippet and the output of `inspect`. A linter lives or dies on false positives, so those are the reports I most want.',
+    'Not yet: React only (`.tsx` and `.jsx`). The other [limits](/docs/how-it-works#limits) are listed with how it works.',
   ],
   [
     'What does it need to run?',
@@ -56,7 +59,7 @@ const FAQ: [question: string, answer: string][] = [
 
 export default function FaqPage() {
   return (
-    <DocPage href="/docs/faq" source={['limits']}>
+    <DocPage href="/docs/faq">
       <div className="grid gap-8">
         {FAQ.map(([question, answer]) => (
           <section key={question} aria-labelledby={slug(question)}>
@@ -71,9 +74,6 @@ export default function FaqPage() {
             </p>
           </section>
         ))}
-      </div>
-      <div className="mt-14 border-t border-line pt-10">
-        <MarkdownBlocks markdown={`## Limits\n\n${docs.limits}`} />
       </div>
     </DocPage>
   );

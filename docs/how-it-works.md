@@ -1,0 +1,62 @@
+# How it works
+
+onsystem reads the design system from source into one model, then checks UI code against it in three places: the Claude Code hook after every edit, `check_ui` when an agent asks, and `onsystem check` in CI. Everything is static analysis: no model calls, no API key, and it runs offline.
+
+![Sources (components, tokens, docs, config) flow through the TypeScript checker, a cva parser, token parsers and a docs parser into a cached design-system model with a BM25 index, an OKLCH token index and the lint rules, served by an MCP server over stdio and by the check CLI, which the Claude Code hook and CI run.](../.github/assets/architecture.svg)
+
+1. **Components.** One TypeScript program over the component files, with the project's `tsconfig` (so path aliases and dependency types resolve). For each exported PascalCase function, `forwardRef`, `memo` or class component, and each alias of a library component (`const Dialog = DialogPrimitive.Root`), the checker gives the props type. Props declared in the project, or by packages such as Radix, are listed with types, required flags, defaults (from destructuring, `@default` or `defaultVariants`) and JSDoc. React's DOM attributes are summarised as "…plus 290 props from `React.ComponentProps<"button">`" but kept in full for linting. When dependency types are missing, extraction falls back to what resolves and marks the props as open, so the linter does not guess.
+2. **Variants.** `cva()` and `tv()` calls are read from the AST: values in declaration order, defaults, per-value classes and compound variants. They are linked to a component through `VariantProps<typeof x>` or a call in the className of the element it returns; a definition used further in (a spinner's `loaderVariants`) only adds the variants the component's own lack and that it takes as props. Without either, a call anywhere in its body links it. Boolean keys named like a render state (`isDisabled`, `isPending`, as React Aria's starter passes `renderProps` to `tv()`) style a state rather than offer a variant, so they are not listed as variants, and a key declared by two linked definitions is listed once.
+3. **Composition.** Flat parts (`CardHeader` next to `Card` in `card.tsx`, but not a lone container such as `CheckboxGroup` next to `Checkbox`), static members (`Card.Header = CardHeader`) and `Object.assign(Root, { List })` (members exported or not, shorthand included) become parent/part relationships. The wrapped native element comes from `ComponentProps<"button">`, `ButtonHTMLAttributes<HTMLButtonElement>`, the `forwardRef` element type, or the rendered JSX (including `const Comp = asChild ? Slot : "button"`).
+4. **Model.** Components, tokens and docs form one JSON model, cached in `node_modules/.cache/onsystem` and keyed on the sizes and mtimes of the component, token and docs files, the project files the components import and the tsconfig chain, plus the lockfile, the config and the package version. The server answers the MCP handshake immediately and loads in the background; requests wait for the load. File changes trigger a rebuild that reuses the previous TypeScript program, an edited config file is read again, and clients are notified that resources changed.
+5. **Lint.** `check_ui` parses the snippet on its own (no type-checking), resolves each JSX tag through its imports (named, default, namespace, relative, and barrels such as `@/components/ui` or `../components/ui`) to a design-system component, and runs the rules against the model. Fixes are text edits with offsets, so an agent or a tool can apply them mechanically.
+
+## On real codebases
+
+Run as is, with no config, on public apps (with version 0.2.0). These counts are not a judgement of the teams: hardcoded values and unlabeled icon buttons slip through review everywhere, and agents copy what they see.
+
+| Project                                                                   | Found with zero config                         | `check` findings                                                                                                                                  |
+| ------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [vercel/ai-chatbot](https://github.com/vercel/ai-chatbot) `c2f8235`       | `components.json` → 23 components, 52 tokens   | 77 in `app/` and `components/`: 41 raw colors, 20 native elements the design system wraps, 11 icon-only buttons without an accessible name        |
+| [midday](https://github.com/midday-ai/midday) `5158731`, `apps/dashboard` | workspace package `@midday/ui` → 78 components | 1,237 in `src/`, including 105 icon-only buttons without an accessible name. Adopted with a [baseline](ci.md#adopting-it-in-an-existing-codebase) |
+| [shadcn/ui](https://github.com/shadcn-ui/ui) website `0132174`            | custom `ui` alias → 66 components              | 115 in `app/` and `components/`, mostly raw colors                                                                                                |
+
+## How it compares
+
+These tools work at different layers, and several combine well:
+
+|                                                                | What it knows                                                                                                                          | Checks what the agent wrote                                                                                                                         | Needs                                                                                                         |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **onsystem**                                                   | Your components' props, `cva` variants, parts, tokens and docs, read from source                                                       | Invented components, props and variants; native elements the design system wraps; hardcoded colors, spacing and radius; icon buttons without a name | Nothing to run or write: zero config for shadcn-style projects (Tailwind v3 or v4) and design-system packages |
+| [@shadcn/lint](https://github.com/shadcn-ui/lint)              | Your components, variants and theme, found through `components.json` in shadcn/ui projects, plus per-component contracts you can write | Tailwind classes: restyling a component, raw colors, arbitrary values, inline styles, unknown and dynamic classes                                   | ESLint 9.30+ or Oxlint, Tailwind v4; React, Svelte or Vue                                                     |
+| [Storybook MCP](https://storybook.js.org/docs/ai/mcp/overview) | Stories and a component manifest                                                                                                       | Runs component tests, including accessibility checks if set up                                                                                      | A running Storybook (10.6, preview)                                                                           |
+| [shadcn MCP](https://ui.shadcn.com/docs/mcp)                   | Registries: what you can install                                                                                                       | —                                                                                                                                                   | —                                                                                                             |
+| [Figma MCP](https://github.com/figma/mcp-server-guide)         | The design: frames, variables, Code Connect                                                                                            | —                                                                                                                                                   | Figma                                                                                                         |
+
+@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values) along with native elements and missing accessible names, on Tailwind v3 or v4, without Storybook or a design file. Running both in CI is a sensible setup.
+
+## Design decisions
+
+**Static analysis, not another model.** The agent is already the LLM; what it lacks is ground truth. Everything here is deterministic, takes milliseconds, runs offline, needs no API key, and can be unit-tested rule by rule. The cost: it cannot judge intent, such as whether a `Dialog` was the right call. That stays with the agent and the reviewer.
+
+**The TypeScript checker over `react-docgen-typescript`.** react-docgen-typescript wraps the same API but hides the AST, and `cva()` parsing, composition and element inference all need it. One program serves all four. The runtime dependency is TypeScript 6, the last release with the JavaScript compiler API; TypeScript 7 (the Go port) does not expose a stable one yet.
+
+**Syntactic linting.** Agents check fragments they have not saved, often without imports. Type-checking those would need the whole program and would fail on the fragment's missing context. `check_ui` complements `tsc`: it catches what types cannot express (tokens, native elements, accessible names) and says what to write instead.
+
+**BM25, not embeddings.** A design system is tens to a few hundred documents whose vocabulary already lives in names, docs and variant values. Field-weighted BM25 with Porter stemming and a small synonym map ("modal" → Dialog, "delete" → destructive) ranks them well, deterministically, with no model download or API key. It does not understand paraphrases the synonym map does not cover.
+
+**OKLCH for nearest colors.** Distance in OKLCH (ΔE in OKLab) tracks perceived difference, so the suggested token is the one that looks closest, not the one with the closest hex digits. It also matches how Tailwind v4 and shadcn/ui define colors.
+
+**Markdown for the model, JSON for programs.** Tool results put compact Markdown in `content`, which costs fewer tokens than JSON and reads well to a model, and the full JSON in `structuredContent` for clients and scripts.
+
+## Limits
+
+- React only (`.tsx` and `.jsx`): no Vue, Svelte or Angular yet.
+- Styling is checked in Tailwind classes, `style` objects (including style functions and each branch of a conditional value) and color attributes. CSS-in-JS (styled-components, Emotion), CSS Modules and plain stylesheets are not.
+- Fix suggestions are Tailwind classes when a Tailwind theme maps the token (`@theme`, or a v3 `tailwind.config`), otherwise `var(--token)` (`hsl(var(--token))` for v3 channels). A v3 config is read without running it, so colors computed in code are not seen.
+- Colors are compared in the base theme and, for `dark:` classes, the dark mode. Other modes (`[data-theme="brand"]`) are listed by `get_tokens` but not used to match.
+- Linting is per file and syntactic. Class names built at runtime (`` `bg-${color}-500` ``) are not checked, and spread props are trusted.
+- `no-unknown-prop` is skipped for components whose props type does not fully resolve (dependencies not installed).
+- Composition is inferred from naming and static members; other patterns need explicit exports.
+- A UI package imported by path is read from what the app already imports (in its first 5,000 source files), so components nobody imports yet are not offered.
+- While the server runs, it rebuilds on changes in the component, token and docs folders, the config file, the tsconfig and the tsconfigs it extends. An edit to another file the components import (a shared `lib/types.ts`) is picked up on the next start.
+- No typography or shadow rules yet, and stdio is the only transport.

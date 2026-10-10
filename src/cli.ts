@@ -29,8 +29,9 @@ const DOCS = 'https://design-system-mcp-demo.vercel.app/docs';
 
 const HELP = `${NAME} ${VERSION}
 
-Gives coding agents ground truth about your React design system, and lints
-the UI they write against it.
+Keeps coding agents on your React design system: checks UI code against your
+real components, props, variants and tokens in a Claude Code hook, in CI with
+check, and over MCP for any agent.
 
 Usage
   onsystem [serve] [options]     Start the MCP server on stdio (default)

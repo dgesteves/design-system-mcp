@@ -497,9 +497,9 @@ function architecture() {
     ],
     { accent: true },
   );
-  const cli = box(col.out, top + 270, 258, 126, 'CLI · CI', [
+  const cli = box(col.out, top + 270, 258, 126, 'Hook · CLI · CI', [
+    'Claude Code hook',
     'onsystem check',
-    'exit 1 on errors',
     '--format github',
   ]);
 
@@ -530,7 +530,7 @@ function architecture() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="t d">
   <title id="t">onsystem architecture</title>
   <defs>${glyphDefs()}</defs>
-  <desc id="d">Component sources, tokens, docs and config are read by the TypeScript checker, a cva/tv parser, token parsers and a docs parser into a design-system model that is cached on disk and rebuilt on change, with a BM25 index, an OKLCH token index and the lint rules. The model is served to agents by an MCP server over stdio (five tools, two resources) and to CI by the check CLI.</desc>
+  <desc id="d">Component sources, tokens, docs and config are read by the TypeScript checker, a cva/tv parser, token parsers and a docs parser into a design-system model that is cached on disk and rebuilt on change, with a BM25 index, an OKLCH token index and the lint rules. The model is served to agents by an MCP server over stdio (five tools, two resources), and checks code in the Claude Code hook and in CI through the check CLI.</desc>
   ${frame(W, H)}
   ${parts.join('\n')}
 </svg>`;

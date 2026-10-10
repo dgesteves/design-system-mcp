@@ -9,9 +9,9 @@ import { mono, sans } from './fonts';
 
 import './globals.css';
 
-const title = 'onsystem: your design system, as ground truth for coding agents';
+const title = 'onsystem: keeps any coding agent on your design system';
 const description =
-  'An MCP server and Claude Code plugin that gives coding agents your React components, props, cva variants and tokens, and check_ui, a linter they run on their own UI. Static analysis, no API key.';
+  'It knows your real React components, props, variants and tokens, blocks the edit when an agent invents one, and the same check gates your pull requests. Local, zero config, works alongside @shadcn/lint.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -20,13 +20,16 @@ export const metadata: Metadata = {
   applicationName: 'onsystem',
   authors: [{ name: 'Diogo Esteves', url: 'https://github.com/dgesteves' }],
   keywords: [
-    'MCP server',
     'design system',
+    'design system linter',
+    'agent guardrails',
     'Claude Code plugin',
+    'Claude Code hook',
+    'CI',
+    'MCP server',
     'shadcn/ui',
     'React',
     'Tailwind CSS',
-    'linter',
     'coding agents',
     'Cursor',
   ],

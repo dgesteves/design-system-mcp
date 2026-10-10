@@ -1,32 +1,27 @@
 import { bench, docs, readme, ruleCatalog, tools } from '@/lib/data';
 import { DOCS_PAGES } from '@/lib/docs';
 import {
-  docsHref,
   NPM,
   NPX,
   PLUGIN_COMMANDS,
   REGISTRY,
   REPO,
-  SITE_URL,
   repoLink,
+  resolveDocHref,
+  SITE_URL,
 } from '@/lib/site';
 
-/** Links in README Markdown, made absolute: site pages where they exist, GitHub otherwise. */
-function absolute(markdown: string): string {
+/** Links in docs Markdown on `page`, made absolute: site pages where they exist, GitHub otherwise. */
+function absolute(markdown: string, page: string): string {
   return markdown.replace(/\]\(([^)]+)\)/g, (_, href: string) => {
-    if (/^https?:\/\//.test(href)) return `](${href})`;
-    if (href.startsWith('#')) {
-      const target = docsHref(href.slice(1));
-      return `](${target.startsWith('/') ? `${SITE_URL}${target}` : target})`;
-    }
-    if (href.startsWith('/')) return `](${SITE_URL}${href})`;
-    const file = href.replace(/^\.\//, '');
-    return `](${repoLink(file, /\.[a-z]+$/i.test(file) ? 'blob' : 'tree')})`;
+    const target = resolveDocHref(href);
+    if (target.startsWith('#')) return `](${SITE_URL}${page}${target})`;
+    return `](${target.startsWith('/') ? `${SITE_URL}${target}` : target})`;
   });
 }
 
 const summary =
-  'An MCP server and Claude Code plugin that gives coding agents ground truth about a React design system (components, props, cva variants, parts, tokens and docs, read from source with the TypeScript compiler) and check_ui, a linter they run on their own UI. Every finding has a rule id, a location and a fix. Static analysis: no model calls, no API key.';
+  'Keeps any coding agent on your React design system. It reads your real components, props, cva variants and tokens from source with the TypeScript compiler; a Claude Code hook blocks the edit when an agent invents one, with the fix; the same check gates pull requests in CI; and an MCP server lets any agent look the design system up and run check_ui on its own UI. Local, zero config, static analysis: no model calls, no API key. Works alongside @shadcn/lint.';
 
 /** llms.txt (https://llmstxt.org): what this is, how to install it, and where everything is. */
 export function llmsTxt(): string {
@@ -40,9 +35,9 @@ export function llmsTxt(): string {
     '',
     'Install:',
     '',
-    `- Claude Code: \`${PLUGIN_COMMANDS.split('\n').join('` then `')}\``,
+    `- Claude Code (hook, MCP server and skill): \`${PLUGIN_COMMANDS.split('\n').join('` then `')}\``,
+    '- CI: `npx onsystem check . --format github --require-design-system`, with `--update-baseline` once to accept existing findings',
     `- Any MCP client, over stdio: \`${NPX}\``,
-    '- CI: `npx onsystem check . --format github --require-design-system`',
     '',
     model
       ? `Benchmark: Claude Code built the same ten components for vercel/ai-chatbot with and without the plugin. ${bench.models.map((m) => `${m.name}: ${String(m.base.clean)}/${String(m.base.runs)} → ${String(m.plugin.clean)}/${String(m.plugin.runs)} clean, ${String(m.base.errors)} → ${String(m.plugin.errors)} errors`).join('; ')}.`
@@ -79,33 +74,41 @@ export function llmsTxt(): string {
 
 /** Every docs page and the rules, as one Markdown file. */
 export function llmsFullTxt(): string {
-  const sections: [string, string][] = [
-    ['Quickstart', docs.quickstart],
-    [
-      'Set up your agent',
-      `${docs.setup}\n\n### Cursor and VS Code\n\n${docs.cursorVsCode}\n\n### Other clients\n\n${docs.otherClients}`,
-    ],
-    ['Claude Code plugin', docs.plugin],
-    ['Tools', docs.tools],
+  const sections: [title: string, page: string, body: string][] = [
+    ['Quickstart', '/docs', docs.quickstart],
+    ['Claude Code plugin', '/docs/plugin', docs.plugin],
+    ['CI and baselines', '/docs/ci', docs.ci],
+    ['Set up your agent', '/docs/clients', docs.clients],
+    ['Configuration', '/docs/configuration', docs.configuration],
     [
       'Rules',
+      '/rules',
       [
         ...ruleCatalog.rules.map(
           (rule) =>
             `### ${rule.id} (${rule.severity} by default)\n\n${rule.description}\n\nCatches: ${rule.catches}\n\nSuggests: ${rule.suggests}\n\nWhy it matters: ${rule.why}\n\nExample:\n\n\`\`\`tsx\n${rule.bad.trimEnd()}\n\`\`\`\n\n${rule.findings.map((f) => `- ${String(f.line)}:${String(f.column)} ${f.severity}: ${f.message}`).join('\n')}\n\nFixed:\n\n\`\`\`tsx\n${rule.good.trimEnd()}\n\`\`\``,
         ),
-        ruleCatalog.details,
+        `### How fixes are chosen\n\n${ruleCatalog.details}`,
+        `### Suppressing findings\n\n${ruleCatalog.suppression}`,
       ].join('\n\n'),
     ],
-    [
-      'Configuration',
-      `### Zero config\n\n${docs.zeroConfig}\n\n### Config file\n\n${docs.configFile}`,
-    ],
-    ['CI', `${docs.ci}\n\n### Adopting it in an existing codebase\n\n${docs.baseline}`],
-    ['Limits', docs.limits],
-    ['Migrating from @dgesteves/design-system-mcp', docs.migrating],
+    ['Tools', '/docs/tools', docs.tools],
+    ['Troubleshooting', '/docs/troubleshooting', docs.troubleshooting],
+    ['How it works', '/docs/how-it-works', docs.howItWorks],
+    ['Migrating from @dgesteves/design-system-mcp', '/docs/migrating', docs.migrating],
   ];
+  // Each page's own `##` sections become `###` under its `##` title; code blocks stay as they are.
+  const nest = (body: string) => {
+    let fenced = false;
+    return body
+      .split('\n')
+      .map((line) => {
+        if (/^\s*```/.test(line)) fenced = !fenced;
+        return !fenced && /^#{2,5} /.test(line) ? `#${line}` : line;
+      })
+      .join('\n');
+  };
   return `# onsystem\n\n> ${summary}\n\n${sections
-    .map(([title, body]) => `## ${title}\n\n${absolute(body)}`)
+    .map(([title, page, body]) => `## ${title}\n\n${absolute(nest(body), page)}`)
     .join('\n\n')}\n`;
 }

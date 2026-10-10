@@ -1,8 +1,9 @@
 /**
  * Typed access to generated/*.json, which scripts/generate.mjs writes at build time from the
- * library, the demo design system, the benchmark results and the README.
+ * library, the demo design system, the benchmark results, docs/*.md and the README.
  */
 import benchJson from '@/generated/bench.json';
+import corpusJson from '@/generated/corpus.json';
 import demoJson from '@/generated/demo.json';
 import designSystemJson from '@/generated/design-system.json';
 import docsJson from '@/generated/docs.json';
@@ -87,7 +88,7 @@ export interface Rule {
 }
 
 export interface RuleEntry extends Rule {
-  /** The README's Rules table, as Markdown. */
+  /** The Rules table in docs/rules.md, as Markdown. */
   catches: string;
   suggests: string;
   why: string;
@@ -112,25 +113,39 @@ export interface RuleEntry extends Rule {
 export interface RuleCatalog {
   version: string;
   rules: RuleEntry[];
-  /** How colour, spacing and radius fixes are chosen, from the README. */
+  /** How colour, spacing and radius fixes are chosen, from docs/rules.md. */
   details: string;
+  /** Suppression comments and overrides, as Markdown from docs/rules.md. */
+  suppression: string;
 }
 
+/** The docs/*.md pages, each without its `# title`. */
 export interface Docs {
   quickstart: string;
-  setup: string;
   plugin: string;
-  cursorVsCode: string;
-  otherClients: string;
-  tools: string;
-  zeroConfig: string;
-  configFile: string;
   ci: string;
-  baseline: string;
-  limits: string;
-  skill: string;
-  /** docs/migrating.md, without its title. */
+  clients: string;
+  configuration: string;
+  rules: string;
+  tools: string;
+  troubleshooting: string;
+  howItWorks: string;
   migrating: string;
+  /** The Limits section of how-it-works.md. */
+  limits: string;
+  /** The plugin's SKILL.md, without its front matter. */
+  skill: string;
+}
+
+/** The real-world corpus: pinned repositories, their findings and the labelled sample. */
+export interface Corpus {
+  repos: number;
+  runs: number;
+  findings: number;
+  sample: number;
+  falsePositives: number;
+  debatable: number;
+  weightedRate: number;
 }
 
 export interface MarkdownTable {
@@ -141,7 +156,6 @@ export interface MarkdownTable {
 export interface Readme {
   install: { cursor: string; vscode: string; plugin: string };
   realCodebases: MarkdownTable & { intro: string };
-  rules: MarkdownTable;
   engines: { node: string };
 }
 
@@ -164,6 +178,7 @@ function typed<T>(json: unknown): T {
 
 export const demo = typed<Demo>(demoJson);
 export const bench = typed<Bench>(benchJson);
+export const corpus = typed<Corpus>(corpusJson);
 export const tools = typed<Tools>(toolsJson);
 export const ruleCatalog = typed<RuleCatalog>(rulesJson);
 export const rules: Rule[] = ruleCatalog.rules;

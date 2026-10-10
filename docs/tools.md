@@ -1,0 +1,53 @@
+# Tools
+
+The MCP server is the part an agent asks before it writes. It serves five read-only tools, two resources and a prompt over stdio.
+
+All tools are read-only, have zod-validated input schemas with size limits (up to 1,000,000 characters of code for `check_ui`), and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
+
+| Tool                | Input                                           | Returns                                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                                                                                                      |
+| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples                                                                                       |
+| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                                                                                                         |
+| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                                                                                      |
+| `check_ui`          | `code` or `path`, `filename?`, `limit?`         | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix (up to `limit`, 50 by default, errors first, with totals per rule), and a notice when no components or color tokens were found |
+
+Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. In Claude Code it is a slash command, `/mcp__onsystem__build-with-design-system` for a server added as `onsystem`.
+
+What the agent sees, from the [demo](../examples/shadcn-demo):
+
+```text
+> get_component { "name": "Badge" }
+
+# Badge
+A small status label: counts, states ("Active", "Overdue") or categories.
+
+import { Badge } from "@/components/ui/badge"
+Renders <span> · components/ui/badge.tsx:29 · docs: docs/badge.md
+
+## Props
+- variant?: "default" | "secondary" | "destructive" | "success" | "outline" = "default"
+- asChild?: boolean = false — Render the child element with badge styles instead of a `<span>`.
+- …plus 280 props from React.ComponentProps<"span"> (onClick, id, role, children, aria-*, data-*, …)
+
+## Variants
+variant (default "default")
+  default      border-transparent bg-primary text-primary-foreground
+  destructive  border-transparent bg-destructive text-white
+  success      border-transparent bg-success text-success-foreground
+  …
+```
+
+```text
+> check_ui { "code": "<Button variant=\"primary\" className=\"bg-blue-600 px-[18px]\">Save</Button>" }
+
+snippet.tsx: 2 errors, 1 warning
+
+1:17 error [no-unknown-variant] "primary" is not a valid variant for <Button>.
+     Allowed: default, destructive, outline, secondary, ghost, link. Did you mean "default"?
+1:38 error [no-hardcoded-color] `bg-blue-600` is Tailwind's default palette, not a design-system
+     color. No token has this hue; nearest is ring (ΔE 0.294), a gray. Pick the semantic token
+     that fits. <Button> already sets bg-* through `variant`; prefer a variant over overriding it.
+1:50 warning [no-hardcoded-spacing] `px-[18px]` is 18px, which is on the spacing scale: use
+     `px-4.5`.
+```

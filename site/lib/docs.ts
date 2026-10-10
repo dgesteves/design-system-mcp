@@ -3,19 +3,26 @@ export const DOCS_PAGES = [
   {
     href: '/docs',
     title: 'Quickstart',
-    description: 'Give your agent the tools, see what the server found, and check the codebase.',
-  },
-  {
-    href: '/docs/clients',
-    title: 'Set up your agent',
     description:
-      'Configs for Cursor, VS Code, Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI, Grok Build and Claude Code without the plugin.',
+      'See what it found in your app, hold your agent to the design system, and gate your pull requests with the same check.',
   },
   {
     href: '/docs/plugin',
     title: 'Claude Code plugin',
     description:
-      'The server, a skill that looks components up first, and a hook that checks every UI file Claude writes.',
+      'The hook that checks every UI file Claude writes and blocks on errors, the MCP server and a skill: what each does, what it runs and what it touches.',
+  },
+  {
+    href: '/docs/ci',
+    title: 'CI and baselines',
+    description:
+      'Gate pull requests with the same check, as annotations, and adopt it in a codebase that already has findings.',
+  },
+  {
+    href: '/docs/clients',
+    title: 'Set up your agent',
+    description:
+      'MCP configs for Cursor, VS Code, Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI, Grok Build and Claude Code without the plugin.',
   },
   {
     href: '/docs/configuration',
@@ -29,15 +36,21 @@ export const DOCS_PAGES = [
     description: 'The five MCP tools, the resources and the prompt, with real responses.',
   },
   {
-    href: '/docs/ci',
-    title: 'CI and baselines',
+    href: '/docs/troubleshooting',
+    title: 'Troubleshooting',
     description:
-      'Run check in CI with annotations, and adopt it in a codebase that already has findings.',
+      'When inspect finds nothing, a monorepo root, components with 0 props, and min-release-age policies that block npx.',
+  },
+  {
+    href: '/docs/how-it-works',
+    title: 'How it works',
+    description:
+      'How the design system is read and checked, results on real codebases, how it compares, design decisions and limits.',
   },
   {
     href: '/docs/faq',
     title: 'FAQ',
-    description: 'Privacy, how it compares, other frameworks, false positives, and the limits.',
+    description: 'Privacy, @shadcn/lint and Storybook, other frameworks, and false positives.',
   },
   {
     href: '/docs/migrating',
