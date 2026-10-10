@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_COMPONENTS, loadConfig } from '../src/config.js';
 import { DesignSystemHost } from '../src/design-system.js';
 import { detectProject, isDesignSystemName, pnpmPackages } from '../src/detect.js';
+import { buildEntries, exportedFiles, sourceTarget } from '../src/package-source.js';
 import { fixture, load, TSCONFIG } from './helpers.js';
 
 const BUTTON = `import * as React from "react"
@@ -567,5 +568,209 @@ describe('workspace helpers', () => {
     for (const name of ['@acme/email-components', '@acme/utils', 'react', '@acme/build', 'tui']) {
       expect([name, isDesignSystemName(name)]).toEqual([name, false]);
     }
+  });
+});
+
+describe('package sources behind dist/ and barrels', () => {
+  const tsup = `import { defineConfig } from "tsup";
+export default defineConfig({ entry: { index: "src/index.tsx", "icons/index": "src/icons/index.tsx" }, dts: true });
+`;
+  // Dub's @dub/ui: exports point at dist/, built by tsup from src/, through barrels.
+  const dub = {
+    'pnpm-workspace.yaml': 'packages:\n  - apps/*\n  - packages/*\n',
+    'packages/ui/package.json': json({
+      name: '@dub/ui',
+      main: './dist/index.js',
+      exports: {
+        '.': { types: './dist/index.d.ts', import: './dist/index.mjs' },
+        './icons': { types: './dist/icons/index.d.ts', import: './dist/icons/index.mjs' },
+      },
+    }),
+    'packages/ui/tsup.config.ts': tsup,
+    'packages/ui/src/index.tsx': `export * from "./button";\nexport * from "./card";\nexport { Input } from "./input";\nexport * from "./icons";\n`,
+    'packages/ui/src/button.tsx': BUTTON,
+    'packages/ui/src/card.tsx': CARD,
+    'packages/ui/src/input.tsx': INPUT,
+    'packages/ui/src/internal.tsx': `export function NotExported() { return <div /> }\n`,
+    'packages/ui/src/icons/index.tsx': `export * from "./trash";\n`,
+    'packages/ui/src/icons/trash.tsx': `export function Trash() { return <svg /> }\n`,
+    'apps/web/package.json': json({ name: 'web', dependencies: { '@dub/ui': 'workspace:*' } }),
+    'apps/web/app/page.tsx': `import { Button } from "@dub/ui";\nexport default () => <Button />;\n`,
+  };
+
+  it('reads a build config entry without running it', () => {
+    const root = fixture({
+      'tsup.config.ts': tsup,
+      'vite.config.ts': `export default { build: { lib: { entry: resolve(__dirname, "src/main.ts") } } }`,
+    });
+    expect(buildEntries(root)).toEqual({
+      byOutput: new Map([
+        ['index', 'src/index.tsx'],
+        ['icons/index', 'src/icons/index.tsx'],
+      ]),
+      single: undefined,
+      from: 'tsup.config.ts',
+    });
+    const vite = fixture({
+      'vite.config.mts': `import { fileURLToPath } from "node:url";
+export default { build: { lib: { entry: fileURLToPath(new URL("./src/main.ts", import.meta.url)) } } }`,
+      'src/main.ts': 'export {}',
+    });
+    expect(buildEntries(vite).single).toBe('src/main.ts');
+    expect(sourceTarget(vite, '.', './dist/my-lib.js', buildEntries(vite))).toBe('src/main.ts');
+    // Without an entry: the same path under src/, and `.` from src/index.
+    const plain = fixture({ 'src/index.ts': '', 'src/icons/index.tsx': '' });
+    expect(sourceTarget(plain, './icons', './dist/icons/index.mjs', { byOutput: new Map() })).toBe(
+      'src/icons/index.tsx',
+    );
+    expect(sourceTarget(plain, '.', './build/main.cjs', { byOutput: new Map() })).toBe(
+      'src/index.ts',
+    );
+    expect(
+      sourceTarget(plain, './missing', './dist/missing.js', { byOutput: new Map() }),
+    ).toBeUndefined();
+    expect(sourceTarget(plain, '.', './src/index.ts', { byOutput: new Map() })).toBe(
+      'src/index.ts',
+    );
+  });
+
+  it('follows barrels to the files they re-export, inside the package only', () => {
+    const root = fixture({
+      'pkg/index.ts': `export * from "./a";\nexport { B } from "./b";\nimport { C } from "./c";\nexport { C };\nexport * from "../outside";\nexport type { T } from "./types";\n`,
+      'pkg/a.tsx': 'export const A = () => null;',
+      'pkg/b.tsx': 'export const B = () => null;',
+      'pkg/c/index.ts': 'export * from "./c";',
+      'pkg/c/c.tsx': 'export const C = () => null;',
+      'pkg/types.ts': 'export type T = string;',
+      'outside.tsx': 'export const O = () => null;',
+    });
+    const files = exportedFiles(path.join(root, 'pkg/index.ts'), path.join(root, 'pkg'));
+    expect(files.map((f) => path.relative(root, f)).sort()).toEqual(
+      [path.join('pkg', 'a.tsx'), path.join('pkg', 'b.tsx'), path.join('pkg', 'c', 'c.tsx')].sort(),
+    );
+  });
+
+  it("finds Dub's @dub/ui through dist/ → src/ and its barrels, imported by the package name", async () => {
+    const root = fixture(dub);
+    const config = await loadConfig({ root: path.join(root, 'apps/web') });
+    expect(config.detected).toBe('workspace package @dub/ui');
+    const ds = await load(path.join(root, 'apps/web'));
+    expect(ds.roots().map((c) => [c.name, c.importPath])).toEqual([
+      ['Button', '@dub/ui'],
+      ['Card', '@dub/ui'],
+      ['Trash', '@dub/ui'],
+      ['Input', '@dub/ui'],
+    ]);
+    // A file the package does not export is no part of it.
+    expect(ds.getComponent('NotExported')).toBeUndefined();
+    // The package itself, from its folder.
+    expect((await loadConfig({ root: path.join(root, 'packages/ui') })).detected).toBe(
+      'package.json exports of @dub/ui',
+    );
+  });
+
+  it("follows per-component index.ts barrels, as @calcom/ui's exports are", async () => {
+    const root = fixture({
+      'package.json': json({
+        name: '@calcom/ui',
+        exports: {
+          './components/button': './components/button/index.ts',
+          './components/card': './components/card/index.ts',
+          './components/input': './components/input/index.ts',
+        },
+      }),
+      'components/button/index.ts': `export { Button } from "./Button";\nexport { SplitButton } from "./SplitButton";\n`,
+      'components/button/Button.tsx': BUTTON,
+      'components/button/SplitButton.tsx': `export function SplitButton() { return <div /> }\n`,
+      'components/card/index.ts': `export * from "./Card";\n`,
+      'components/card/Card.tsx': CARD,
+      'components/input/index.ts': `export { Input } from "./Input";\n`,
+      'components/input/Input.tsx': INPUT,
+    });
+    const ds = await load(root);
+    expect(ds.roots().map((c) => [c.name, c.importPath])).toEqual([
+      ['Button', '@calcom/ui/components/button'],
+      ['SplitButton', '@calcom/ui/components/button'],
+      ['Card', '@calcom/ui/components/card'],
+      ['Input', '@calcom/ui/components/input'],
+    ]);
+  });
+
+  it('does not take a package of .ts modules behind a barrel for a design system', () => {
+    const root = fixture({
+      'package.json': json({
+        name: '@acme/db',
+        exports: { '.': { types: './dist/index.d.ts', import: './dist/index.js' } },
+      }),
+      'src/index.ts': `export * from "./client";\nexport * from "./schema";\nexport * from "./queries";\n`,
+      'src/client.ts': 'export const db = {};',
+      'src/schema.ts': 'export const users = {};',
+      'src/queries.ts': 'export const getUser = () => null;',
+    });
+    expect(detectProject(root)).toBeUndefined();
+  });
+});
+
+describe('detectProject: several design systems', () => {
+  // cal.com's apps/web: components.json points at @coss/ui, and it depends on @calcom/ui too.
+  const calcom = {
+    'package.json': json({ name: 'root', workspaces: ['apps/*', 'packages/*'] }),
+    'packages/coss-ui/package.json': json({
+      name: '@coss/ui',
+      exports: { './components/*': './src/components/*.tsx' },
+    }),
+    'packages/coss-ui/src/components/button.tsx': `export function Button(props: { variant?: "default" | "ghost" }) { return <button /> }\n`,
+    'packages/coss-ui/src/components/separator.tsx': `export function Separator() { return <hr /> }\n`,
+    'packages/ui/package.json': json({
+      name: '@calcom/ui',
+      exports: {
+        './components/button': './components/button/index.ts',
+        './components/divider': './components/divider/index.ts',
+        './components/badge': './components/badge/index.ts',
+      },
+    }),
+    'packages/ui/components/button/index.ts': 'export { Button } from "./Button";\n',
+    'packages/ui/components/button/Button.tsx': `export function Button(props: { variant?: "icon" | "button"; children?: unknown }) { return <button /> }\n`,
+    'packages/ui/components/divider/index.ts': 'export { Divider } from "./Divider";\n',
+    'packages/ui/components/divider/Divider.tsx': `export function Divider() { return <hr /> }\n`,
+    'packages/ui/components/badge/index.ts': 'export { Badge } from "./Badge";\n',
+    'packages/ui/components/badge/Badge.tsx': `export function Badge() { return <span /> }\n`,
+    'apps/web/package.json': json({
+      name: 'web',
+      dependencies: { '@calcom/ui': 'workspace:*', '@coss/ui': 'workspace:*' },
+    }),
+    'apps/web/components.json': json({ aliases: { ui: '@coss/ui/components' } }),
+    'apps/web/a.tsx': `import { Button } from "@calcom/ui/components/button";\nimport { Badge } from "@calcom/ui/components/badge";\nexport const A = () => <Button variant="icon"><Badge /></Button>;\n`,
+    'apps/web/b.tsx': `import { Button } from "@coss/ui/components/button";\nexport const B = () => <Button variant="ghost" />;\n`,
+  };
+
+  it('adds workspace design-system packages to components.json, the most imported first', async () => {
+    const root = fixture(calcom);
+    const web = path.join(root, 'apps/web');
+    const config = await loadConfig({ root: web });
+    expect(config.detected).toBe(
+      'primary: workspace package @calcom/ui (2 imports); also: components.json (ui: @coss/ui/components → ../../packages/coss-ui/src/components) (1 import)',
+    );
+    expect(config.designSystems?.map((d) => [d.source, d.imports])).toEqual([
+      ['workspace package @calcom/ui', 2],
+      ['components.json (ui: @coss/ui/components → ../../packages/coss-ui/src/components)', 1],
+    ]);
+    const ds = await load(web);
+    // Both are checked, each import against its own Button.
+    const variants = (code: string) =>
+      ds
+        .check(code, 'c.tsx')
+        .diagnostics.filter((d) => d.ruleId === 'no-unknown-variant')
+        .map((d) => d.message);
+    expect(
+      variants(`import { Button } from "@calcom/ui/components/button"\n<Button variant="icon" />`),
+    ).toEqual([]);
+    expect(
+      variants(`import { Button } from "@coss/ui/components/button"\n<Button variant="icon" />`),
+    ).toEqual(['"icon" is not a valid variant for <Button>. Allowed: default, ghost.']);
+    // The primary's components win a shared name and are the ones suggested.
+    expect(ds.getComponent('Button')?.importPath).toBe('@calcom/ui/components/button');
+    const [hr] = ds.check('<hr />', 'c.tsx').diagnostics;
+    expect(hr?.suggestion).toBe('<Divider>');
   });
 });

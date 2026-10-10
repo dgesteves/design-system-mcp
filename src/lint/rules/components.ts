@@ -71,6 +71,9 @@ export const preferDesignSystemComponent: Rule = {
       if (resolution.kind !== 'intrinsic' || allow.has(resolution.tag)) continue;
       let key = resolution.tag;
       if (key === 'input') {
+        // `<input {...getInputProps()} />`: every attribute comes from a spread, the type
+        // too (react-dropzone's is a file input), so what it is cannot be told.
+        if (element.hasSpread && !element.attributes.length) continue;
         const type = attributeLiterals(element, 'type')[0]?.text;
         if (type && NON_TEXT_INPUT_TYPES.has(type)) key = `input[type=${type}]`;
       }
@@ -79,6 +82,15 @@ export const preferDesignSystemComponent: Rule = {
       // An element no one sees or reaches is no UI to replace: the off-screen input that
       // carries a custom select's `required`, an `aria-hidden` proxy.
       if (hiddenFromUser(element)) continue;
+      // The element a design-system component renders through `asChild` takes that
+      // component's styles: `<SidebarMenuButton asChild><button /></SidebarMenuButton>`.
+      if (styledByParent(element, context)) continue;
+      // A bare element, with no content, class or style of its own, is a slot another
+      // component renders into (`<Chip render={<button type="button" />} />`), not UI to restyle.
+      if (isBare(element)) continue;
+      // Classes from a cva/tv definition in the same file: code that defines its own variants
+      // is building a component (Dub's date-picker trigger), not using one.
+      if (styledByOwnVariants(element, context)) continue;
       // Inside a component of the same name (a design system's own `Table` around a <table>),
       // the element is how that component is built.
       if (enclosingComponent(element.node) === component.name) continue;
@@ -106,6 +118,92 @@ export const preferDesignSystemComponent: Rule = {
     }
   },
 };
+
+const definitionsByFile = new WeakMap<ts.SourceFile, Set<string>>();
+
+/** Whether the element's `className` calls a `cva(...)` or `tv(...)` definition declared in this file. */
+function styledByOwnVariants(element: JsxNode, context: RuleContext): boolean {
+  const init = findAttribute(element, 'className')?.initializer;
+  if (!init || !ts.isJsxExpression(init) || !init.expression) return false;
+  let definitions = definitionsByFile.get(context.sourceFile);
+  if (!definitions) {
+    definitions = new Set();
+    for (const statement of context.sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        const value = declaration.initializer;
+        if (
+          ts.isIdentifier(declaration.name) &&
+          value &&
+          ts.isCallExpression(value) &&
+          ts.isIdentifier(value.expression) &&
+          (value.expression.text === 'cva' || value.expression.text === 'tv')
+        ) {
+          definitions.add(declaration.name.text);
+        }
+      }
+    }
+    definitionsByFile.set(context.sourceFile, definitions);
+  }
+  if (!definitions.size) return false;
+  const known = definitions;
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      known.has(node.expression.text)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(init.expression);
+  return found;
+}
+
+/**
+ * A `button`, `a` or `label`, whose content is its children, self-closing and with no
+ * `className` or `style`: an element type to render into, not styled UI. Void elements
+ * (`<input />`, `<img />`) are always self-closing and stay UI.
+ */
+function isBare(element: JsxNode): boolean {
+  return (
+    ['button', 'a', 'label'].includes(element.tag) &&
+    ts.isJsxSelfClosingElement(element.node) &&
+    !element.hasSpread &&
+    !findAttribute(element, 'className') &&
+    !findAttribute(element, 'style')
+  );
+}
+
+/**
+ * Whether `element` is the `asChild` child of a design-system component with classes of
+ * its own, directly or as a branch of a condition, so the component styles it.
+ */
+function styledByParent(element: JsxNode, context: RuleContext): boolean {
+  let node: ts.Node = element.node.parent;
+  while (
+    ts.isParenthesizedExpression(node) ||
+    ts.isConditionalExpression(node) ||
+    ts.isJsxExpression(node) ||
+    (ts.isBinaryExpression(node) &&
+      [
+        ts.SyntaxKind.AmpersandAmpersandToken,
+        ts.SyntaxKind.BarBarToken,
+        ts.SyntaxKind.QuestionQuestionToken,
+      ].includes(node.operatorToken.kind))
+  ) {
+    node = node.parent;
+  }
+  if (!ts.isJsxElement(node)) return false;
+  const parent = context.analysis.elements.find((e) => e.node === node);
+  if (!parent || !findAttribute(parent, 'asChild')) return false;
+  const resolution = context.resolve(parent);
+  return resolution.kind === 'component' && resolution.component.classNames.length > 0;
+}
 
 /**
  * Whether an element is kept from the user: `hidden`, `aria-hidden`, or out of the tab

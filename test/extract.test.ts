@@ -396,3 +396,48 @@ export function X({ form }: { form: object }) {
     expect(ds.check(`${usage}\n<Dialog isOpen />`, 'app/x.tsx').diagnostics).toEqual([]);
   });
 });
+
+describe('components whose props or members extraction cannot list', () => {
+  it("marks a generic component's props open, when they depend on its type argument", async () => {
+    // cal.com's Skeleton takes the props of whatever `as` renders.
+    const ds = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/skeleton.tsx': `type SkeletonProps<T> = { as: T; loadingClassName?: string } & (T extends "p" ? { title?: string } : never)
+export const Skeleton = <T extends "p" | "div">({ as, ...rest }: SkeletonProps<T>) => <div />
+export function List<T>(props: { items: T[]; empty?: string }) { return <ul /> }`,
+      }),
+    );
+    expect(component(ds, 'Skeleton').openProps).toBe(true);
+    // A type argument inside the props, not in their shape, leaves them listed.
+    const list = component(ds, 'List');
+    expect([list.openProps, list.props.map((p) => p.name).sort()]).toEqual([
+      false,
+      ['empty', 'items'],
+    ]);
+  });
+
+  it('keeps members given as property accesses: a library component or another member', async () => {
+    // Twenty's Tooltip (`Root: TooltipPrimitive.Root`) and InlineBanner (`Action: Banner.Action`).
+    const ds = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/tooltip.tsx': `import * as TooltipPrimitive from "tooltip-lib"
+const TooltipComponent = (props: { title?: string }) => <div />
+export const Tooltip = Object.assign(TooltipComponent, { Root: TooltipPrimitive.Root, Trigger: TooltipPrimitive.Trigger })`,
+        'components/ui/banner.tsx': `const BannerAction = (props: { onClick?: () => void }) => <button />
+const BannerComponent = (props: { tone?: "info" }) => <div />
+export const Banner = Object.assign(BannerComponent, { Action: BannerAction })
+export const InlineBanner = Object.assign((props: { title?: string }) => <div />, { Action: Banner.Action })`,
+      }),
+    );
+    expect(component(ds, 'Tooltip').subcomponents).toEqual(['Tooltip.Root', 'Tooltip.Trigger']);
+    expect(component(ds, 'Tooltip.Root').openProps).toBe(true);
+    expect(component(ds, 'InlineBanner.Action').props.map((p) => p.name)).toEqual(['onClick']);
+    const code = `import { InlineBanner, Tooltip } from "@/components/ui/banner"
+<><InlineBanner.Action onClick={go} /><Tooltip.Root /></>`;
+    expect(
+      ds.check(code, 'app/page.tsx').diagnostics.filter((d) => d.ruleId === 'no-unknown-component'),
+    ).toEqual([]);
+  });
+});

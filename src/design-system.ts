@@ -403,6 +403,7 @@ export async function buildModel(
     propSets: extracted.propSets,
     exports: extracted.exports,
     warnings,
+    sources: files.components.map((file) => relativePath(config.root, file)),
     stats: {
       files: {
         components: files.components.length,

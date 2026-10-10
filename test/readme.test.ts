@@ -59,7 +59,9 @@ describe('the README', () => {
       `In a random sample of ${String(sample.length)} findings, ${String(fp)} are false positives (${pct(fp / sample.length)}) and ${String(debatable)} are debatable`,
     );
     expect(text).toContain(`about ${pct(weighted / covered)} are false positives`);
-    expect(text).toContain(`those three rules have ${String(unknown)} findings in the corpus`);
+    expect(text).toContain(
+      `those three rules have ${String(unknown)} ${unknown === 1 ? 'finding' : 'findings'} in the corpus`,
+    );
     expect(sample.some((l) => /^no-unknown-/.test(l.rule))).toBe(false);
   });
 

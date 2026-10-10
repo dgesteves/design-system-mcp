@@ -5,7 +5,7 @@ import type { ModuleResolver } from '../modules.js';
 import { TokenIndex } from '../tokens/index.js';
 import { tokenFamily } from '../tokens/roles.js';
 import type { ComponentInfo, DesignSystemModel, Token } from '../types.js';
-import { toPosix } from '../util/paths.js';
+import { matchesGlob, toPosix } from '../util/paths.js';
 import { unique } from '../util/strings.js';
 import { COLOR_UTILITY, parseUtility } from './tailwind.js';
 
@@ -127,6 +127,8 @@ export class LintTarget {
   /** Component files relative to the root, without extension (`components/ui/button`). */
   private readonly componentModules = new Set<string>();
   private readonly moduleDirs = new Set<string>();
+  /** The files extraction read, when the model says. */
+  private readonly sources?: Set<string>;
 
   /**
    * `resolver` finds the module an import points at and what it exports
@@ -136,10 +138,15 @@ export class LintTarget {
    */
   constructor(
     readonly model: DesignSystemModel,
-    readonly config: Pick<ResolvedConfig, 'elements' | 'importPath'>,
+    readonly config: Pick<ResolvedConfig, 'elements' | 'importPath'> &
+      Partial<Pick<ResolvedConfig, 'designSystems'>>,
     private readonly resolver?: Pick<ModuleResolver, 'locate' | 'exportsOf'>,
   ) {
-    for (const component of model.components) {
+    // With several design systems, the most imported one's components win a shared name:
+    // registered last, so they overwrite the others.
+    const rank = designSystemRank(config.designSystems);
+    const byRank = [...model.components].sort((a, b) => rank(b) - rank(a));
+    for (const component of byRank) {
       for (const name of [component.name, ...component.aliases]) {
         this.components.set(name, component);
         this.named.set(name, [...(this.named.get(name) ?? []), component]);
@@ -167,7 +174,12 @@ export class LintTarget {
         if (!relation && named) continue;
         if (relation !== 'exact' && !this.plainFor(component, element)) continue;
         const existing = this.elements.get(element);
-        if (!existing || fit(component, element) > fit(existing, element)) {
+        // The most imported design system's component first, then the best fit.
+        if (
+          !existing ||
+          rank(component) < rank(existing) ||
+          (rank(component) === rank(existing) && fit(component, element) > fit(existing, element))
+        ) {
           this.elements.set(element, component);
         }
       }
@@ -190,13 +202,16 @@ export class LintTarget {
       : unique(
           [...this.importPaths]
             .filter((p) => !p.startsWith('.'))
-            .map((p) => p.slice(0, p.lastIndexOf('/') + 1))
+            // A package's own name (`@dub/ui`, imported through its barrel) covers its
+            // subpaths, not its scope: `@dub/analytics` is another package.
+            .map((p) => (isPackageName(p) ? `${p}/` : p.slice(0, p.lastIndexOf('/') + 1)))
             .filter(Boolean),
         );
     for (const file of this.componentFiles) {
       for (const module of modulePaths(file)) this.componentModules.add(module);
       this.moduleDirs.add(path.posix.dirname(file));
     }
+    if (model.sources) this.sources = new Set(model.sources);
   }
 
   /**
@@ -251,36 +266,44 @@ export class LintTarget {
     const { resolver } = this;
     const file = resolver?.locate(specifier, fromFile)?.file;
     if (!resolver || !file) return fallback;
-    const candidates = this.named.get(name) ?? (fallback ? [fallback] : []);
-    const at = (target: string) => {
+    const at = (target: string, declared: string) => {
       const modules = modulePaths(target);
+      const candidates = this.named.get(declared) ?? [];
       return candidates.find((c) =>
         modulePaths(c.source.file).some((module) => modules.includes(module)),
       );
     };
-    const direct = at(file);
+    const direct = at(file, name);
     if (direct) return direct;
-    // An import of a component file the model has, under another name (`export { X as Y }`).
+    // An import of a component file the model has, by a name it does not declare: as before.
     if (modulePaths(file).some((module) => this.componentModules.has(module))) return fallback;
     const origin = this.originOf(name, file, 0);
     // Not followed to the end, or not exported there: the model's component of that name.
     if (origin === null || origin === undefined) return fallback;
-    const declared = at(origin);
-    if (declared) return declared;
-    if (modulePaths(origin).some((module) => this.componentModules.has(module))) return fallback;
-    return undefined;
+    // A module namespace (`export * as RadioAreaGroup from "./RadioAreaGroup"`) is no component.
+    if ('namespace' in origin) return undefined;
+    // `export { Table as TableNew } from "./TableNew"` is TableNew.tsx's `Table`. A
+    // declaration the model does not have (a component extraction did not recognise, or a
+    // file outside it) is not ours to check.
+    return at(origin.file, origin.name);
   }
 
   /**
-   * The file that declares what `file` exports as `name`, following re-exports: a path
-   * relative to the root, `undefined` when it does not export it, `null` when a step of the
-   * way does not resolve or cannot be read.
+   * Where what `file` exports as `name` is declared, following re-exports: the file
+   * (relative to the root) and its name there, `{ namespace }` for a module namespace,
+   * `undefined` when it does not export it, `null` when a step of the way does not
+   * resolve or cannot be read.
    */
-  private originOf(name: string, file: string, depth: number): string | undefined | null {
+  private originOf(
+    name: string,
+    file: string,
+    depth: number,
+  ): { file: string; name: string } | { namespace: string } | undefined | null {
     if (depth > 8) return null;
     const exports = this.resolver?.exportsOf(file);
     if (!exports) return null;
-    if (exports.declared.includes(name)) return file;
+    if (exports.declared.includes(name)) return { file, name };
+    if (exports.namespaces.has(name)) return { namespace: file };
     const reexport = exports.reexports.get(name);
     if (reexport) {
       return reexport.from === undefined
@@ -294,7 +317,7 @@ export class LintTarget {
         continue;
       }
       const found = this.originOf(name, from, depth + 1);
-      if (typeof found === 'string') return found;
+      if (found) return found;
       if (found === null) unknown = true;
     }
     return unknown ? null : undefined;
@@ -304,9 +327,14 @@ export class LintTarget {
     if (modulePaths(file).some((module) => this.componentModules.has(module))) return false;
     const exports = this.resolver?.exportsOf(file);
     if (!exports) return depth > 0;
-    // Declared in a folder extraction read (an icon map next to the components), it was seen
-    // and is no component; declared anywhere else, the model never looked.
-    if (exports.names.includes(name)) return !this.moduleDirs.has(path.posix.dirname(file));
+    // Declared in a file extraction read (an icon map next to the components), it was seen
+    // and is no component; declared anywhere else, the model never looked. A model from
+    // before `sources` was recorded counts every file in the components' folders as read.
+    if (exports.names.includes(name)) {
+      return this.sources
+        ? !this.sources.has(file)
+        : !this.moduleDirs.has(path.posix.dirname(file));
+    }
     return exports.starFrom.some(
       (from) => from === undefined || depth >= 3 || this.mayExport(from, name, depth + 1),
     );
@@ -404,6 +432,27 @@ function familyUsage(model: DesignSystemModel): Map<string, Set<string>> {
 }
 
 /**
+ * A component's place among the design systems an app uses: 0 for the most imported, and
+ * so on; with one design system, 0 for all.
+ */
+function designSystemRank(
+  sources: ResolvedConfig['designSystems'],
+): (component: ComponentInfo) => number {
+  if (!sources || sources.length < 2) return () => 0;
+  const ranks = new Map<string, number>();
+  return (component) => {
+    const file = component.source.file;
+    let rank = ranks.get(file);
+    if (rank === undefined) {
+      const index = sources.findIndex((s) => s.components.some((glob) => matchesGlob(file, glob)));
+      rank = index === -1 ? sources.length : index;
+      ranks.set(file, rank);
+    }
+    return rank;
+  };
+}
+
+/**
  * How well a component replaces a native element: rendering it counts most
  * (`NativeSelect` over Radix's `Select` for <select>), then being named after
  * it (`Button` over `IconButton` for <button>).
@@ -414,6 +463,13 @@ function fit(component: ComponentInfo, element: string): number {
     (component.element === element ? 2 : 0) +
     (relation === 'exact' ? 1 : relation === 'suffix' ? 0.5 : 0)
   );
+}
+
+/** `@dub/ui` or `acme-ui`: a package name with no subpath. */
+function isPackageName(specifier: string): boolean {
+  return specifier.startsWith('@')
+    ? /^@[^/]+\/[^/]+$/.test(specifier)
+    : /^[a-z0-9][^/]*$/i.test(specifier);
 }
 
 function stripExtension(file: string): string {

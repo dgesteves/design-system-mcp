@@ -167,6 +167,25 @@ describe("onsystem check and the design system's own files", () => {
     );
   });
 
+  it('leaves out folders of tests, stories and mocks by default', async () => {
+    const button = '<button className="px-3">Go</button>';
+    const root = fixture({
+      'components/ui/button.tsx':
+        'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+      'src/page.tsx': `export default () => ${button}`,
+      // Twenty keeps story helpers in __stories__ under names that are not *.stories.tsx.
+      'src/__stories__/ToastControls.tsx': `export default () => ${button}`,
+      'src/__tests__/render.tsx': `export default () => ${button}`,
+      'src/__mocks__/button.tsx': `export default () => ${button}`,
+    });
+    const { stdout } = await run(['check', '.', '--no-cache'], root);
+    expect(stdout.split('\n').find((line) => /^\d+ errors?,/.test(line))).toBe(
+      '1 error, 0 warnings in 1 file (1 design-system file skipped; 3 tests and stories left out)',
+    );
+    const tests = await run(['check', '.', '--include-tests', '--no-cache'], root);
+    expect(tests.stdout).toContain('src/__stories__/ToastControls.tsx');
+  });
+
   it('counts the image and email files it did not check', async () => {
     const root = fixture({
       'components/ui/button.tsx':

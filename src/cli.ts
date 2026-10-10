@@ -18,6 +18,7 @@ import {
 import {
   ConfigError,
   DEFAULT_TEST_EXCLUDE,
+  DEFAULT_TEST_FOLDERS,
   rulesFor,
   type LoadConfigOptions,
   type ResolvedConfig,
@@ -414,7 +415,7 @@ async function selectInProject(
   const options = { cwd: io.cwd, absolute: true, expandDirectories: false };
   const all = globs.length ? await glob(globs, { ...options, ignore: ['**/node_modules/**'] }) : [];
   const excludes = config.exclude
-    .filter((e) => !(values['include-tests'] && e === DEFAULT_TEST_EXCLUDE))
+    .filter((e) => !(values['include-tests'] && isTestPattern(e)))
     .map((e) => excludeFromCwd(e, config.root, io.cwd))
     .filter((e): e is string => e !== undefined);
   const kept = globs.length
@@ -516,7 +517,7 @@ async function selectInWorkspace(
     const { root, config } = project(file);
     const relative = relativePath(root, file);
     return config.exclude.some(
-      (e) => !(values['include-tests'] && e === DEFAULT_TEST_EXCLUDE) && matchesGlob(relative, e),
+      (e) => !(values['include-tests'] && isTestPattern(e)) && matchesGlob(relative, e),
     );
   });
   const leftOutSet = new Set(leftOut);
@@ -786,7 +787,12 @@ function defaultBaseline(root: string, warn: ((text: string) => void) | undefine
 }
 
 /** Tests and stories, which `check` leaves out of folders and globs unless asked. */
-const TEST_FILE = /\.(?:test|spec|stories)\.[cm]?[jt]sx?$/;
+const TEST_FILE = /\.(?:test|spec|stories)\.[cm]?[jt]sx?$|[\\/]__(?:tests|stories|mocks)__[\\/]/;
+
+/** The default patterns `--include-tests` lifts. */
+function isTestPattern(pattern: string): boolean {
+  return pattern === DEFAULT_TEST_EXCLUDE || pattern === DEFAULT_TEST_FOLDERS;
+}
 
 /** What a run left out, for the summary line: `5 design-system files skipped`. */
 function scopeNotes(

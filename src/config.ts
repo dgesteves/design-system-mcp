@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 import * as z from 'zod';
 
-import { detectProject, type ImportMapping } from './detect.js';
+import { detectProject, type DesignSystemSource, type ImportMapping } from './detect.js';
 import { findTailwindConfig } from './tokens/tailwind-config.js';
 import { matchesGlob, slashGlob, toPosix } from './util/paths.js';
 import { closest } from './util/strings.js';
@@ -174,6 +174,11 @@ export interface ResolvedConfig {
   imports?: ImportMapping[] | undefined;
   /** How the design system was found when the config does not say (`components.json`, a workspace package). */
   detected?: string | undefined;
+  /**
+   * Several design systems found at once, the most imported first: its components win
+   * where two share a name, and are the ones suggested for native elements.
+   */
+  designSystems?: DesignSystemSource[] | undefined;
   /** A Tailwind v3 config, which maps color classes to custom properties (`primary` → `hsl(var(--primary))`). */
   tailwindConfig?: string | undefined;
   elements: Record<string, string>;
@@ -219,7 +224,14 @@ export const DEFAULT_COMPONENTS = [
 ];
 /** Tests and stories: neither component sources nor UI that `check` lints by default. */
 export const DEFAULT_TEST_EXCLUDE = '**/*.{test,spec,stories}.{ts,tsx,js,jsx}';
-export const DEFAULT_EXCLUDE = ['**/node_modules/**', '**/*.d.ts', DEFAULT_TEST_EXCLUDE];
+/** Folders of tests, stories and mocks, whatever their files are called (Twenty's `__stories__/ToastControls.tsx`). */
+export const DEFAULT_TEST_FOLDERS = '**/__{tests,stories,mocks}__/**';
+export const DEFAULT_EXCLUDE = [
+  '**/node_modules/**',
+  '**/*.d.ts',
+  DEFAULT_TEST_EXCLUDE,
+  DEFAULT_TEST_FOLDERS,
+];
 export const DEFAULT_TOKENS = [
   'app/globals.css',
   'src/app/globals.css',
@@ -399,6 +411,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     importPath: config.importPath,
     imports: detection?.imports ?? [],
     detected: detection?.source,
+    ...(detection?.designSystems ? { designSystems: detection.designSystems } : {}),
     tailwindConfig: findTailwindConfig(root),
     elements: config.elements ?? {},
     includeDesignSystem: options.includeDesignSystem ?? config.includeDesignSystem ?? false,

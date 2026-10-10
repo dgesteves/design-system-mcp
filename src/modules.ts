@@ -27,6 +27,8 @@ export interface ModuleExports {
    * or an imported binding exported again. `from` is undefined where it does not resolve.
    */
   reexports: Map<string, { from: string | undefined; name: string }>;
+  /** Names it exports as a module namespace (`export * as Radio from "./radio"`), not a component. */
+  namespaces: Set<string>;
 }
 
 /**
@@ -99,6 +101,7 @@ function readExports(
   const declared: string[] = [];
   const starFrom: (string | undefined)[] = [];
   const reexports = new Map<string, { from: string | undefined; name: string }>();
+  const namespaces = new Set<string>();
   const own = (name: string) => {
     names.push(name);
     declared.push(name);
@@ -132,6 +135,7 @@ function readExports(
         if (from !== undefined) starFrom.push(resolve(from));
       } else if (ts.isNamespaceExport(clause)) {
         names.push(clause.name.text);
+        namespaces.add(clause.name.text);
       } else {
         for (const element of clause.elements) {
           const name = element.name.text;
@@ -165,5 +169,5 @@ function readExports(
       own(statement.name.text);
     }
   }
-  return { names, declared, starFrom, reexports };
+  return { names, declared, starFrom, reexports, namespaces };
 }
