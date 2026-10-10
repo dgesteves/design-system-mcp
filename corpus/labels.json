@@ -202,7 +202,21 @@
     "occurrence": 1,
     "verdict": "FP",
     "reason": "A plain button is pointed at DataTableColumnHeader, a table-header component that needs column and title.",
-    "sample": "audit"
+    "sample": "audit",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "482837efa8e8",
+    "run": "openstatus-dashboard",
+    "file": "src/components/chat/chat-history.tsx",
+    "line": 47,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A \"N more conversations\" text action under a list; Button variant=\"link\" fits, though the styling differs.",
+    "sample": "audit",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "127cb695bb72",
@@ -264,7 +278,21 @@
     "occurrence": 1,
     "verdict": "FP",
     "reason": "A theme-toggle button is pointed at DataTableColumnHeader, a table-header component.",
-    "sample": "audit"
+    "sample": "audit",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "968cb54667a1",
+    "run": "openstatus-web",
+    "file": "src/content/theme-toggle.tsx",
+    "line": 51,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "Segmented theme options styled by their container; Button would do, but a toggle group may be what fits.",
+    "sample": "audit",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "13ee2a16d511",
@@ -449,18 +477,6 @@
     "occurrence": 1,
     "verdict": "TP",
     "reason": "A remove-email button holding only an X icon; its tooltip does not name it.",
-    "sample": "random"
-  },
-  {
-    "fingerprint": "1b925ebede7b",
-    "run": "calcom-ui",
-    "file": "components/card/FormCard.tsx",
-    "line": 146,
-    "rule": "icon-button-accessible-name",
-    "source": "button",
-    "occurrence": 2,
-    "verdict": "TP",
-    "reason": "A move-down button holding only an arrow icon has no accessible name.",
     "sample": "random"
   },
   {
@@ -1038,7 +1054,21 @@
     "occurrence": 1,
     "verdict": "FP",
     "reason": "An sr-only button that opens a sheet, pointed at DataTableColumnHeader.",
-    "sample": "random"
+    "sample": "random",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "14b8b8a2269b",
+    "run": "openstatus-dashboard",
+    "file": "src/components/data-table/maintenances/data-table-row-actions.tsx",
+    "line": 86,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "An sr-only button that opens a sheet; Button would work, but none of its styles would show.",
+    "sample": "random",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "3f64e5d56330",
@@ -1050,7 +1080,21 @@
     "occurrence": 1,
     "verdict": "FP",
     "reason": "A hover-card trigger pointed at DataTableColumnHeader, a table-header component.",
-    "sample": "random"
+    "sample": "random",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "3f64e5d56330",
+    "run": "openstatus-dashboard",
+    "file": "src/components/data-table/status-page-history/table-cell-uptime.tsx",
+    "line": 108,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A hover-card trigger styled as a table cell's value; Button's styles would fight the cell.",
+    "sample": "random",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "ba822f05da4a",
@@ -1207,7 +1251,21 @@
     "occurrence": 1,
     "verdict": "FP",
     "reason": "A command-menu trigger pointed at DataTableColumnHeader, a table-header component.",
-    "sample": "random"
+    "sample": "random",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "b29178758fc4",
+    "run": "openstatus-web",
+    "file": "src/content/cmdk.tsx",
+    "line": 307,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A command-menu trigger styled as a full-width row; Button's variants do not describe it.",
+    "sample": "random",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "f74b614ee3aa",
@@ -1243,7 +1301,21 @@
     "occurrence": 3,
     "verdict": "FP",
     "reason": "A theme-toggle button pointed at DataTableColumnHeader, a table-header component.",
-    "sample": "random"
+    "sample": "random",
+    "suggestion": "<DataTableColumnHeader>"
+  },
+  {
+    "fingerprint": "78d654aa058b",
+    "run": "openstatus-web",
+    "file": "src/content/theme-toggle.tsx",
+    "line": 65,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 3,
+    "verdict": "D",
+    "reason": "Segmented theme options styled by their container; Button would do, but a toggle group may be what fits.",
+    "sample": "random",
+    "suggestion": "<Button>"
   },
   {
     "fingerprint": "c3ef200c5d88",
@@ -1837,6 +1909,366 @@
     "occurrence": 1,
     "verdict": "TP",
     "reason": "A remove-value button holding only a Trash icon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "fd0fa4263c39",
+    "run": "dub-web",
+    "file": "ui/links/link-builder/options-list.tsx",
+    "line": 98,
+    "rule": "icon-button-accessible-name",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A remove-option button holding only an X icon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "4182014ff25c",
+    "run": "dub-web",
+    "file": "app/(ee)/app.dub.co/(new-program)/header.tsx",
+    "line": 63,
+    "rule": "icon-button-accessible-name",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A mobile menu button holding only a Menu icon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "076721301677",
+    "run": "dub-web",
+    "file": "ui/modals/edit-submitted-lead-modal.tsx",
+    "line": 161,
+    "rule": "prefer-design-system-component",
+    "source": "input",
+    "occurrence": 2,
+    "verdict": "TP",
+    "reason": "A hand-styled email input where @dub/ui's Input exists.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "2e88877116e7",
+    "run": "dub-web",
+    "file": "ui/support/ticket-upload.tsx",
+    "line": 288,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 3,
+    "verdict": "D",
+    "reason": "A small round remove badge over a file preview; Button would work, though none of its variants is a badge.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "7118cd997165",
+    "run": "dub-ui",
+    "file": "src/filter/filter-range-panel.tsx",
+    "line": 91,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 2,
+    "verdict": "D",
+    "reason": "A Clear button inside the design system's own filter panel, styled by hand; Button would fit, though internals often build on elements.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "b99d2494e274",
+    "run": "dub-ui",
+    "file": "src/date-picker/trigger.tsx",
+    "line": 43,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "FP",
+    "reason": "The date picker's own trigger, styled by its own triggerStyles: it implements part of the design system rather than using it.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "6f3f29985559",
+    "run": "openstatus-dashboard",
+    "file": "src/components/forms/monitor/form-general.tsx",
+    "line": 605,
+    "rule": "icon-button-accessible-name",
+    "source": "Button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A remove-assertion Button holding only a Close icon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "bc2fe0e4f185",
+    "run": "openstatus-dashboard",
+    "file": "src/app/(dashboard)/monitors/[id]/nav-actions.tsx",
+    "line": 250,
+    "rule": "icon-button-accessible-name",
+    "source": "Button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "An icon-size Button holding only a Speed icon; its tooltip does not name it.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "7e080c166d20",
+    "run": "openstatus-dashboard",
+    "file": "src/components/forms/components/telegram-qr-connection.tsx",
+    "line": 72,
+    "rule": "no-hardcoded-color",
+    "source": "text-green-600",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "Success text in green-600 is what the success token is for.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "11c154aadd36",
+    "run": "openstatus-dashboard",
+    "file": "src/components/forms/components/telegram-manual-input.tsx",
+    "line": 41,
+    "rule": "no-hardcoded-color",
+    "source": "text-green-600",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "Success text in green-600 is what the success token is for.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "612083b98a29",
+    "run": "openstatus-dashboard",
+    "file": "src/components/onboarding/checks-table.tsx",
+    "line": 115,
+    "rule": "prefer-design-system-component",
+    "source": "table",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A native <table> around ui/table's parts; the suggested Table is custom/table's, not the one those parts belong to.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "9a6c54aca824",
+    "run": "openstatus-dashboard",
+    "file": "src/components/command-menu/command-menu.tsx",
+    "line": 196,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A tiny clear button inside a scope chip; Button would work, though none of its variants is a chip action.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "6f6864936c10",
+    "run": "openstatus-web",
+    "file": "src/content/docs-header.tsx",
+    "line": 13,
+    "rule": "no-hardcoded-color",
+    "source": "dark:text-blue-400",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "Link blue fixed to info, the same value but a status color.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "4bbae0800011",
+    "run": "openstatus-web",
+    "file": "src/components/tailwind-indicator.tsx",
+    "line": 5,
+    "rule": "no-hardcoded-color",
+    "source": "bg-gray-800",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A dev-only breakpoint badge that renders nothing in production; the gray matches primary, but it is no product UI.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "9c7fae706b46",
+    "run": "openstatus-web",
+    "file": "src/app/(landing)/play/mcp-health/client.tsx",
+    "line": 396,
+    "rule": "prefer-design-system-component",
+    "source": "table",
+    "occurrence": 2,
+    "verdict": "D",
+    "reason": "A plain table inside prose styles; Table would replace the typography plugin's table styles.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "700c724d891a",
+    "run": "openstatus-web",
+    "file": "src/content/theme-toggle.tsx",
+    "line": 58,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 2,
+    "verdict": "D",
+    "reason": "Segmented theme options styled by their container; Button would do, but a toggle group may be what fits.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "be1191672983",
+    "run": "calcom-web",
+    "file": "modules/onboarding/components/EmailInviteForm.tsx",
+    "line": 93,
+    "rule": "icon-button-accessible-name",
+    "source": "Button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A remove Button holding only an XIcon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "6e42ab0f663f",
+    "run": "calcom-web",
+    "file": "components/dialog/WrongAssignmentDialog.tsx",
+    "line": 117,
+    "rule": "icon-button-accessible-name",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A copy button holding only an Icon has no accessible name.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "4398a2bf21d8",
+    "run": "calcom-web",
+    "file": "modules/auth/verify-view.tsx",
+    "line": 60,
+    "rule": "no-hardcoded-color",
+    "source": "bg-orange-900",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-picked orange icon background with no token; reported without a fix.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "2604b0327572",
+    "run": "calcom-web",
+    "file": "modules/videos/views/videos-single-view.tsx",
+    "line": 596,
+    "rule": "no-hardcoded-color",
+    "source": "border-gray-300/20",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A translucent border on a toggle floating over video; no token fits the overlay.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "f591ec770afa",
+    "run": "calcom-web",
+    "file": "modules/signup-view.tsx",
+    "line": 383,
+    "rule": "no-hardcoded-radius",
+    "source": "2xl:rounded-[20px]",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A 20px corner on the signup card at 2xl; off the scale, and the fix makes it 14px.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "8c70026e2b17",
+    "run": "calcom-web",
+    "file": "modules/calendars/weeklyview/components/event/Event.tsx",
+    "line": 18,
+    "rule": "no-hardcoded-radius",
+    "source": "rounded-[6px]",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "6px is exactly rounded-sm.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "3c1e672e351b",
+    "run": "calcom-web",
+    "file": "modules/calendars/components/CalendarSwitch.tsx",
+    "line": 93,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-styled <label> where @calcom/ui's Label exists.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "10f585df47ec",
+    "run": "calcom-web",
+    "file": "modules/event-types/components/locations/Locations.tsx",
+    "line": 235,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A remove-location button; Button fits, but the message says it renders a <div>, which @calcom/ui's Button does not.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "cc1152e34351",
+    "run": "calcom-ui",
+    "file": "components/address/MultiEmail.tsx",
+    "line": 50,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A tiny remove button in an input's suffix; Button fits, but the message says it renders a <div>, which Button does not.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "aaac0f8941fa",
+    "run": "calcom-ui",
+    "file": "components/address/MultiEmail.tsx",
+    "line": 24,
+    "rule": "prefer-design-system-component",
+    "source": "label",
+    "occurrence": 1,
+    "verdict": "TP",
+    "reason": "A hand-styled <label> inside @calcom/ui's own MultiEmail, where its Label exists.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "a53a509e96b2",
+    "run": "twenty-ui",
+    "file": "src/components/data-display/JsonTree/internal/JsonNodeValue.tsx",
+    "line": 31,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "An inline JSON value made clickable, styled by its CSS module; Button's variants do not describe it.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "b3672d54f9bf",
+    "run": "twenty-ui",
+    "file": "src/components/data-display/JsonTree/internal/JsonArrow.tsx",
+    "line": 30,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A JSON tree's expand arrow, styled by its CSS module; Button's variants do not describe it.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "1faadec3a66e",
+    "run": "twenty-front",
+    "file": "src/modules/settings/components/SettingsTextLink.tsx",
+    "line": 95,
+    "rule": "prefer-design-system-component",
+    "source": "button",
+    "occurrence": 1,
+    "verdict": "D",
+    "reason": "A text-link component built on <button>; Button would bring button styles to inline text.",
+    "sample": "random"
+  },
+  {
+    "fingerprint": "4f94510dbe0b",
+    "run": "twenty-front",
+    "file": "src/modules/activities/files/components/DropZone.tsx",
+    "line": 82,
+    "rule": "prefer-design-system-component",
+    "source": "input",
+    "occurrence": 1,
+    "verdict": "FP",
+    "reason": "react-dropzone's hidden file input: getInputProps() sets type=\"file\", which Input does not cover.",
     "sample": "random"
   }
 ]

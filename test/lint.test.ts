@@ -4,7 +4,7 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadConfig } from '../src/config.js';
-import { loadDesignSystem, type DesignSystem } from '../src/design-system.js';
+import { DesignSystem, loadDesignSystem } from '../src/design-system.js';
 import { applyFixes, uncheckedNotice } from '../src/lint/index.js';
 import type { Diagnostic } from '../src/types.js';
 import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, TSCONFIG, withRules } from './helpers.js';
@@ -813,6 +813,49 @@ describe('prefer-design-system-component', () => {
     expect(check(`<input style={{ opacity: 0 }} />`, rule)).toHaveLength(1);
   });
 
+  it('leaves alone what another component styles or renders into, and what it cannot type', async () => {
+    const system = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'components/ui/button.tsx': `import { cva } from "class-variance-authority"
+const buttonVariants = cva("inline-flex", { variants: { variant: { default: "bg-primary" } } })
+export function Button(props: { className?: string; children?: unknown }) { return <button className={buttonVariants()} /> }`,
+        'components/ui/sidebar.tsx': `export function SidebarMenuButton(props: { asChild?: boolean; children?: unknown }) { return <button className="flex h-8 rounded-md" /> }
+export function TooltipTrigger(props: { asChild?: boolean; children?: unknown }) { return props.children as never }`,
+        'components/ui/input.tsx': `export function Input(props: { value?: string }) { return <input /> }`,
+      }),
+    );
+    const found = (code: string) =>
+      system
+        .check(code, 'app/page.tsx')
+        .diagnostics.filter((d) => d.ruleId === rule)
+        .map((d) => d.source);
+    const imports = `import { SidebarMenuButton, TooltipTrigger } from "@/components/ui/sidebar"\n`;
+    // The asChild target of a component with classes of its own: it takes those classes.
+    expect(
+      found(
+        `${imports}<SidebarMenuButton asChild>{href ? <a href={href} /> : <button type="button">Go</button>}</SidebarMenuButton>`,
+      ),
+    ).toEqual([]);
+    // A trigger that only adds behaviour leaves its child's styling to the child.
+    expect(
+      found(
+        `${imports}<TooltipTrigger asChild><button className="px-2">Go</button></TooltipTrigger>`,
+      ),
+    ).toEqual(['button']);
+    // A bare element is a slot to render into.
+    expect(found(`<Chip render={<button type="button" disabled={off} />} />`)).toEqual([]);
+    expect(found(`<button type="button" className="px-2" />`)).toEqual(['button']);
+    // Classes from a variant definition in the same file: a component being built.
+    expect(
+      found(`const triggerStyles = cva("flex h-9", { variants: {} })
+export const Trigger = () => <button className={cn(triggerStyles(), "w-full")}>Pick</button>`),
+    ).toEqual([]);
+    // An input whose every attribute is spread in: its type is unknown (react-dropzone's is a file input).
+    expect(found(`<input {...getInputProps()} />`)).toEqual([]);
+    expect(found(`<input {...register("email")} className="border" />`)).toEqual(['input']);
+  });
+
   it('maps by element name too, without a fix when the component may not take its attributes', () => {
     // The demo's Dialog wraps the Radix root, not a <dialog>: renaming the tag would break the code.
     const [dialog] = check(`<dialog open><p>Hi</p></dialog>`, rule);
@@ -1306,6 +1349,74 @@ export { CardList }`,
         )
         .diagnostics.filter((d) => d.ruleId === rule),
     ).toEqual([]);
+  });
+
+  it('follows renamed re-exports and namespaces, and leaves alone what extraction did not read', async () => {
+    const system = await load(
+      fixture({
+        'tsconfig.json': JSON.stringify({
+          compilerOptions: {
+            jsx: 'react-jsx',
+            paths: { '@ui/*': ['./ui/*'], '@dub/*': ['./dub/*'] },
+          },
+        }),
+        'onsystem.config.json': JSON.stringify({
+          components: [
+            'ui/table/Table.tsx',
+            'ui/table/TableNew.tsx',
+            'ui/radio/RadioAreaGroup.tsx',
+            'ui/filter/filter-list.tsx',
+          ],
+        }),
+        // cal.com: `export { Table as TableNew } from "./TableNew"` next to ./Table's own Table.
+        'ui/table/Table.tsx': `export const Table = (props: { children?: unknown }) => <table />
+const Body = () => <tbody />
+Table.Body = Body`,
+        'ui/table/TableNew.tsx': `const Table = (props: { striped?: boolean; children?: unknown }) => <table />
+export { Table }`,
+        'ui/table/index.ts': `export { Table } from "./Table"\nexport { Table as TableNew } from "./TableNew"`,
+        // `export * as RadioAreaGroup`: a module namespace, not the RadioAreaGroup component.
+        'ui/radio/RadioAreaGroup.tsx': `export const RadioAreaGroup = (props: { children?: unknown }) => <div />
+export const Group = (props: { children?: unknown }) => <div />`,
+        'ui/radio/index.ts': `export * as RadioAreaGroup from "./RadioAreaGroup"`,
+        // A package's file that its barrels do not export was never read.
+        'ui/filter/filter-list.tsx': `import { FilterRangePanel } from "./filter-range-panel"
+export const FilterList = () => <FilterRangePanel />`,
+        'ui/filter/filter-range-panel.tsx': `export const FilterRangePanel = () => <div />`,
+      }),
+    );
+    const report = (code: string) =>
+      system.check(code, 'app/page.tsx').diagnostics.map((d) => [d.ruleId, d.source]);
+    expect(report(`import { TableNew } from "@ui/table"\n<TableNew striped />`)).toEqual([]);
+    expect(report(`import { TableNew } from "@ui/table"\n<TableNew tone="x" />`)).toEqual([
+      ['no-unknown-prop', 'tone'],
+    ]);
+    expect(report(`import { Table } from "@ui/table"\n<Table><Table.Body /></Table>`)).toEqual([]);
+    expect(
+      report(`import { RadioAreaGroup as RadioArea } from "@ui/radio"\n<RadioArea.Group />`),
+    ).toEqual([]);
+    const inside = system.check(
+      `import { FilterRangePanel } from "./filter-range-panel"\n<FilterRangePanel />`,
+      'ui/filter/filter-list.tsx',
+    );
+    expect(inside.diagnostics).toEqual([]);
+    expect(inside.unchecked?.names).toEqual(['FilterRangePanel']);
+  });
+
+  it("takes a package name's subpaths for the design system, not its scope", async () => {
+    // Components imported as `@dub/ui`: `@dub/analytics` is another package.
+    const system = await load(
+      fixture({
+        'tsconfig.json': TSCONFIG,
+        'onsystem.config.json': '{ "components": ["ui/**/*.tsx"], "importPath": "@dub/ui" }',
+        'ui/button.tsx': `export function Button() { return <button /> }`,
+      }),
+    );
+    const model = { ...system.model, components: system.model.components.map((c) => ({ ...c })) };
+    const loose = new DesignSystem(model, { ...system.config, importPath: undefined });
+    expect(loose.lint.isDesignSystemImport('@dub/ui')).toBe(true);
+    expect(loose.lint.isDesignSystemImport('@dub/ui/icons')).toBe(true);
+    expect(loose.lint.isDesignSystemImport('@dub/analytics/react')).toBe(false);
   });
 
   it('leaves a name alone that a local declaration shadows', () => {

@@ -155,6 +155,11 @@ export interface DesignSystemModel {
   exports: string[];
   /** Non-fatal problems found while extracting (unparseable files, unmatched docs). */
   warnings: string[];
+  /**
+   * The component files extraction read, relative to the root: a name one of them exports
+   * that is not a component was seen, while a file outside them was never looked at.
+   */
+  sources?: string[];
   stats: {
     files: { components: number; tokens: number; docs: number };
     durationMs: number;

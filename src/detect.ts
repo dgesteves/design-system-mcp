@@ -4,6 +4,7 @@ import path from 'node:path';
 import { escapePath, globSync } from 'tinyglobby';
 
 import { readProjectConfig, type ProjectConfig } from './extract/program.js';
+import { buildEntries, exportedFiles, moduleFile, sourceTarget } from './package-source.js';
 import { relativePath, toPosix } from './util/paths.js';
 import { unique } from './util/strings.js';
 
@@ -33,6 +34,19 @@ export interface Detection {
   withDefaults: boolean;
   /** Where it came from, for `inspect` and the server log. */
   source: string;
+  /**
+   * With more than one design system (a `components.json` and a workspace package, or
+   * two packages): each one's component globs, the one the code imports most first. Its
+   * components win where two share a name, and are the ones suggested for native elements.
+   */
+  designSystems?: DesignSystemSource[] | undefined;
+}
+
+/** One of several design systems an app uses, and how often its code imports it. */
+export interface DesignSystemSource {
+  source: string;
+  components: string[];
+  imports: number;
 }
 
 interface Found {
@@ -42,9 +56,15 @@ interface Found {
   /** Absolute directories the components live in, for docs. */
   dirs: string[];
   source: string;
+  /** The workspace package the components come from, when they come from one. */
+  package?: string | undefined;
+  /** Specifiers the app imports them by: a package name, a `components.json` alias. */
+  prefixes?: string[] | undefined;
 }
 
 const COMPONENT_FILE = /\.[jt]sx$/;
+/** A module a barrel can lead to: TypeScript or JavaScript, not a declaration file. */
+const SCRIPT_FILE = /(?<!\.d)\.[cm]?[jt]sx?$/;
 const STYLESHEETS = [
   'src/styles/globals.css',
   'src/globals.css',
@@ -54,51 +74,54 @@ const STYLESHEETS = [
 ];
 
 /**
- * Finds the design system without a config, in this order:
+ * Finds the design system without a config:
  *
  * 1. `components.json` (shadcn/ui): the `ui` alias, resolved through tsconfig
  *    `paths` or a workspace package, and `tailwind.css`.
- * 2. The root is a design-system package: its `exports` map to component files.
+ * 2. Without one, the root may be a design-system package: its `exports` map to
+ *    component files, through barrels and from `dist/` back to the sources.
  * 3. Dependencies named like a design system (`@acme/ui`) that resolve to
  *    workspace sources, read the same way or through their own `components.json`,
  *    or, for a package without `exports` that apps import by path
- *    (`@acme/ui/primitives/button`), from the files the root's code imports.
+ *    (`@acme/ui/primitives/button`), from the files the root's code imports. They
+ *    are added to what `components.json` found, not skipped for it.
  * 4. A flat folder of components that wrap a primitives library, the way React
  *    Aria's Tailwind starter ships them (`src/Button.tsx`, `src/Checkbox.tsx`).
  *
- * A candidate whose globs match no file is skipped. Returns undefined when
- * nothing applies, so the shadcn defaults stay in force.
+ * With more than one design system, the one the root's code imports most comes first
+ * (`designSystems`). A candidate whose globs match no file is skipped. Returns undefined
+ * when nothing applies, so the shadcn defaults stay in force.
  */
 export function detectProject(root: string, tsconfig?: string): Detection | undefined {
   const packages = new PackageFinder(root);
+  const found: Found[] = [];
 
   const shadcn = readJson(path.join(root, 'components.json'));
-  if (shadcn) {
-    const found = fromComponentsJson(
-      root,
-      root,
-      shadcn,
-      readProjectConfig(root, tsconfig),
-      packages,
-    );
-    if (found && matchesAny(root, found)) {
-      return detection(root, [found], false, `components.json (ui: ${found.source})`);
+  const fromShadcn = shadcn
+    ? fromComponentsJson(root, root, shadcn, readProjectConfig(root, tsconfig), packages)
+    : undefined;
+  if (fromShadcn && matchesAny(root, fromShadcn)) {
+    found.push({ ...fromShadcn, source: `components.json (ui: ${fromShadcn.source})` });
+  }
+  // The app's own components/ui stays in unless components.json names its folder.
+  const withDefaults = !found.length;
+
+  const own = readJson(path.join(root, 'package.json'));
+  if (!found.length) {
+    const self = own ? fromPackage(root, root, own) : undefined;
+    if (self && matchesAny(root, self)) {
+      return detection(root, [self], false, `package.json exports of ${self.source}`);
     }
   }
 
-  const own = readJson(path.join(root, 'package.json'));
-  const self = own ? fromPackage(root, root, own) : undefined;
-  if (self && matchesAny(root, self)) {
-    return detection(root, [self], false, `package.json exports of ${self.source}`);
-  }
-
-  const found: Found[] = [];
   const names = Object.keys({
     ...asRecord(own?.dependencies),
     ...asRecord(own?.devDependencies),
   }).filter(isDesignSystemName);
   let imported: Map<string, Set<string>> | undefined;
   for (const name of names) {
+    // What components.json already points into.
+    if (found.some((f) => f.package === name)) continue;
     // Only workspace sources: a package installed from the registry is compiled.
     const dir = packages.find(name);
     const pkg = dir ? readJson(path.join(dir, 'package.json')) : undefined;
@@ -107,15 +130,44 @@ export function detectProject(root: string, tsconfig?: string): Detection | unde
       fromPackage(root, dir, pkg) ??
       fromPackageComponentsJson(root, dir, pkg, packages) ??
       fromImports(root, dir, name, (imported ??= importedSubpaths(root, names)).get(name));
-    if (candidate && matchesAny(root, candidate)) found.push(candidate);
+    if (candidate && matchesAny(root, candidate)) {
+      found.push({
+        ...candidate,
+        source: `workspace package ${candidate.source}`,
+        package: name,
+        prefixes: [name],
+      });
+    }
   }
   if (found.length) {
-    return detection(
+    if (found.length === 1) {
+      const [only] = found;
+      return detection(root, found, withDefaults, only?.source ?? '');
+    }
+    // Several design systems: the most imported first, the rest after it.
+    const counts = importCounts(
       root,
-      found,
-      true,
-      `workspace package ${found.map((d) => d.source).join(', ')}`,
+      found.map((f) => f.prefixes ?? []),
     );
+    const ranked = found
+      .map((f, i) => ({ f, imports: counts[i] ?? 0, i }))
+      .sort((a, b) => b.imports - a.imports || a.i - b.i);
+    const [primary, ...rest] = ranked;
+    const describe = (r: { f: Found; imports: number }) =>
+      `${r.f.source} (${r.imports.toLocaleString('en-US')} ${r.imports === 1 ? 'import' : 'imports'})`;
+    return {
+      ...detection(
+        root,
+        ranked.map((r) => r.f),
+        withDefaults,
+        `primary: ${primary ? describe(primary) : ''}; also: ${rest.map(describe).join(', ')}`,
+      ),
+      designSystems: ranked.map((r) => ({
+        source: r.f.source,
+        components: r.f.components,
+        imports: r.imports,
+      })),
+    };
   }
 
   const flat = own ? fromFlatFolder(root, own) : undefined;
@@ -260,7 +312,31 @@ function fromComponentsJson(
     imports,
     dirs: [uiDir],
     source: `${ui} → ${relativePath(root, uiDir) || '.'}`,
+    ...ownerPackage(root, uiDir, ui),
   };
+}
+
+/**
+ * The workspace package a `components.json` folder belongs to, when it is not the root
+ * itself (`@coss/ui/components`, through tsconfig `paths` or the package), and the
+ * specifiers the root's code imports it by: the alias, and that package's name.
+ */
+function ownerPackage(
+  root: string,
+  dir: string,
+  alias: string,
+): { package?: string | undefined; prefixes: string[] } {
+  for (let current = dir; ; current = path.dirname(current)) {
+    const name = readJson(path.join(current, 'package.json'))?.name;
+    if (typeof name === 'string') {
+      return path.resolve(current) === path.resolve(root)
+        ? { prefixes: [alias] }
+        : { package: name, prefixes: [alias, name] };
+    }
+    if (current === path.dirname(current) || path.resolve(current) === path.resolve(root)) {
+      return { prefixes: [alias] };
+    }
+  }
 }
 
 /**
@@ -288,10 +364,32 @@ function fromPackageComponentsJson(
   };
 }
 
-/** A package whose `exports` point at component source files is a design system. */
+/**
+ * A package whose `exports` point at component source files is a design system. An export
+ * that leads to a barrel (`./components/button` → `components/button/index.ts`, or `.` →
+ * `src/index.tsx` behind `dist/`) stands for the files the barrel re-exports, each
+ * suggested with the export's specifier.
+ */
 function fromPackage(root: string, dir: string, pkg: Record<string, unknown>): Found | undefined {
-  const imports = exportMappings(root, dir, pkg);
-  const components = imports.filter((m) => COMPONENT_FILE.test(m.target));
+  const imports: ImportMapping[] = [];
+  const components: ImportMapping[] = [];
+  const add = (mapping: ImportMapping, component: boolean) => {
+    imports.push(mapping);
+    if (component && !components.some((m) => m.target === mapping.target)) components.push(mapping);
+  };
+  for (const mapping of exportMappings(root, dir, pkg)) {
+    const file = path.resolve(root, mapping.target);
+    if (mapping.target.includes('*') || !SCRIPT_FILE.test(file) || !isFile(file)) {
+      add(mapping, COMPONENT_FILE.test(mapping.target));
+      continue;
+    }
+    // The .tsx/.jsx files it leads to, through barrels.
+    for (const reached of exportedFiles(file, dir)) {
+      if (COMPONENT_FILE.test(reached)) {
+        add({ specifier: mapping.specifier, target: relativePath(root, reached) }, true);
+      }
+    }
+  }
   const files = components.filter((m) => !m.target.includes('*'));
   const patterns = components.filter((m) => m.target.includes('*'));
   // One or two .tsx exports are an app or a widget, not a component library.
@@ -384,6 +482,41 @@ function fromImports(
 /** Enough source to see which modules an app imports, without reading a whole monorepo. */
 const MAX_SCANNED_FILES = 5000;
 
+/** The root's source files, as far as `MAX_SCANNED_FILES`. */
+function sourceFiles(root: string): string[] {
+  return globSync('**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,css}', {
+    cwd: root,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**', '**/*.d.ts'],
+  }).slice(0, MAX_SCANNED_FILES);
+}
+
+/**
+ * How many imports in the root's code name each group of specifiers: `@calcom/ui`
+ * counts `@calcom/ui/components/button`, `@/components/ui` counts `@/components/ui/card`.
+ */
+function importCounts(root: string, groups: readonly string[][]): number[] {
+  const counts = groups.map(() => 0);
+  const pattern = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"'\s]+)["']/g;
+  for (const file of sourceFiles(root)) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const match of text.matchAll(pattern)) {
+      const specifier = match[1] ?? '';
+      groups.forEach((prefixes, i) => {
+        if (prefixes.some((p) => specifier === p || specifier.startsWith(`${p}/`))) {
+          counts[i] = (counts[i] ?? 0) + 1;
+        }
+      });
+    }
+  }
+  return counts;
+}
+
 /**
  * The subpaths of each package that the root's code and stylesheets import:
  * `@acme/ui/primitives/button` → `primitives/button` under `@acme/ui`.
@@ -395,12 +528,7 @@ function importedSubpaths(root: string, names: string[]): Map<string, Set<string
     `(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*["'](${alternatives})/([^"'\\s]+)["']`,
     'g',
   );
-  const files = globSync('**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,css}', {
-    cwd: root,
-    absolute: true,
-    ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**', '**/*.d.ts'],
-  }).slice(0, MAX_SCANNED_FILES);
-  for (const file of files) {
+  for (const file of sourceFiles(root)) {
     let text: string;
     try {
       text = fs.readFileSync(file, 'utf8');
@@ -415,11 +543,19 @@ function importedSubpaths(root: string, names: string[]): Map<string, Set<string
   return found;
 }
 
-/** `exports` subpaths with a source target, as specifiers relative to `root`. */
+/**
+ * `exports` subpaths with a source target, as specifiers relative to `root`. A target
+ * built to `dist/` maps back to its source (`src/`, through the build config's entries);
+ * without an `exports` map, `main` stands for `.`.
+ */
 function exportMappings(root: string, dir: string, pkg: Record<string, unknown>): ImportMapping[] {
   const name = typeof pkg.name === 'string' ? pkg.name : undefined;
   if (!name) return [];
-  const exports = pkg.exports;
+  const exports =
+    pkg.exports ??
+    (typeof pkg.main === 'string' && /^\.?\/?(?:dist|build|lib)\//.test(pkg.main)
+      ? pkg.main
+      : undefined);
   const entries: [string, unknown][] =
     typeof exports === 'string'
       ? [['.', exports]]
@@ -428,16 +564,33 @@ function exportMappings(root: string, dir: string, pkg: Record<string, unknown>)
           ? Object.entries(exports)
           : [['.', exports]]
         : [];
+  let build: ReturnType<typeof buildEntries> | undefined;
   const mappings: ImportMapping[] = [];
   for (const [key, value] of entries) {
     const target = exportTarget(value);
     if (!target) continue;
+    const source = target.includes('*')
+      ? sourcePattern(dir, target)
+      : sourceTarget(dir, key, target, (build ??= buildEntries(dir)));
     mappings.push({
       specifier: key === '.' ? name : `${name}/${key.replace(/^\.\//, '')}`,
-      target: relativePath(root, path.resolve(dir, target)),
+      target: relativePath(root, path.resolve(dir, source ?? target)),
     });
   }
   return mappings;
+}
+
+/** `./dist/*.mjs` → `src/*.tsx` (or `.ts`) when files match it there; anything else as it is. */
+function sourcePattern(dir: string, target: string): string {
+  const relative = target.replace(/^\.\//, '');
+  const built = /^(?:dist|build|lib|out|esm|cjs)\//.exec(relative);
+  if (!built) return relative;
+  const rest = relative.slice(built[0].length).replace(/(?:\.d)?\.[cm]?[jt]sx?$/, '');
+  for (const ext of ['.tsx', '.ts']) {
+    const candidate = `src/${rest}${ext}`;
+    if (globSync(candidate, { cwd: dir, ignore: ['**/node_modules/**'] }).length) return candidate;
+  }
+  return relative;
 }
 
 /** The source file an export condition map points at: the first string target that is not a declaration file. */
@@ -513,8 +666,6 @@ function packageName(specifier: string): string | undefined {
   return /^[a-z0-9]/i.test(first) ? first : undefined;
 }
 
-const MODULE_EXTENSIONS = ['.ts', '.js', '.cjs', '.mjs', '.cts', '.mts', '.tsx', '.jsx'];
-
 /**
  * Resolves specifiers to project files for the modules we read ourselves (a
  * Tailwind config's presets): relative paths and workspace packages, with or
@@ -568,16 +719,6 @@ export function workspaceModule(
     });
     return declared ? {} : undefined;
   };
-}
-
-/** `base` as a file, with an extension added, or as a directory's index. */
-function moduleFile(base: string): string | undefined {
-  const candidates = [
-    base,
-    ...MODULE_EXTENSIONS.map((ext) => `${base}${ext}`),
-    ...MODULE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
-  ];
-  return candidates.find((file) => isFile(file) && !/[\\/]node_modules[\\/]/.test(file));
 }
 
 /** `@acme/ui`, `@acme/ui-kit`, `@acme/design-system`, `acme-ui`; not `@acme/email-components`. */

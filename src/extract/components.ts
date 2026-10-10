@@ -191,7 +191,25 @@ function findCandidates(context: FileContext): Candidate[] {
         continue;
       }
       const resolved = resolveExpression(expression, checker);
-      if (!resolved) continue;
+      if (!resolved) {
+        // `Root: TooltipPrimitive.Root` or `Action: Banner.Action`: a library's component,
+        // or another component's member, as `const Dialog = DialogPrimitive.Root` is.
+        const access = skipOuter(expression);
+        const analysis = ts.isPropertyAccessExpression(access)
+          ? analyzeLibraryComponent(access, checker)
+          : undefined;
+        if (!analysis) continue;
+        candidates.push({
+          name: accessName,
+          exportName: accessName,
+          localName: accessName,
+          declaration: access,
+          aliases: [],
+          parent: owner.name,
+          ...analysis,
+        });
+        continue;
+      }
       const analysis = analyze(resolved.declaration, checker);
       if (!analysis) continue;
       const candidate: Candidate = {
@@ -537,6 +555,20 @@ function expandLocalTypeText(context: FileContext, typeNode: ts.Node, depth = 0)
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
+/** Whether a type mentions a type parameter, at the top or inside a conditional or an intersection. */
+function dependsOnTypeParameter(type: ts.Type, depth = 0): boolean {
+  if (depth > 4) return false;
+  if (type.flags & ts.TypeFlags.TypeParameter) return true;
+  if (type.flags & (ts.TypeFlags.Conditional | ts.TypeFlags.Index | ts.TypeFlags.IndexedAccess)) {
+    return true;
+  }
+  if (type.isUnionOrIntersection()) {
+    return type.types.some((t) => dependsOnTypeParameter(t, depth + 1));
+  }
+  const args = (type as ts.TypeReference).aliasTypeArguments ?? [];
+  return args.some((t) => dependsOnTypeParameter(t, depth + 1));
+}
+
 interface ExtractedProps {
   props: PropInfo[];
   inherits: InheritedProps[];
@@ -568,6 +600,10 @@ function extractProps(
     types = type.isUnion() ? type.types : [type];
     if (typeNode && hasUnresolvedPart(context.checker, typeNode)) openProps = true;
   }
+  // A generic component's props depend on its type argument (cal.com's
+  // `Skeleton<T>({ as }: SkeletonProps<T>)` takes the props of whatever `as` renders):
+  // what the checker gives for the bare parameter is not the list.
+  if (candidate.fn?.typeParameters?.length && dependsOnTypeParameter(type)) openProps = true;
 
   const own = new Map<string, { symbol: ts.Symbol; requiredIn: number; origin: string }>();
   for (const t of types) {
