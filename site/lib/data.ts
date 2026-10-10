@@ -124,6 +124,7 @@ export interface Docs {
   quickstart: string;
   plugin: string;
   ci: string;
+  requiredCheck: string;
   clients: string;
   configuration: string;
   rules: string;

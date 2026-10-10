@@ -47,6 +47,63 @@ jobs:
           cat hook.err
           test "$status" -eq 2 && grep -q "no-unknown-variant" hook.err
 
+  action:
+    # The GitHub Action (action.yml), run from this checkout on this pull request: a change to the
+    # demo's clean page must be annotated and fail the step, while the findings already in the
+    # demo's draft page (lines no pull request touches) must be neither.
+    name: GitHub Action on this pull request
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # The default checkout: the merge commit, one commit deep, which the action deepens itself.
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Write an invented variant into the demo's clean page
+        run: |
+          page=examples/shadcn-demo/app/settings/members.tsx
+          sed -i 's|<Badge variant="success">Active</Badge>|<Badge variant="danger">Active</Badge>|' "$page"
+          if git diff --quiet -- "$page"; then echo "The page did not change."; exit 1; fi
+      - id: onsystem
+        uses: ./
+        continue-on-error: true
+        env:
+          # This build of the CLI, rather than the release in package.json.
+          ONSYSTEM_BIN: ${{ github.workspace }}/dist/cli.js
+        with:
+          working-directory: examples/shadcn-demo
+          paths: app
+      - name: Check what the action reported
+        env:
+          OUTCOME: ${{ steps.onsystem.outcome }}
+          ERRORS: ${{ steps.onsystem.outputs.errors }}
+          OUTSIDE: ${{ steps.onsystem.outputs.outside-diff }}
+        run: |
+          echo "outcome=$OUTCOME errors=$ERRORS outside-diff=$OUTSIDE"
+          test "$OUTCOME" = failure
+          test "$ERRORS" -ge 1
+          test "$OUTSIDE" -ge 1
+      - name: Check where the annotation lands
+        working-directory: examples/shadcn-demo
+        env:
+          ONSYSTEM_BIN: ${{ github.workspace }}/dist/cli.js
+          INPUT_PATHS: app
+        run: |
+          set +e
+          # The script itself, to read its output: without the step's output and summary files,
+          # and printed with the leading :: broken, so the annotations are not made twice.
+          env -u GITHUB_OUTPUT -u GITHUB_STEP_SUMMARY node ../../action/index.mjs > action.out
+          status=$?
+          sed 's/^::/: :/' action.out
+          set -e
+          test "$status" -eq 1
+          grep -q '^::error file=examples/shadcn-demo/app/settings/members.tsx,line=45,col=28,.*title=onsystem%3A no-unknown-variant::"danger" is not a valid variant for <Badge>' action.out
+
   node20:
     name: Built CLI on Node 20.19
     runs-on: ubuntu-latest

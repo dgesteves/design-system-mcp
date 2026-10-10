@@ -37,6 +37,7 @@ export function llmsTxt(): string {
     '',
     `- Claude Code (hook, MCP server and skill): \`${PLUGIN_COMMANDS.split('\n').join('` then `')}\``,
     '- CI: `npx onsystem check . --format github --require-design-system`, with `--update-baseline` once to accept existing findings',
+    '- Required check on pull requests: the GitHub Action `uses: dgesteves/onsystem@v0`, which annotates the lines a pull request changed',
     `- Any MCP client, over stdio: \`${NPX}\``,
     '',
     model
@@ -78,6 +79,7 @@ export function llmsFullTxt(): string {
     ['Quickstart', '/docs', docs.quickstart],
     ['Claude Code plugin', '/docs/plugin', docs.plugin],
     ['CI and baselines', '/docs/ci', docs.ci],
+    ['Make it a required check on agent pull requests', '/docs/required-check', docs.requiredCheck],
     ['Set up your agent', '/docs/clients', docs.clients],
     ['Configuration', '/docs/configuration', docs.configuration],
     [

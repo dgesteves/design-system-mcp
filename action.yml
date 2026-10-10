@@ -1,0 +1,53 @@
+name: onsystem
+description: Gate pull requests on your design system. Annotates invented components, props and variants and hardcoded tokens on the lines a pull request changes.
+author: Diogo Esteves
+branding:
+  icon: check-square
+  color: blue
+
+inputs:
+  paths:
+    description: Files, folders or globs to check, relative to working-directory, separated by spaces or new lines.
+    default: .
+  working-directory:
+    description: Where to run the check, such as one app of a monorepo. The config and the default baseline are read from there.
+    default: .
+  baseline:
+    description: Baseline file, relative to working-directory. By default onsystem.baseline.json in the project root is used whenever it exists.
+    default: ''
+  fail-on:
+    description: 'Which findings fail the step: error, warning (errors or warnings) or none.'
+    default: error
+  only-changed-lines:
+    description: On pull requests and merge groups, report only findings on the lines the change touches. false reports every finding in the checked files.
+    default: 'true'
+  require-design-system:
+    description: Fail when no components or no color tokens are found, so the check cannot pass by checking nothing.
+    default: 'true'
+
+outputs:
+  errors:
+    description: Errors reported (on the changed lines, unless only-changed-lines is false).
+    value: ${{ steps.check.outputs.errors }}
+  warnings:
+    description: Warnings reported (on the changed lines, unless only-changed-lines is false).
+    value: ${{ steps.check.outputs.warnings }}
+  outside-diff:
+    description: Findings on lines the change does not touch, which were not reported.
+    value: ${{ steps.check.outputs.outside-diff }}
+
+runs:
+  using: composite
+  steps:
+    # Runs the CLI version in this action's package.json, so `@v0` at a release runs that release.
+    - id: check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ONSYSTEM_ACTION_PATH: ${{ github.action_path }}
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_ONLY_CHANGED_LINES: ${{ inputs.only-changed-lines }}
+        INPUT_REQUIRE_DESIGN_SYSTEM: ${{ inputs.require-design-system }}
+      run: node "$ONSYSTEM_ACTION_PATH/action/index.mjs"

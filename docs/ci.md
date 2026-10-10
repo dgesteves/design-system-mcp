@@ -28,6 +28,8 @@ jobs:
       - run: npx onsystem check . --format github --require-design-system
 ```
 
+Or use the GitHub Action, `uses: dgesteves/onsystem@v0`, which runs the same check, honours the baseline and reports only the lines a pull request changed: [Make it a required check on agent pull requests](required-check.md) has the workflow and how to require it.
+
 Install the dependencies first: without them, the props of components that wrap a library (Radix, React Aria) are unknown, and `no-unknown-prop` skips those components ([troubleshooting](troubleshooting.md#components-show-0-props)). `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results, and `--format sarif` a SARIF log for [code scanning](#code-scanning-and-other-sarif-tools). From a [monorepo root](configuration.md#monorepo-roots), `check .` checks each file against its own project's design system and keeps one baseline at the root; there, `--require-design-system` fails only when no workspace package has components and color tokens, so a job per app (`working-directory: apps/web`) is the stricter gate.
 
 When no components or no color tokens are found, `check` and `check_ui` say which rules could not run and link to the [configuration docs](configuration.md), so a clean result is not mistaken for a checked one. In CI, `--require-design-system` turns that into a failure (exit code 2), for when the design system moves and the globs stop matching.
