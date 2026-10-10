@@ -7,7 +7,7 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
-  contents: write # the version commit, tags and GitHub releases
+  contents: write # the version commit, tags (and the action's major tag) and GitHub releases
   pull-requests: write # the version pull request
   id-token: write # npm trusted publishing (with provenance) and the MCP Registry login
   actions: write # starting CI on the version pull request
@@ -38,6 +38,15 @@ jobs:
           publish-script: pnpm release
           commit-message: 'chore: release'
           pr-title: 'chore: release'
+      # `uses: dgesteves/onsystem@v0` runs the action at the commit this tag names, and the action
+      # runs the CLI version in its package.json: after a publish, move the major version's tag to
+      # the release commit, so the action runs the release that is now on npm.
+      - name: Move the GitHub Action's major version tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          tag="v$(node -p "require('./package.json').version.split('.')[0]")"
+          git tag --force "$tag" HEAD
+          git push --force origin "refs/tags/$tag"
       # The release pull request is pushed with this workflow's token, and pushes made with it
       # start no workflows, so start CI on it here: main only accepts pull requests that pass.
       - name: Run CI on the release pull request

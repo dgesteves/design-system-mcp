@@ -19,6 +19,12 @@ export const DOCS_PAGES = [
       'Gate pull requests with the same check, as annotations, and adopt it in a codebase that already has findings.',
   },
   {
+    href: '/docs/required-check',
+    title: 'Make it a required check on agent pull requests',
+    description:
+      'The GitHub Action that annotates the lines a pull request changed, making it a required check, and what to know for pull requests from Copilot, Codex and Claude.',
+  },
+  {
     href: '/docs/clients',
     title: 'Set up your agent',
     description:

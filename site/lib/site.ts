@@ -42,6 +42,7 @@ export const DOCS_FILES: Record<string, string> = {
   'quickstart.md': '/docs',
   'plugin.md': '/docs/plugin',
   'ci.md': '/docs/ci',
+  'required-check.md': '/docs/required-check',
   'clients.md': '/docs/clients',
   'configuration.md': '/docs/configuration',
   'tools.md': '/docs/tools',

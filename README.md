@@ -73,7 +73,7 @@ npx onsystem check . --update-baseline   # writes onsystem.baseline.json: commit
 - run: npx onsystem check . --format github --require-design-system
 ```
 
-Findings show up as annotations on the pull request, and `--require-design-system` fails the job when the design system is no longer found. [CI and baselines](https://design-system-mcp-demo.vercel.app/docs/ci) has the whole workflow.
+Findings show up as annotations on the pull request, and `--require-design-system` fails the job when the design system is no longer found. [CI and baselines](https://design-system-mcp-demo.vercel.app/docs/ci) has the whole workflow. The GitHub Action, `uses: dgesteves/onsystem@v0`, annotates only the lines a pull request changed: [make it a required check on agent pull requests](https://design-system-mcp-demo.vercel.app/docs/required-check).
 
 ## Works with @shadcn/lint
 

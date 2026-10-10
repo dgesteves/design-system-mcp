@@ -498,6 +498,7 @@ const docs = {
   quickstart: doc('quickstart.md'),
   plugin: doc('plugin.md'),
   ci: doc('ci.md'),
+  requiredCheck: doc('required-check.md'),
   clients: doc('clients.md'),
   configuration: doc('configuration.md'),
   rules: doc('rules.md'),
