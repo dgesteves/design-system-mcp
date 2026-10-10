@@ -25,8 +25,8 @@ export function formatDiagnostics(
     baselined?: number | undefined;
     /** Says that baseline entries no longer occur, and how to drop them. */
     fixedHint?: string | undefined;
-    /** Design-system files the glob matched but `check` left out. */
-    skipped?: number | undefined;
+    /** What the run left out: `5 design-system files skipped`, `12 tests and stories left out`. */
+    notes?: readonly string[] | undefined;
   } = {},
 ): string {
   const { fixedHint } = options;
@@ -67,7 +67,7 @@ export function formatDiagnostics(
     options.baselined === undefined
       ? ''
       : `${options.baselined.toLocaleString('en-US')} in the baseline`,
-    options.skipped ? `${plural(options.skipped, 'design-system file')} skipped` : '',
+    ...(options.notes ?? []),
   ].filter(Boolean);
   const aside = notes.length ? ` (${notes.join('; ')})` : '';
   // "in 1 of 3 files checked", not "in 3 files", when the findings are in fewer.

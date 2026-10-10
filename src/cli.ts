@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -13,14 +14,14 @@ import {
   updateBaseline,
   writeBaseline,
 } from './baseline.js';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, DEFAULT_TEST_EXCLUDE, loadConfig } from './config.js';
 import { componentFiles, loadDesignSystem } from './design-system.js';
 import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
 import type { CheckResult, Diagnostic } from './types.js';
 import { stderrLogger, silentLogger } from './util/log.js';
 import { relativePath, toPosix } from './util/paths.js';
-import { plural } from './util/strings.js';
+import { plural, unique } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
 
 const README = 'https://github.com/dgesteves/design-system-mcp#readme';
@@ -56,6 +57,8 @@ Options
   --include-design-system
                           check: also lint the design system's own component
                           files, which are skipped by default
+  --include-tests         check: also lint tests and stories (*.test.tsx,
+                          *.spec.tsx, *.stories.tsx) in folders and globs
   --quiet-without-design-system
                           check: print nothing and exit 0 when the project has no
                           design system (no components, no tokens of its own, no
@@ -111,6 +114,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         'ignore-baseline': { type: 'boolean', default: false },
         'quiet-without-design-system': { type: 'boolean', default: false },
         'include-design-system': { type: 'boolean' },
+        'include-tests': { type: 'boolean', default: false },
         'require-design-system': { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
@@ -193,6 +197,7 @@ async function check(
     'ignore-baseline': boolean;
     'quiet-without-design-system': boolean;
     'require-design-system': boolean;
+    'include-tests': boolean;
   },
   io: Io,
 ): Promise<number> {
@@ -219,23 +224,39 @@ async function check(
   const config = await loadConfig(configOptions);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
   // An existing path is taken literally, so `app/(marketing)` and `[slug]` are not
-  // glob syntax. A directory means every TSX/JSX file under it.
-  const globs = patterns.map((pattern) => {
+  // glob syntax. A directory means every TSX/JSX file under it. A file named outright
+  // is always checked; folders and globs leave out what the config excludes (tests and
+  // stories by default) and what git ignores.
+  const named: string[] = [];
+  const globs: string[] = [];
+  for (const pattern of patterns) {
     const stat = fs.statSync(path.resolve(io.cwd, pattern), { throwIfNoEntry: false });
-    if (!stat) return toPosix(pattern);
-    const literal = escapePath(toPosix(path.join(pattern, '.')));
-    if (!stat.isDirectory()) return literal;
-    return literal === '.' ? '**/*.{tsx,jsx}' : `${literal}/**/*.{tsx,jsx}`;
-  });
-  let files = (
-    await glob(globs, {
-      cwd: io.cwd,
-      absolute: true,
-      ignore: ['**/node_modules/**'],
-      expandDirectories: false,
-    })
-  ).sort();
-  if (!files.length) {
+    if (stat && !stat.isDirectory()) {
+      named.push(path.resolve(io.cwd, pattern));
+      continue;
+    }
+    const literal = stat ? escapePath(toPosix(path.join(pattern, '.'))) : toPosix(pattern);
+    globs.push(!stat ? literal : literal === '.' ? '**/*.{tsx,jsx}' : `${literal}/**/*.{tsx,jsx}`);
+  }
+  const options = { cwd: io.cwd, absolute: true, expandDirectories: false };
+  const all = globs.length ? await glob(globs, { ...options, ignore: ['**/node_modules/**'] }) : [];
+  const excludes = config.exclude
+    .filter((e) => !(values['include-tests'] && e === DEFAULT_TEST_EXCLUDE))
+    .map((e) => excludeFromCwd(e, config.root, io.cwd))
+    .filter((e): e is string => e !== undefined);
+  const kept = globs.length
+    ? await glob(globs, { ...options, ignore: unique(['**/node_modules/**', ...excludes]) })
+    : [];
+  const ignored = gitIgnored(io.cwd, kept);
+  const keptSet = new Set(kept);
+  const leftOut = all.filter((file) => !keptSet.has(file));
+  const left = {
+    tests: leftOut.filter((file) => TEST_FILE.test(file)).length,
+    excluded: leftOut.filter((file) => !TEST_FILE.test(file)).length,
+    gitignored: ignored.size,
+  };
+  let files = unique([...named, ...kept.filter((file) => !ignored.has(file))]).sort();
+  if (!files.length && !all.length) {
     io.stderr(`check: no files match ${patterns.join(' ')}`);
     return 2;
   }
@@ -269,12 +290,15 @@ async function check(
     skipped = files.length - rest.length;
     files = rest;
   }
+  const notes = scopeNotes(skipped, left);
   if (!files.length) {
     if (format === 'json') io.stdout('[]');
     else if (format === 'pretty') {
-      io.stdout(
-        `Nothing to check: ${plural(skipped, 'design-system file')} skipped. Pass --include-design-system to check ${skipped === 1 ? 'it' : 'them'}.`,
-      );
+      const hints = [
+        skipped ? `Pass --include-design-system to check ${skipped === 1 ? 'it' : 'them'}.` : '',
+        left.tests ? 'Pass --include-tests to check tests and stories.' : '',
+      ].filter(Boolean);
+      io.stdout(`Nothing to check: ${notes.join('; ')}. ${hints.join(' ')}`.trimEnd());
     }
     return 0;
   }
@@ -318,6 +342,10 @@ async function check(
     }
     results.push({ ...result, file: relativePath(io.cwd, file) });
   }
+  const elsewhere = results.filter((r) => r.skipped).length;
+  if (elsewhere) {
+    notes.push(`${plural(elsewhere, 'image or email file')} not checked`);
+  }
 
   // Components the model leaves out were not checked: say so once, not in every file.
   const unchecked = uncheckedNotice(results);
@@ -334,14 +362,18 @@ async function check(
     return 0;
   }
 
-  const output = formatDiagnostics(results, format, {
-    color: io.color,
-    baselined: baseline ? baselined : undefined,
-    skipped,
-    fixedHint: fixed
-      ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
-      : undefined,
-  });
+  const output = formatDiagnostics(
+    format === 'json' ? results : results.filter((r) => !r.skipped),
+    format,
+    {
+      color: io.color,
+      baselined: baseline ? baselined : undefined,
+      notes,
+      fixedHint: fixed
+        ? `${count(fixed, 'baseline finding')} no longer ${fixed === 1 ? 'occurs' : 'occur'}: run \`check ${patterns.map(shellQuote).join(' ')} --update-baseline\` to drop ${fixed === 1 ? 'it' : 'them'}.`
+        : undefined,
+    },
+  );
   if (output) io.stdout(output);
   for (const text of [notice, unchecked]) {
     if (!text) continue;
@@ -403,6 +435,61 @@ async function inspect(
   }
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+/** Tests and stories, which `check` leaves out of folders and globs unless asked. */
+const TEST_FILE = /\.(?:test|spec|stories)\.[cm]?[jt]sx?$/;
+
+/** What a run left out, for the summary line: `5 design-system files skipped`. */
+function scopeNotes(
+  skipped: number,
+  left: { tests: number; excluded: number; gitignored: number },
+): string[] {
+  return [
+    skipped ? `${plural(skipped, 'design-system file')} skipped` : '',
+    left.tests
+      ? `${left.tests.toLocaleString('en-US')} ${left.tests === 1 ? 'test or story' : 'tests and stories'} left out`
+      : '',
+    left.excluded ? `${plural(left.excluded, 'excluded file')} left out` : '',
+    left.gitignored ? `${plural(left.gitignored, 'file')} git ignores left out` : '',
+  ].filter(Boolean);
+}
+
+/**
+ * A config `exclude` pattern, relative to the root, as a pattern relative to the
+ * working directory the globs run from; undefined when it only covers files
+ * outside that directory. `**\/` patterns hold anywhere.
+ */
+function excludeFromCwd(pattern: string, root: string, cwd: string): string | undefined {
+  if (pattern.startsWith('**/')) return pattern;
+  const fromRoot = toPosix(path.relative(root, cwd));
+  if (!fromRoot) return pattern;
+  if (fromRoot.startsWith('..')) return toPosix(path.join(path.relative(cwd, root), pattern));
+  return pattern.startsWith(`${fromRoot}/`) ? pattern.slice(fromRoot.length + 1) : undefined;
+}
+
+/**
+ * The files git ignores, through `git check-ignore`: nested .gitignore files,
+ * `.git/info/exclude` and tracked-file exceptions, exactly as git reads them.
+ * Outside a repository, or without git, nothing is ignored.
+ */
+function gitIgnored(cwd: string, files: readonly string[]): Set<string> {
+  if (!files.length) return new Set();
+  const result = spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+    cwd,
+    input: files.join('\0'),
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    windowsHide: true,
+  });
+  // 0: some are ignored, 1: none are, anything else: not a repository or no git.
+  if (result.status !== 0 || typeof result.stdout !== 'string') return new Set();
+  return new Set(
+    result.stdout
+      .split('\0')
+      .filter(Boolean)
+      .map((file) => path.resolve(cwd, file)),
+  );
 }
 
 /** `1,307 findings`. */

@@ -48,7 +48,12 @@ describe('MCP server over the in-memory transport', () => {
       expect(tool.inputSchema.type).toBe('object');
     }
     const check = tools.find((t) => t.name === 'check_ui');
-    expect(Object.keys(check?.inputSchema.properties ?? {})).toEqual(['code', 'path', 'filename']);
+    expect(Object.keys(check?.inputSchema.properties ?? {})).toEqual([
+      'code',
+      'path',
+      'filename',
+      'limit',
+    ]);
     expect(check?.outputSchema?.properties).toHaveProperty('diagnostics');
   });
 
@@ -153,6 +158,61 @@ describe('MCP server over the in-memory transport', () => {
     expect(text(clean)).toBe('app/settings/members.tsx: no design-system problems found.');
     expect(clean.structuredContent).toMatchObject({ ok: true });
     expect(clean.structuredContent).not.toHaveProperty('notice');
+  });
+
+  it('check_ui returns at most `limit` diagnostics, errors first, with totals per rule', async () => {
+    // A long file: 60 hardcoded colors (errors) and 30 off-scale paddings (warnings).
+    const code = [
+      '<>',
+      ...Array.from({ length: 30 }, () => '<p className="p-[13px]" />'),
+      ...Array.from({ length: 60 }, () => '<p className="text-[#737373]" />'),
+      '</>',
+    ].join('\n');
+    const result = await client.callTool({ name: 'check_ui', arguments: { code } });
+    const content = result.structuredContent as {
+      diagnostics: { ruleId: string; severity: string }[];
+      errorCount: number;
+      warningCount: number;
+      omitted: number;
+      byRule: Record<string, { errors: number; warnings: number }>;
+    };
+    expect(content.diagnostics).toHaveLength(50);
+    expect(content.diagnostics.every((d) => d.severity === 'error')).toBe(true);
+    expect(content).toMatchObject({
+      errorCount: 60,
+      warningCount: 30,
+      omitted: 40,
+      byRule: {
+        'no-hardcoded-color': { errors: 60, warnings: 0 },
+        'no-hardcoded-spacing': { errors: 0, warnings: 30 },
+      },
+    });
+    expect(text(result)).toContain(
+      'Showing 50 of 90 (errors first). By rule: no-hardcoded-color 60, no-hardcoded-spacing 30.',
+    );
+    expect(text(result)).toContain('40 more not shown');
+    expect(
+      text(result)
+        .split('\n')
+        .filter((l) => / \[no-hardcoded/.test(l)),
+    ).toHaveLength(50);
+    const all = await client.callTool({ name: 'check_ui', arguments: { code, limit: 200 } });
+    expect((all.structuredContent as { diagnostics: unknown[]; omitted: number }).omitted).toBe(0);
+    expect(text(all)).not.toContain('more not shown');
+  });
+
+  it('check_ui does not check an Open Graph image or an email', async () => {
+    const result = await client.callTool({
+      name: 'check_ui',
+      arguments: {
+        code: 'import { ImageResponse } from "next/og"\nexport default () => new ImageResponse(<div style={{ background: "#0a0a0a", padding: 24 }} />)',
+        filename: 'app/opengraph-image.tsx',
+      },
+    });
+    expect(text(result)).toBe(
+      'app/opengraph-image.tsx: not checked. It renders an image (next/og), where design tokens and classes do not apply.',
+    );
+    expect(result.structuredContent).toMatchObject({ ok: true, diagnostics: [], omitted: 0 });
   });
 
   it('check_ui says when there is no design system to check against', async () => {

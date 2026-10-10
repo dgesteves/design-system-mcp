@@ -981,6 +981,38 @@ export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"in
   });
 });
 
+describe('files rendered outside the browser', () => {
+  const colors = `<div style={{ background: "#0a0a0a", padding: 24, color: "white" }} className="bg-[#111]" />`;
+  it('skips Open Graph images and emails, where tokens and classes do not apply', () => {
+    for (const [file, imports] of [
+      ['app/api/og/route.tsx', 'import { ImageResponse } from "next/og"'],
+      ['lib/og.tsx', 'import { ImageResponse } from "@vercel/og"'],
+      ['lib/card.tsx', 'import satori from "satori"'],
+      ['emails/welcome.tsx', 'import { Html, Button } from "@react-email/components"'],
+      ['app/opengraph-image.tsx', ''],
+      ['src/app/(site)/blog/[slug]/twitter-image.tsx', ''],
+      ['app/icon.tsx', ''],
+      ['app/apple-icon.jsx', ''],
+      // openstatus keeps the pieces of its images in an og folder.
+      ['src/app/api/og/_components/background.tsx', ''],
+    ]) {
+      const result = ds.check(`${imports}\nexport default () => ${colors}`, file);
+      expect([file, result.diagnostics, result.skipped]).toEqual([
+        file,
+        [],
+        expect.stringContaining('do not apply'),
+      ]);
+    }
+  });
+
+  it('still checks components named like those routes outside app/', () => {
+    expect(
+      ds.check(`export function Icon() { return ${colors} }`, 'components/icon.tsx').diagnostics,
+    ).not.toEqual([]);
+    expect(ds.check(colors, 'components/opengraph-image.tsx').skipped).toBeUndefined();
+  });
+});
+
 describe('no-unknown-component', () => {
   const rule = 'no-unknown-component';
 

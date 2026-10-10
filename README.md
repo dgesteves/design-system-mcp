@@ -85,7 +85,7 @@ npx -y @dgesteves/design-system-mcp inspect
 npx -y @dgesteves/design-system-mcp check .
 ```
 
-`check .` lints every `.tsx` and `.jsx` file under the folder, whatever the layout, and leaves out the design system's own components.
+`check .` lints every `.tsx` and `.jsx` file under the folder, whatever the layout, and leaves out the design system's own components, tests and stories, and what git ignores.
 
 ## Setup
 
@@ -351,13 +351,13 @@ The server sends usage instructions during the MCP handshake. Clients that ignor
 
 All tools are read-only, have zod-validated input schemas with size limits (up to 1,000,000 characters of code for `check_ui`), and return compact Markdown for the model plus JSON `structuredContent` (with an output schema) for programs.
 
-| Tool                | Input                                           | Returns                                                                                                                                     |
-| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                                   |
-| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples                    |
-| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                                      |
-| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                   |
-| `check_ui`          | `code` or `path`, `filename?`                   | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix, and a notice when no components or color tokens were found |
+| Tool                | Input                                           | Returns                                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_components`   | none                                            | Every component with a one-line description, the element it renders, variant values, parts and its import                                                                                                      |
+| `get_component`     | `name`: `Button`, `CardHeader` or `Card.Header` | Import, props (types, defaults, JSDoc), cva variants and the classes each applies, parts, tokens used, docs and examples                                                                                       |
+| `search_components` | `query`, `limit`                                | Components ranked for an intent such as "confirm a destructive action"                                                                                                                                         |
+| `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                                                                                      |
+| `check_ui`          | `code` or `path`, `filename?`, `limit?`         | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix (up to `limit`, 50 by default, errors first, with totals per rule), and a notice when no components or color tokens were found |
 
 Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. In Claude Code it is a slash command, `/mcp__design-system__build-with-design-system` for a server added as `design-system`.
 
@@ -470,6 +470,8 @@ CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `
 ## CI
 
 `check` runs the same rules as `check_ui` and exits 1 on errors (or on more than `--max-warnings` warnings). It skips the design system's own component files, the ones `components` matches: they implement the scale and the primitives the rules enforce, so a fresh shadcn/ui project's `p-[3px]` is not a finding. `--include-design-system`, or `"includeDesignSystem": true` in the config, lints them too.
+
+In folders and globs, `check` also leaves out tests and stories (`*.test.tsx`, `*.spec.tsx`, `*.stories.tsx`; `--include-tests` checks them), what the config's `exclude` lists, and what git ignores (through `git check-ignore`, so nested `.gitignore` files count); a file named outright is always checked. A file that renders an image or an email is not checked, since tokens and classes don't apply there: one that imports `next/og`, `@vercel/og`, `satori` or `@react-email/*`, a Next.js `opengraph-image`, `twitter-image`, `icon` or `apple-icon` route, or a file in an `og` folder. The summary line counts what was left out.
 
 Pin it as a dev dependency, so CI, the plugin's hook and everyone on the team run the same version:
 
