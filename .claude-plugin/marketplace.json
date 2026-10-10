@@ -9,7 +9,7 @@
     {
       "name": "onsystem",
       "source": "./plugins/onsystem",
-      "description": "Keeps Claude on your React design system: a hook checks every UI file Claude writes against your real components, props, variants and tokens and blocks on errors, with an MCP server and a skill to look them up first."
+      "description": "Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint."
     }
   ]
 }

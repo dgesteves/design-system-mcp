@@ -21,7 +21,7 @@ function absolute(markdown: string, page: string): string {
 }
 
 const summary =
-  'Keeps any coding agent on your React design system. It reads your real components, props, cva variants and tokens from source with the TypeScript compiler; a Claude Code hook blocks the edit when an agent invents one, with the fix; the same check gates pull requests in CI; and an MCP server lets any agent look the design system up and run check_ui on its own UI. Local, zero config, static analysis: no model calls, no API key. Works alongside @shadcn/lint.';
+  'Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint. It reads React components, props, cva variants and tokens from source with the TypeScript compiler. In Claude Code, a hook checks each file right after it is written and hands the errors back with their fixes; other agents run check_ui over MCP; the CI check gates pull requests. Static analysis: no model calls, no API key.';
 
 /** llms.txt (https://llmstxt.org): what this is, how to install it, and where everything is. */
 export function llmsTxt(): string {

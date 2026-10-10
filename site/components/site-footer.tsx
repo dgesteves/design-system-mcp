@@ -15,7 +15,7 @@ export function SiteFooter() {
             <span className="font-mono text-[13px] font-semibold text-fg">onsystem</span>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-muted">
-            Keeps any coding agent on your React design system: at the edit, in CI and over MCP. MIT
+            Keeps coding agents on your design system: after each edit, in CI and over MCP. MIT
             licensed, version {VERSION}.
           </p>
         </div>

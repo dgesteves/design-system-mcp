@@ -9,9 +9,9 @@ import { mono, sans } from './fonts';
 
 import './globals.css';
 
-const title = 'onsystem: keeps any coding agent on your design system';
+const title = 'onsystem: keeps coding agents on your design system';
 const description =
-  'It knows your real React components, props, variants and tokens, blocks the edit when an agent invents one, and the same check gates your pull requests. Local, zero config, works alongside @shadcn/lint.';
+  'Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

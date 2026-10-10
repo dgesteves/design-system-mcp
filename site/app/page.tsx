@@ -16,7 +16,7 @@ const jsonLd = {
   '@type': 'SoftwareApplication',
   name: 'onsystem',
   description:
-    'Keeps any coding agent on your React design system: it knows your real components, props, variants and tokens, blocks the edit when an agent invents one, and the same check gates your pull requests. Local, zero config, works alongside @shadcn/lint.',
+    'Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'macOS, Linux, Windows',
   softwareVersion: tools.version,
@@ -66,18 +66,20 @@ function Hero() {
           <div>
             <Eyebrow>Claude Code hook · CI check · MCP server · MIT</Eyebrow>
             <h1 className="mt-5 text-[2.15rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance text-fg sm:text-5xl lg:text-[3.15rem]">
-              Keeps any coding agent on your design system.
+              Keeps coding agents on your design system.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-fg-soft sm:text-xl">
-              It knows your real components, props, variants and tokens, blocks the edit when an
-              agent invents one, and the same check gates your pull requests.
+              It knows your real components, props, variants and tokens, catches the moment an agent
+              invents one and has it fix it, and the same check gates your PRs. Local, zero config,
+              works alongside{' '}
+              <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink>.
             </p>
             <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted sm:text-base">
-              Local, zero config, and it works alongside{' '}
-              <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink>. Built for
-              design-system and platform teams with a React design-system package; a shadcn/ui app
-              works with no config at all. Every finding has a rule id, a location and a fix, so the
-              agent corrects itself before you review anything.
+              In Claude Code, the plugin&apos;s hook checks each file right after it is written and
+              hands the errors back, each with its fix. Other agents run{' '}
+              <InlineCode>check_ui</InlineCode> on their own output, and the CI check gates whatever
+              they wrote. Built for design-system and platform teams with a React design-system
+              package; a shadcn/ui app works with no config at all.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
               <StarButton />
@@ -304,7 +306,7 @@ function HowItWorks() {
     <Section
       id="how-it-works"
       eyebrow="How it works"
-      title="Reads your source. Holds the edit. Gates the pull request."
+      title="Reads your source. Checks every edit. Gates the pull request."
       lead={
         <p>
           Static analysis from start to finish: no model calls, no API key, and it runs offline. One
@@ -346,8 +348,9 @@ function HowItWorks() {
         </Card>
         <Card step="02" title="Checks every edit and every pull request">
           <p>
-            In Claude Code, the plugin&apos;s hook runs these rules after every edit and blocks on
-            errors. In CI, <InlineCode>check</InlineCode> runs them on every pull request.
+            In Claude Code, the plugin&apos;s hook runs these rules right after each file is written
+            and hands the errors back for Claude to fix. In CI, <InlineCode>check</InlineCode> runs
+            them on every pull request.
           </p>
           <ul className="mt-3 grid gap-1.5">
             {rules.map((rule) => (
@@ -498,7 +501,7 @@ function ShadcnLint() {
           <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink> is a linter: it
           polices the classes written against a component and the theme, in React, Svelte and Vue,
           on Tailwind v4. onsystem checks that the components, props and variant values the agent
-          used exist, and holds the agent at the edit until they do.
+          used exist, and in Claude Code has the agent fix them right after the edit.
         </p>
       }
     >
@@ -524,7 +527,7 @@ function ShadcnLint() {
           title="onsystem adds"
           tone="cyan"
           items={[
-            'A Claude Code hook that blocks the edit when the agent invents one, and the same check in CI',
+            'A Claude Code hook that checks each file after it is written and has the agent fix what it invented, and the same check in CI',
             <>
               Components, props and variant values that do not exist (
               <InlineCode>&lt;Card.Header&gt;</InlineCode>, <InlineCode>tone</InlineCode>,{' '}

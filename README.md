@@ -1,6 +1,6 @@
 # onsystem
 
-**Keeps any coding agent on your design system.** It knows your real components, props, variants and tokens, blocks the edit when an agent invents one, and the same check gates your PRs. Local, zero config, works alongside [@shadcn/lint](https://github.com/shadcn-ui/lint).
+**Keeps coding agents on your design system:** it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside [@shadcn/lint](https://github.com/shadcn-ui/lint).
 
 Built for design-system and platform teams with a React design-system package; a shadcn/ui app is the zero-config demo. Formerly `@dgesteves/design-system-mcp` ([what changed](https://design-system-mcp-demo.vercel.app/docs/migrating)).
 
@@ -77,7 +77,7 @@ Findings show up as annotations on the pull request, and `--require-design-syste
 
 ## Works with @shadcn/lint
 
-[@shadcn/lint](https://github.com/shadcn-ui/lint) checks the Tailwind classes written against a component and the theme (restyling, raw colors, arbitrary and unknown classes) as ESLint or Oxlint rules on Tailwind v4. onsystem checks that the components, props and variant values exist, flags native elements and unnamed icon buttons on Tailwind v3 or v4, and holds the agent at the edit, so run both.
+[@shadcn/lint](https://github.com/shadcn-ui/lint) checks the Tailwind classes written against a component and the theme (restyling, raw colors, arbitrary and unknown classes) as ESLint or Oxlint rules on Tailwind v4. onsystem checks that the components, props and variant values exist, flags native elements and unnamed icon buttons on Tailwind v3 or v4, and in Claude Code catches an invented one right after the edit, so run both.
 
 ## Does it help?
 

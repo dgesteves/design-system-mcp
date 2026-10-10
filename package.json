@@ -2,7 +2,7 @@
   "name": "onsystem",
   "version": "0.3.3",
   "mcpName": "io.github.dgesteves/onsystem",
-  "description": "Keeps any coding agent on your React design system: it knows your real components, props, variants and tokens, blocks the edit when an agent invents one (Claude Code hook), and the same check gates your PRs. Local, zero config, plus an MCP server.",
+  "description": "Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.",
   "keywords": [
     "design-system",
     "design-system-lint",

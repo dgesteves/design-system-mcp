@@ -10,7 +10,7 @@ export const DOCS_PAGES = [
     href: '/docs/plugin',
     title: 'Claude Code plugin',
     description:
-      'The hook that checks every UI file Claude writes and blocks on errors, the MCP server and a skill: what each does, what it runs and what it touches.',
+      'The hook that checks every UI file right after Claude writes it and hands errors back to fix, the MCP server and a skill: what each does, what it runs and what it touches.',
   },
   {
     href: '/docs/ci',

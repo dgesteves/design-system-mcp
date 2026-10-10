@@ -11,7 +11,7 @@ The plugin is the fastest way to keep Claude on your design system. It bundles t
 /plugin install onsystem@dgesteves
 ```
 
-## What a blocked edit looks like
+## What Claude sees when it invents something
 
 ```text
 ⏺ Write(app/promo/page.tsx)
@@ -26,7 +26,7 @@ The plugin is the fastest way to keep Claude on your design system. It bundles t
 
 ## What the hook does
 
-- **Errors block.** The hook exits with Claude Code's blocking code, and the findings, each with its fix, go to Claude, which corrects the file before moving on. The file is written; Claude is held until it is right.
+- **Errors come back to be fixed.** The hook runs after the file is written. It exits with Claude Code's blocking-error code, and the findings, each with its fix, go to Claude, which corrects the file before moving on.
 - **Warnings don't.** They reach Claude as a note, without blocking.
 - **Only what Claude just changed.** After an Edit it lists the findings on the edited lines and only counts older ones. It honours a [baseline](ci.md#adopting-it-in-an-existing-codebase).
 - **Quiet where there is nothing to check.** It stays silent in projects without design-system components (tokens alone don't count), so installing the plugin for every project is safe.

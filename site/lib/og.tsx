@@ -305,7 +305,7 @@ export function HomeCard({
               letterSpacing: -1.2,
             }}
           >
-            Keeps any coding agent on your design system.
+            Keeps coding agents on your design system.
           </div>
           {model && (
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
