@@ -23,7 +23,7 @@ afterAll(() => {
 describe('loadConfig', () => {
   it('finds the config file in the root and resolves rule settings', async () => {
     const config = await loadConfig({ root: ACME_ROOT });
-    expect(config.configFile).toBe(path.join(ACME_ROOT, 'design-system-mcp.config.json'));
+    expect(config.configFile).toBe(path.join(ACME_ROOT, 'onsystem.config.json'));
     expect(config.tokens).toEqual([{ path: 'tokens/*.tokens.json', prefix: 'acme' }]);
     expect(config.rules['no-hardcoded-spacing']).toEqual({ severity: 'error', options: {} });
     expect(config.rules['no-hardcoded-radius']).toEqual({
@@ -36,7 +36,7 @@ describe('loadConfig', () => {
   it('uses the config file directory as the root when given --config', async () => {
     const config = await loadConfig({
       cwd: '/',
-      config: path.join(DEMO_ROOT, 'design-system-mcp.config.json'),
+      config: path.join(DEMO_ROOT, 'onsystem.config.json'),
     });
     expect(config.root).toBe(DEMO_ROOT);
   });
@@ -59,10 +59,50 @@ describe('loadConfig', () => {
     expect(config.tokens).toEqual([{ path: 'tokens/acme.tokens.json' }]);
   });
 
+  it('still reads a config under its name from before the rename, and says how to rename it', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'legacy-'));
+    fs.writeFileSync(
+      path.join(dir, 'design-system-mcp.config.json'),
+      '{ "components": ["ui/**/*.tsx"] }',
+    );
+    const legacy = await loadConfig({ root: dir });
+    expect(legacy.configFile).toBe(path.join(dir, 'design-system-mcp.config.json'));
+    expect(legacy.components).toEqual(['ui/**/*.tsx']);
+    expect(legacy.deprecations).toEqual([
+      "design-system-mcp.config.json is the config's name from before design-system-mcp became onsystem. Rename it to onsystem.config.json (git mv design-system-mcp.config.json onsystem.config.json); the old name still works for now.",
+    ]);
+
+    // With both, the new name wins and the old file is called out.
+    fs.writeFileSync(path.join(dir, 'onsystem.config.json'), '{ "components": ["src/**/*.tsx"] }');
+    const both = await loadConfig({ root: dir });
+    expect(both.configFile).toBe(path.join(dir, 'onsystem.config.json'));
+    expect(both.components).toEqual(['src/**/*.tsx']);
+    expect(both.deprecations).toEqual([
+      'design-system-mcp.config.json is ignored: onsystem.config.json is read instead. Delete design-system-mcp.config.json.',
+    ]);
+
+    // Named outright, a file is read as it is, with nothing to say.
+    const named = await loadConfig({ cwd: dir, config: 'design-system-mcp.config.json' });
+    expect(named.components).toEqual(['ui/**/*.tsx']);
+    expect(named.deprecations).toBeUndefined();
+    expect((await loadConfig({ root: ACME_ROOT })).deprecations).toBeUndefined();
+  });
+
+  it('points a code config that imports the old package name at onsystem', async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, 'legacy-import-'));
+    fs.writeFileSync(
+      path.join(dir, 'onsystem.config.mjs'),
+      "import { defineConfig } from '@dgesteves/design-system-mcp';\nexport default defineConfig({});\n",
+    );
+    await expect(loadConfig({ root: dir })).rejects.toThrow(
+      "The package is now onsystem: import { defineConfig } from 'onsystem'.",
+    );
+  });
+
   it('loads TypeScript configs', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'ts-'));
     fs.writeFileSync(
-      path.join(dir, 'design-system-mcp.config.ts'),
+      path.join(dir, 'onsystem.config.ts'),
       `const config: { components: string[] } = { components: ["ui/**/*.tsx"] };\nexport default config;\n`,
     );
     expect((await loadConfig({ root: dir })).components).toEqual(['ui/**/*.tsx']);
@@ -86,7 +126,7 @@ describe('loadConfig', () => {
   it('rejects invalid configs with a readable message', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'bad-'));
     fs.writeFileSync(
-      path.join(dir, 'design-system-mcp.config.json'),
+      path.join(dir, 'onsystem.config.json'),
       JSON.stringify({ components: 3, rules: { 'no-such-rule': 'error' } }),
     );
     const error = await loadConfig({ root: dir }).catch((e: unknown) => e);
@@ -100,7 +140,7 @@ describe('loadConfig', () => {
   it('names unknown keys, rules and severities, with the closest valid one', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'typo-'));
     fs.writeFileSync(
-      path.join(dir, 'design-system-mcp.config.json'),
+      path.join(dir, 'onsystem.config.json'),
       JSON.stringify({
         component: ['ui/**/*.tsx'],
         rules: {
@@ -124,7 +164,7 @@ describe('loadConfig', () => {
   it('applies overrides to the files they match, in order, and validates them', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'overrides-'));
     const write = (config: unknown) => {
-      fs.writeFileSync(path.join(dir, 'design-system-mcp.config.json'), JSON.stringify(config));
+      fs.writeFileSync(path.join(dir, 'onsystem.config.json'), JSON.stringify(config));
     };
     write({
       rules: { 'no-hardcoded-spacing': 'error' },
@@ -198,7 +238,7 @@ describe('loadConfig', () => {
     fs.mkdirSync(path.join(dir, 'app'));
     fs.writeFileSync(path.join(dir, 'app/globals.css'), '');
     fs.writeFileSync(
-      path.join(dir, 'design-system-mcp.config.json'),
+      path.join(dir, 'onsystem.config.json'),
       JSON.stringify({
         tsconfig: '.\\tsconfig.app.json',
         components: 'components\\ui\\**\\*.tsx',
@@ -219,7 +259,7 @@ describe('loadConfig', () => {
   it('rejects a tsconfig that does not exist instead of ignoring it', async () => {
     const dir = fs.mkdtempSync(path.join(tmp, 'tsconfig-'));
     fs.writeFileSync(
-      path.join(dir, 'design-system-mcp.config.json'),
+      path.join(dir, 'onsystem.config.json'),
       JSON.stringify({ tsconfig: 'tsconfig.app.json' }),
     );
     const error = await loadConfig({ root: dir }).catch((e: unknown) => e);
@@ -231,7 +271,7 @@ describe('loadConfig', () => {
 
   it('resolves path aliases through a Windows-style tsconfig path', async () => {
     const root = fixture({
-      'design-system-mcp.config.json': JSON.stringify({
+      'onsystem.config.json': JSON.stringify({
         tsconfig: '.\\tsconfig.app.json',
         components: 'components\\ui\\*.tsx',
         tokens: [],

@@ -18,19 +18,19 @@ const FAQ: [question: string, answer: string][] = [
   ],
   [
     'How is it different from @shadcn/lint?',
-    '@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. design-system-mcp gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values), native elements the design system wraps and icon buttons without a name, on Tailwind v3 or v4. Running both in CI is a sensible setup.',
+    '@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values), native elements the design system wraps and icon buttons without a name, on Tailwind v3 or v4. Running both in CI is a sensible setup.',
   ],
   [
     'Why not Storybook MCP?',
-    'It is a good fit if you run Storybook: it serves stories and a component manifest from a running instance, and can run component tests. design-system-mcp reads the source, so it works in projects without Storybook, and in CI.',
+    'It is a good fit if you run Storybook: it serves stories and a component manifest from a running instance, and can run component tests. onsystem reads the source, so it works in projects without Storybook, and in CI.',
   ],
   [
     'Why not describe the design system in CLAUDE.md or AGENTS.md?',
-    'A static list goes stale, and agents still guess prop values and colors. Here the agent asks for the component it is about to use and gets checked afterwards. One line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` still helps clients that ignore the server\'s instructions: _"Before writing UI, use the design-system tools. Run check_ui on every file you change and fix all errors."_',
+    'A static list goes stale, and agents still guess prop values and colors. Here the agent asks for the component it is about to use and gets checked afterwards. One line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` still helps clients that ignore the server\'s instructions: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_',
   ],
   [
     'My components are not in components/ui. Do I need a config?',
-    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), is the design-system package itself, or keeps its components in a flat `src/` that wraps React Aria, Radix or another primitives library: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y @dgesteves/design-system-mcp inspect` prints what was found.',
+    'Not if the app has a shadcn/ui `components.json`, imports a workspace package named like a design system (`@acme/ui`), is the design-system package itself, or keeps its components in a flat `src/` that wraps React Aria, Radix or another primitives library: [zero config](/docs/configuration#zero-config) finds those. Otherwise a config file with a `components` glob is enough. `npx -y onsystem inspect` prints what was found.',
   ],
   [
     "Will check fail on my design system's own components?",

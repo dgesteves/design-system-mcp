@@ -1,5 +1,5 @@
 ---
-'@dgesteves/design-system-mcp': minor
+'onsystem': minor
 ---
 
 The Claude Code hook speaks up when it can't check, and stays quiet where there is nothing to check against.

@@ -251,7 +251,7 @@ describe('MCP server over the in-memory transport', () => {
       arguments: { code: '<p className="text-gray-500">Hi</p>' },
     });
     const notice =
-      'No design system found (no components or color tokens): only the accessibility rule ran. See https://github.com/dgesteves/design-system-mcp#configuration';
+      'No design system found (no components or color tokens): only the accessibility rule ran. See https://design-system-mcp-demo.vercel.app/docs/configuration';
     expect(text(result)).toBe(`snippet.tsx: no design-system problems found.\n\n${notice}`);
     expect(result.structuredContent).toMatchObject({ ok: true, notice });
     await plain.close();
@@ -324,7 +324,7 @@ describe('check_ui on project files', () => {
   it('refuses a path that leaves the root through a symlink', async () => {
     const outside = fixture({ 'secret.tsx': 'SECRET=1 <div className="bg-red-500" />' });
     const root = fixture({
-      'design-system-mcp.config.json': '{ "tokens": [] }',
+      'onsystem.config.json': '{ "tokens": [] }',
       'app/page.tsx': 'export default () => <div />',
     });
     fs.symlinkSync(outside, path.join(root, 'linked'), 'junction');
@@ -377,9 +377,36 @@ describe('project root from MCP client roots', () => {
     fs.rmSync(cwd, { recursive: true, force: true });
   });
 
+  it('finds a config under its old name in the working directory, says so once, and is named onsystem', async () => {
+    const cwd = fixture({
+      'components/ui/chip.tsx': 'export function Chip() { return <span /> }\n',
+      'design-system-mcp.config.json': '{ "components": ["components/ui/*.tsx"] }',
+    });
+    const warnings: string[] = [];
+    const logger = { ...silentLogger, warn: (message: string) => warnings.push(message) };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd,
+      cache: false,
+      watch: false,
+      logger,
+      transport: serverTransport,
+    });
+    const client = new Client({ name: 'c', version: '1.0.0' });
+    await client.connect(clientTransport);
+    expect(client.getServerVersion()).toMatchObject({ name: 'onsystem', title: 'onsystem' });
+    const result = await client.callTool({ name: 'list_components', arguments: {} });
+    expect(text(result)).toContain('Chip');
+    expect(warnings.filter((w) => w.includes('design-system-mcp'))).toEqual([
+      expect.stringContaining("design-system-mcp.config.json is the config's name from before"),
+    ]);
+    await client.close();
+    await server.close();
+  });
+
   it('reports config errors through tool results', async () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-bad-'));
-    fs.writeFileSync(path.join(cwd, 'design-system-mcp.config.json'), '{"components": 1}');
+    fs.writeFileSync(path.join(cwd, 'onsystem.config.json'), '{"components": 1}');
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = await serveStdio({
       cwd,

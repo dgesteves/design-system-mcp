@@ -1,5 +1,5 @@
 ---
-'@dgesteves/design-system-mcp': minor
+'onsystem': minor
 ---
 
 `check` lints what you ship, and `check_ui` answers in a size an agent can read.

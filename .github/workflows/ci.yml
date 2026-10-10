@@ -38,11 +38,11 @@ jobs:
       - name: Run the Claude Code hook against the demo's draft page
         working-directory: examples/shadcn-demo
         env:
-          DESIGN_SYSTEM_MCP_BIN: ${{ github.workspace }}/dist/cli.js
+          ONSYSTEM_BIN: ${{ github.workspace }}/dist/cli.js
         run: |
           set +e
           echo "{\"tool_name\":\"Write\",\"cwd\":\"$PWD\",\"tool_input\":{\"file_path\":\"$PWD/app/settings/danger-zone.tsx\"}}" \
-            | node ../../plugins/design-system/hooks/check-ui.mjs 2> hook.err
+            | node ../../plugins/onsystem/hooks/check-ui.mjs 2> hook.err
           status=$?
           cat hook.err
           test "$status" -eq 2 && grep -q "no-unknown-variant" hook.err

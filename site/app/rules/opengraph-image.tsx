@@ -4,7 +4,7 @@ import { ruleCatalog } from '@/lib/data';
 import { C, Dot, ogFonts, PageCard, Panel } from '@/lib/og';
 
 export const alt =
-  'The design-system-mcp rules: eight rules, from no-hardcoded-color to icon-button-accessible-name, each with a fix.';
+  'The onsystem rules: eight rules, from no-hardcoded-color to icon-button-accessible-name, each with a fix.';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 

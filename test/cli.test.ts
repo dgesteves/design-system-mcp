@@ -16,7 +16,7 @@ async function run(args: string[], cwd = DEMO_ROOT) {
   return { code, stdout: out.join('\n'), stderr: err.join('\n') };
 }
 
-describe('design-system-mcp check', () => {
+describe('onsystem check', () => {
   it('exits 1 and prints grouped diagnostics when there are errors', async () => {
     const { code, stdout } = await run(['check', 'app/**/*.tsx', '--no-cache']);
     expect(code).toBe(1);
@@ -113,7 +113,7 @@ describe('design-system-mcp check', () => {
   });
 });
 
-describe("design-system-mcp check and the design system's own files", () => {
+describe("onsystem check and the design system's own files", () => {
   it('skips them unless asked, and says so', async () => {
     const all = await run(['check', '.', '--no-cache']);
     expect(all.stdout.split('\n').at(-1)).toBe(
@@ -128,7 +128,7 @@ describe("design-system-mcp check and the design system's own files", () => {
     const root = fixture({
       'components/ui/button.tsx':
         'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
-      'design-system-mcp.config.json': JSON.stringify({
+      'onsystem.config.json': JSON.stringify({
         exclude: ['**/*.{test,spec,stories}.{ts,tsx,js,jsx}', 'app/legacy/**'],
       }),
       '.gitignore': 'dist/\n',
@@ -212,7 +212,7 @@ describe("design-system-mcp check and the design system's own files", () => {
 
   it('reads includeDesignSystem from the config', async () => {
     const root = fixture({
-      'design-system-mcp.config.json': '{ "includeDesignSystem": true }',
+      'onsystem.config.json': '{ "includeDesignSystem": true }',
       'app/globals.css': '@import "tailwindcss";',
       'components/ui/button.tsx':
         'export function Button(props: React.ComponentProps<"button">) { return <button className="p-[3px]" {...props} /> }',
@@ -223,14 +223,14 @@ describe("design-system-mcp check and the design system's own files", () => {
   });
 });
 
-describe('design-system-mcp without a design system', () => {
+describe('onsystem without a design system', () => {
   const plain = () =>
     fixture({
       'package.json': '{ "name": "plain" }',
       'src/App.tsx': 'export const App = () => <button><svg /></button>',
     });
   const NOTICE =
-    'No design system found (no components or color tokens): only the accessibility rule ran. See https://github.com/dgesteves/design-system-mcp#configuration';
+    'No design system found (no components or color tokens): only the accessibility rule ran. See https://design-system-mcp-demo.vercel.app/docs/configuration';
 
   it('says that only the accessibility rule ran, in every format', async () => {
     const root = plain();
@@ -241,12 +241,12 @@ describe('design-system-mcp without a design system', () => {
     expect(JSON.parse(json.stdout)).toHaveLength(1);
     expect(json.stderr).toBe(NOTICE);
     const github = await run(['check', '.', '--format', 'github', '--no-cache'], root);
-    expect(github.stdout.split('\n').at(-1)).toBe(`::warning title=design-system-mcp::${NOTICE}`);
+    expect(github.stdout.split('\n').at(-1)).toBe(`::warning title=onsystem::${NOTICE}`);
   });
 
   it('says once, for all files, which components it could not check', async () => {
     const root = fixture({
-      'design-system-mcp.config.json': '{ "exclude": ["**/icons/**"] }',
+      'onsystem.config.json': '{ "exclude": ["**/icons/**"] }',
       'tsconfig.json': JSON.stringify({
         compilerOptions: { jsx: 'react-jsx', paths: { '@/*': ['./*'] } },
       }),
@@ -264,7 +264,7 @@ describe('design-system-mcp without a design system', () => {
     expect(pretty.code).toBe(0);
     expect(pretty.stdout.split(notice)).toHaveLength(2);
     const github = await run(['check', 'app', '--no-cache', '--format', 'github'], root);
-    expect(github.stdout).toContain(`::warning title=design-system-mcp::${notice}`);
+    expect(github.stdout).toContain(`::warning title=onsystem::${notice}`);
     const json = await run(['check', 'app', '--no-cache', '--format', 'json'], root);
     expect((JSON.parse(json.stdout) as { unchecked?: unknown }[])[0]?.unchecked).toEqual({
       names: ['Spinner'],
@@ -285,7 +285,7 @@ describe('design-system-mcp without a design system', () => {
     const before = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
     expect(before.stdout).toMatch(/^Baseline: 4 findings in 2 files/);
     fs.writeFileSync(
-      path.join(root, 'design-system-mcp.config.json'),
+      path.join(root, 'onsystem.config.json'),
       JSON.stringify({
         tokens: ['app/globals.css'],
         overrides: [{ files: ['app/legacy/**'], rules: { 'no-hardcoded-color': 'off' } }],
@@ -328,7 +328,7 @@ describe('design-system-mcp without a design system', () => {
   });
 });
 
-describe('design-system-mcp errors and help', () => {
+describe('onsystem errors and help', () => {
   it('reports a missing root in one line with exit code 2, for check and inspect', async () => {
     for (const args of [['check', '.'], ['inspect']]) {
       const { code, stdout, stderr } = await run([...args, '--root', '/nope/not-here']);
@@ -369,7 +369,7 @@ describe('design-system-mcp errors and help', () => {
   });
 });
 
-describe('design-system-mcp check with a baseline', () => {
+describe('onsystem check with a baseline', () => {
   const BUTTON =
     'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }';
   const project = () =>
@@ -383,7 +383,7 @@ describe('design-system-mcp check with a baseline', () => {
       'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
     });
   const baselineOf = (root: string) =>
-    JSON.parse(fs.readFileSync(path.join(root, 'design-system-mcp.baseline.json'), 'utf8')) as {
+    JSON.parse(fs.readFileSync(path.join(root, 'onsystem.baseline.json'), 'utf8')) as {
       files: Record<string, Record<string, Record<string, number>>>;
     };
 
@@ -396,7 +396,7 @@ describe('design-system-mcp check with a baseline', () => {
     );
     expect(recorded.code).toBe(0);
     expect(recorded.stdout).toBe(
-      `Baseline: 3 findings in 2 files → ${path.join(root, 'design-system-mcp.baseline.json')}`,
+      `Baseline: 3 findings in 2 files → ${path.join(root, 'onsystem.baseline.json')}`,
     );
     expect(baselineOf(root).files).toEqual({
       'app/a.tsx': { 'prefer-design-system-component': { button: 2 } },
@@ -440,7 +440,7 @@ describe('design-system-mcp check with a baseline', () => {
     ]);
     const github = await run(['check', 'app/a.tsx', '--no-cache', '--format', 'github'], root);
     expect(github.stdout).toBe(
-      '::notice title=design-system-mcp baseline::1 baseline finding no longer occurs: run `check app/a.tsx --update-baseline` to drop it.',
+      '::notice title=onsystem baseline::1 baseline finding no longer occurs: run `check app/a.tsx --update-baseline` to drop it.',
     );
 
     // Only a.tsx is checked: its entry shrinks, b.tsx is gone from disk and is dropped.
@@ -473,10 +473,10 @@ describe('design-system-mcp check with a baseline', () => {
     const root = project();
     const missing = await run(['check', 'app', '--baseline', 'nope.json', '--no-cache'], root);
     expect(missing).toMatchObject({ code: 2, stderr: 'check: baseline not found: nope.json' });
-    fs.writeFileSync(path.join(root, 'design-system-mcp.baseline.json'), '{"files": []}');
+    fs.writeFileSync(path.join(root, 'onsystem.baseline.json'), '{"files": []}');
     const malformed = await run(['check', 'app', '--no-cache'], root);
     expect(malformed.code).toBe(2);
-    expect(malformed.stderr).toContain('is not a valid design-system-mcp baseline');
+    expect(malformed.stderr).toContain('is not a valid onsystem baseline');
 
     // Every level is checked, and an update refuses to overwrite what it cannot read.
     for (const files of [
@@ -485,13 +485,13 @@ describe('design-system-mcp check with a baseline', () => {
       { 'app/a.tsx': { 'prefer-design-system-component': { button: 0.5 } } },
     ]) {
       fs.writeFileSync(
-        path.join(root, 'design-system-mcp.baseline.json'),
+        path.join(root, 'onsystem.baseline.json'),
         JSON.stringify({ version: 1, files }),
       );
       for (const extra of [[], ['--update-baseline']]) {
         const run_ = await run(['check', 'app', '--no-cache', ...extra], root);
         expect(run_.code).toBe(2);
-        expect(run_.stderr).toContain('is not a valid design-system-mcp baseline');
+        expect(run_.stderr).toContain('is not a valid onsystem baseline');
       }
     }
 
@@ -551,7 +551,7 @@ describe('design-system-mcp check with a baseline', () => {
       expect((await run(['check', 'app', '--no-cache'], root)).code).toBe(0);
 
       fs.writeFileSync(
-        path.join(root, 'design-system-mcp.config.json'),
+        path.join(root, 'onsystem.config.json'),
         JSON.stringify({ rules: { 'prefer-design-system-component': 'off' } }),
       );
       // Off is not fixed: no hint, and an update keeps the entry for when the rule returns.
@@ -569,7 +569,64 @@ describe('design-system-mcp check with a baseline', () => {
   });
 });
 
-describe('design-system-mcp check --quiet-without-design-system', () => {
+describe('onsystem and the names from before the rename', () => {
+  const files = {
+    'components/ui/button.tsx':
+      'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+    'app/a.tsx': 'export const A = () => <button>One</button>',
+    'app/globals.css': ':root { --primary: oklch(0.205 0 0); }',
+  };
+
+  it('reads design-system-mcp.config.json and says once how to rename it', async () => {
+    const root = fixture({
+      ...files,
+      'design-system-mcp.config.json': '{ "rules": { "prefer-design-system-component": "warn" } }',
+    });
+    const notice =
+      "design-system-mcp.config.json is the config's name from before design-system-mcp became onsystem. Rename it to onsystem.config.json (git mv design-system-mcp.config.json onsystem.config.json); the old name still works for now.";
+    const pretty = await run(['check', 'app', '--no-cache'], root);
+    expect(pretty.code).toBe(0);
+    expect(pretty.stdout).toContain('1 warning');
+    expect(pretty.stderr).toBe(notice);
+    // JSON stays parseable; GitHub gets a warning annotation.
+    const json = await run(['check', 'app', '--format', 'json', '--no-cache'], root);
+    expect(JSON.parse(json.stdout)).toHaveLength(1);
+    expect(json.stderr).toBe(notice);
+    const github = await run(['check', 'app', '--format', 'github', '--no-cache'], root);
+    expect(github.stdout.split('\n')[0]).toBe(`::warning title=onsystem::${notice}`);
+    expect((await run(['inspect', '--no-cache'], root)).stderr).toBe(notice);
+  });
+
+  it('reads and updates design-system-mcp.baseline.json where it is, until it is renamed', async () => {
+    const root = fixture(files);
+    const legacy = path.join(root, 'design-system-mcp.baseline.json');
+    const notice =
+      "design-system-mcp.baseline.json is the baseline's name from before design-system-mcp became onsystem. Rename it to onsystem.baseline.json (git mv design-system-mcp.baseline.json onsystem.baseline.json); the old name still works for now.";
+    expect((await run(['check', 'app', '--update-baseline', '--no-cache'], root)).code).toBe(0);
+    fs.renameSync(path.join(root, 'onsystem.baseline.json'), legacy);
+
+    const read = await run(['check', 'app', '--no-cache'], root);
+    expect(read).toMatchObject({
+      code: 0,
+      stdout: 'No new problems in 1 file (1 in the baseline).',
+      stderr: notice,
+    });
+    const updated = await run(['check', 'app', '--update-baseline', '--no-cache'], root);
+    expect(updated.stdout).toBe('Baseline: 1 finding in 1 file → design-system-mcp.baseline.json');
+    expect(fs.existsSync(path.join(root, 'onsystem.baseline.json'))).toBe(false);
+    expect((await run(['check', 'app', '--ignore-baseline', '--no-cache'], root)).stderr).toBe('');
+
+    // Once renamed, a leftover copy under the old name is called out and not read.
+    fs.copyFileSync(legacy, path.join(root, 'onsystem.baseline.json'));
+    fs.writeFileSync(legacy, '{"files": []}');
+    expect(await run(['check', 'app', '--no-cache'], root)).toMatchObject({
+      code: 0,
+      stderr:
+        'design-system-mcp.baseline.json is ignored: onsystem.baseline.json is read instead. Delete design-system-mcp.baseline.json.',
+    });
+  });
+});
+describe('onsystem check --quiet-without-design-system', () => {
   const page =
     'export default () => <div className="p-[13px] rounded-[7px] bg-[#ef4444]"><button>Go</button></div>';
 
@@ -614,7 +671,7 @@ describe('design-system-mcp check --quiet-without-design-system', () => {
       'app/page.tsx': page,
     });
     const withConfig = fixture({
-      'design-system-mcp.config.json': JSON.stringify({ tokens: ['app/globals.css'] }),
+      'onsystem.config.json': JSON.stringify({ tokens: ['app/globals.css'] }),
       'app/globals.css': '@import "tailwindcss";\n',
       'app/page.tsx': page,
     });
@@ -629,7 +686,7 @@ describe('design-system-mcp check --quiet-without-design-system', () => {
   });
 });
 
-describe('design-system-mcp inspect, --help, --version', () => {
+describe('onsystem inspect, --help, --version', () => {
   it('summarises what was extracted', async () => {
     const { code, stdout } = await run(['inspect', '--no-cache']);
     expect(code).toBe(0);
@@ -641,7 +698,7 @@ describe('design-system-mcp inspect, --help, --version', () => {
   });
 
   it('prints help and version', async () => {
-    expect((await run(['--help'])).stdout).toContain('design-system-mcp check <paths...>');
+    expect((await run(['--help'])).stdout).toContain('onsystem check <paths...>');
     expect((await run(['-v'])).stdout).toBe(VERSION);
   });
 });

@@ -9,15 +9,15 @@ import { mono, sans } from './fonts';
 
 import './globals.css';
 
-const title = 'design-system-mcp: your design system, as ground truth for coding agents';
+const title = 'onsystem: your design system, as ground truth for coding agents';
 const description =
   'An MCP server and Claude Code plugin that gives coding agents your React components, props, cva variants and tokens, and check_ui, a linter they run on their own UI. Static analysis, no API key.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: title, template: '%s · design-system-mcp' },
+  title: { default: title, template: '%s · onsystem' },
   description,
-  applicationName: 'design-system-mcp',
+  applicationName: 'onsystem',
   authors: [{ name: 'Diogo Esteves', url: 'https://github.com/dgesteves' }],
   keywords: [
     'MCP server',
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
-    siteName: 'design-system-mcp',
+    siteName: 'onsystem',
     title,
     description,
     url: '/',

@@ -27,7 +27,7 @@ export function InstallPanel({ className = '' }: { className?: string }) {
         <pre className="code mt-2.5 rounded-lg border border-line bg-ink/70 px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap text-fg-soft">
           {PLUGIN_COMMANDS.split('\n').map((line) => (
             <span key={line} className="block">
-              {/* Wrap between words only: `dgesteves/design-system-mcp` stays whole. */}
+              {/* Wrap between words only: `dgesteves/onsystem` stays whole. */}
               {line.split(' ').map((word, i) => (
                 <span key={i}>
                   {i > 0 && ' '}

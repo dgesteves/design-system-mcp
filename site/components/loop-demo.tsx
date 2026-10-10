@@ -288,7 +288,7 @@ export function LoopDemo({
               <span className="text-subtle">+{draft.length} lines</span>
             </Event>
             <Event dot="cyan" hidden={step < 1}>
-              <span className="text-cyan-bright">design-system</span>
+              <span className="text-cyan-bright">onsystem</span>
               <span className="text-subtle"> · </span>
               <span className="text-cyan-bright">check_ui</span>{' '}
               <span className="text-muted">(path: &quot;{file}&quot;)</span>

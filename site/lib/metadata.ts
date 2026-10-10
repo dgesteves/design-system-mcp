@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
  */
 export function pageMetadata({
   title,
-  socialTitle = `${title} · design-system-mcp`,
+  socialTitle = `${title} · onsystem`,
   description,
   path,
   image,
@@ -25,7 +25,7 @@ export function pageMetadata({
     alternates: { canonical: path },
     openGraph: {
       type: 'website',
-      siteName: 'design-system-mcp',
+      siteName: 'onsystem',
       title: socialTitle,
       description,
       url: path,

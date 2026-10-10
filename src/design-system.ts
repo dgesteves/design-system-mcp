@@ -157,7 +157,7 @@ export class DesignSystem {
   }
 }
 
-const CONFIGURATION_DOCS = 'https://github.com/dgesteves/design-system-mcp#configuration';
+const CONFIGURATION_DOCS = 'https://design-system-mcp-demo.vercel.app/docs/configuration';
 
 /** `border-ring` → token `ring`, for color utilities a token's usage list does not spell out. */
 function matchUtility(base: string, tokens: Token[]): Token | undefined {
@@ -301,10 +301,10 @@ async function cacheKey(
 function cacheFile(root: string): string {
   const nodeModules = path.join(root, 'node_modules');
   if (fs.existsSync(nodeModules)) {
-    return path.join(nodeModules, '.cache', 'design-system-mcp', 'model.json');
+    return path.join(nodeModules, '.cache', 'onsystem', 'model.json');
   }
   const id = createHash('sha256').update(root).digest('hex').slice(0, 16);
-  return path.join(os.tmpdir(), 'design-system-mcp', `${id}.json`);
+  return path.join(os.tmpdir(), 'onsystem', `${id}.json`);
 }
 
 export interface BuildResult {

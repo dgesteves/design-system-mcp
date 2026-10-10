@@ -39,6 +39,12 @@ export const DOCS_PAGES = [
     title: 'FAQ',
     description: 'Privacy, how it compares, other frameworks, false positives, and the limits.',
   },
+  {
+    href: '/docs/migrating',
+    title: 'Migrating from design-system-mcp',
+    description:
+      'What moved when @dgesteves/design-system-mcp became onsystem: the package, command, config and baseline files, plugin, MCP key and registry name.',
+  },
 ] as const;
 
 export type DocsHref = (typeof DOCS_PAGES)[number]['href'];

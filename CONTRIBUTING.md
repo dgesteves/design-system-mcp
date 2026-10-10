@@ -49,7 +49,7 @@ Synthetic fixtures show that a rule works; they do not show how often it is wron
 
 The run fails when counts change (after a deliberate change, run `pnpm corpus --update` and commit the snapshot, as with Jest snapshots), when a TP is no longer reported, or when an FP that a change fixed comes back. Those two hold even with `--update`: relabel or remove the label if the change is intended. It ends with the false-positive rate of the random sample, raw and weighted by each run's and rule's share of the findings; that is the number to quote for a release.
 
-The repositories are untrusted: only source, styles, manifests and docs are fetched, nothing in them is installed, built or run, and a run whose folder has a `design-system-mcp.config` written in code is refused. They live outside this repository (`$TMPDIR/design-system-mcp-corpus`, or `--dir`/`CORPUS_DIR`), since the CLI looks upwards for `node_modules` and workspace roots. Other commands: `pnpm corpus fetch`, `pnpm corpus --only documenso` for one repository or run, and `pnpm corpus sample <run>` to print unlabelled findings with their code and a label to fill in (`--per-rule`, `--seed`, `--rule`, `--file`, `--line`).
+The repositories are untrusted: only source, styles, manifests and docs are fetched, nothing in them is installed, built or run, and a run whose folder has an `onsystem.config` (or `design-system-mcp.config`) written in code is refused. They live outside this repository (`$TMPDIR/onsystem-corpus`, or `--dir`/`CORPUS_DIR`), since the CLI looks upwards for `node_modules` and workspace roots. Other commands: `pnpm corpus fetch`, `pnpm corpus --only documenso` for one repository or run, and `pnpm corpus sample <run>` to print unlabelled findings with their code and a label to fill in (`--per-rule`, `--seed`, `--rule`, `--file`, `--line`).
 
 When a change fixes a false positive, add a label for it if there is none, run `pnpm corpus --update`, and put the changed counts (the table it prints) and the new false-positive rate in the pull request.
 
@@ -57,7 +57,22 @@ When a change fixes a false positive, add a label for it if there is none, run `
 
 Releases use [Changesets](https://github.com/changesets/changesets). For any user-facing change, run `pnpm changeset`, pick patch or minor, and describe the change for someone upgrading. Docs-only and internal changes need none.
 
-On merge to `main`, the release workflow opens a "chore: release" pull request: `changeset version` bumps `package.json` and writes `CHANGELOG.md`, and `scripts/sync-server-json.mjs` copies the version into `server.json` (MCP Registry), the Claude Code plugin's `plugin.json`, and the npm range the plugin runs. Merging that pull request publishes to npm with provenance. Do not edit `CHANGELOG.md` or those versions by hand.
+On merge to `main`, the release workflow opens a "chore: release" pull request: `changeset version` bumps `package.json` and writes `CHANGELOG.md`, and `scripts/sync-versions.mjs` copies the version into `server.json` (MCP Registry), the Claude Code plugin's `plugin.json`, and the exact `onsystem@<version>` the plugin's server and hook run. A test (`node scripts/sync-versions.mjs --check`) fails when they drift from `package.json`. Merging that pull request publishes to npm with provenance (npm trusted publishing, no token), and the same run publishes `server.json` to the MCP Registry. Do not edit `CHANGELOG.md` or those versions by hand.
+
+### Retiring the old names (one-off, after onsystem 0.4.0 is on npm)
+
+The package was `@dgesteves/design-system-mcp` and its MCP Registry entry `io.github.dgesteves/design-system-mcp` until 0.4.0. Once `onsystem@0.4.0` is published, the maintainer points both at the new name, from a machine logged in to npm and with [`mcp-publisher`](https://github.com/modelcontextprotocol/registry/releases) installed:
+
+```sh
+npm deprecate @dgesteves/design-system-mcp "Renamed to onsystem: npm install onsystem. See https://design-system-mcp-demo.vercel.app/docs/migrating"
+
+mcp-publisher login github
+mcp-publisher status --status deprecated --all-versions --yes \
+  --message "Renamed to io.github.dgesteves/onsystem (npm: onsystem). See https://design-system-mcp-demo.vercel.app/docs/migrating" \
+  io.github.dgesteves/design-system-mcp
+```
+
+The registry has no field that points one server at another, so the status message carries the new name. Neither command is in a workflow: each runs once.
 
 ## Pull requests
 

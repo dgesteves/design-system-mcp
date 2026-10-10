@@ -1,10 +1,10 @@
 // Benchmark: Claude Code building the same UI tasks with and without the
-// design-system plugin, scored by `design-system-mcp check` (new findings only).
+// onsystem plugin, scored by `onsystem check` (new findings only).
 //
 // node run.mjs <repo> <dsm-dir> <out-dir> [--concurrency 4] [--only taskId,...] [--conditions base,plugin] [--model m]
 //
 // <repo>: a clean checkout of the project to work in (copied per run).
-// <dsm-dir>: a built design-system-mcp checkout (dist/cli.js, plugins/design-system).
+// <dsm-dir>: a built onsystem checkout (dist/cli.js, plugins/onsystem).
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -30,14 +30,10 @@ fs.mkdirSync(out, { recursive: true });
 
 // A plugin copy whose server runs the local build (the release under test).
 const pluginDir = path.join(out, 'plugin');
-fs.cpSync(path.join(dsm, 'plugins/design-system'), pluginDir, { recursive: true });
+fs.cpSync(path.join(dsm, 'plugins/onsystem'), pluginDir, { recursive: true });
 fs.writeFileSync(
   path.join(pluginDir, '.mcp.json'),
-  JSON.stringify(
-    { mcpServers: { 'design-system': { command: process.execPath, args: [CLI] } } },
-    null,
-    2,
-  ),
+  JSON.stringify({ mcpServers: { onsystem: { command: process.execPath, args: [CLI] } } }, null, 2),
 );
 
 // Baseline of the untouched repository, so only findings a run adds count.
@@ -78,12 +74,7 @@ async function runJob({ task, condition }) {
   ];
   if (model) args.push('--model', model);
   if (condition === 'plugin') {
-    args.push(
-      '--plugin-dir',
-      pluginDir,
-      '--allowedTools',
-      'mcp__plugin_design-system_design-system__*',
-    );
+    args.push('--plugin-dir', pluginDir, '--allowedTools', 'mcp__plugin_onsystem_onsystem__*');
   }
   const started = Date.now();
   const transcript = path.join(out, 'transcripts', `${id}.jsonl`);
@@ -91,7 +82,7 @@ async function runJob({ task, condition }) {
   await new Promise((resolve) => {
     const child = spawn('claude', args, {
       cwd: dir,
-      env: { ...process.env, DESIGN_SYSTEM_MCP_BIN: CLI },
+      env: { ...process.env, ONSYSTEM_BIN: CLI },
       stdio: ['ignore', fs.openSync(transcript, 'w'), 'ignore'],
     });
     const timer = setTimeout(() => child.kill('SIGTERM'), 15 * 60_000);
@@ -148,7 +139,7 @@ async function runJob({ task, condition }) {
       if (e.type === 'system' && e.subtype === 'hook_response' && e.exit_code === 2) hookBlocks++;
       if (e.type === 'assistant') {
         for (const c of e.message.content)
-          if (c.type === 'tool_use' && c.name.startsWith('mcp__plugin_design-system')) mcpCalls++;
+          if (c.type === 'tool_use' && c.name.startsWith('mcp__plugin_onsystem_')) mcpCalls++;
       }
     } catch {
       // Partial line.

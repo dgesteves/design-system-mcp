@@ -208,7 +208,7 @@ export function renderTokens(
   filter: { category?: string | undefined; query?: string | undefined } = {},
 ): string {
   if (!ds.tokens.length) {
-    return `No design tokens found in this project (root: ${ds.root}): no stylesheet or *.tokens.json defines any. Set "tokens" in the config: https://github.com/dgesteves/design-system-mcp#configuration`;
+    return `No design tokens found in this project (root: ${ds.root}): no stylesheet or *.tokens.json defines any. Set "tokens" in the config: https://design-system-mcp-demo.vercel.app/docs/configuration`;
   }
   if (!tokens.length) {
     const counts = new Map<string, number>();

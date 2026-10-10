@@ -12,8 +12,8 @@
 //
 // The repositories are untrusted. They are fetched shallow and sparse (source, styles,
 // manifests and docs only), never installed or built, and nothing in them runs: a run whose
-// folder holds a design-system-mcp config written in code is refused, since loading it would
-// execute it. Run `pnpm build` first.
+// folder holds an onsystem config written in code (under its current name or the old
+// design-system-mcp one) is refused, since loading it would execute it. Run `pnpm build` first.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -60,7 +60,9 @@ const MANIFESTS = [
   'components.json',
   '.gitignore',
 ];
-const CODE_CONFIGS = ['ts', 'mts', 'js', 'mjs'].map((ext) => `design-system-mcp.config.${ext}`);
+const CODE_CONFIGS = ['onsystem', 'design-system-mcp'].flatMap((name) =>
+  ['ts', 'mts', 'js', 'mjs'].map((ext) => `${name}.config.${ext}`),
+);
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -78,7 +80,7 @@ const { values, positionals } = parseArgs({
 });
 const [command = 'check', ...args] = positionals;
 const dir = path.resolve(
-  values.dir ?? process.env.CORPUS_DIR ?? path.join(os.tmpdir(), 'design-system-mcp-corpus'),
+  values.dir ?? process.env.CORPUS_DIR ?? path.join(os.tmpdir(), 'onsystem-corpus'),
 );
 
 const corpus = readJson(path.join(CORPUS, 'repos.json'));
@@ -115,9 +117,15 @@ function fetchAll(selected) {
   for (const repo of new Set(selected.map((run) => run.repo))) {
     const target = path.join(dir, repo.name);
     const patterns = sparsePatterns(repo);
-    const stamp = path.join(target, '.git', 'design-system-mcp-corpus.json');
+    const stamp = path.join(target, '.git', 'onsystem-corpus.json');
     const want = JSON.stringify({ url: repo.url, sha: repo.sha, patterns });
     if (fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8') === want) continue;
+    // A checkout cached before the rename, under the stamp's old name: still current.
+    const oldStamp = path.join(target, '.git', 'design-system-mcp-corpus.json');
+    if (fs.existsSync(oldStamp) && fs.readFileSync(oldStamp, 'utf8') === want) {
+      fs.writeFileSync(stamp, want);
+      continue;
+    }
     const started = performance.now();
     fs.rmSync(target, { recursive: true, force: true });
     fs.mkdirSync(target, { recursive: true });

@@ -1,0 +1,17 @@
+{
+  "name": "onsystem",
+  "displayName": "onsystem",
+  "version": "0.3.3",
+  "description": "Your React design system as ground truth for Claude: components, props, variants and tokens over MCP, and a hook that lints every UI file Claude writes against them.",
+  "author": {
+    "name": "Diogo Esteves",
+    "url": "https://github.com/dgesteves"
+  },
+  "homepage": "https://design-system-mcp-demo.vercel.app/docs/plugin",
+  "repository": "https://github.com/dgesteves/onsystem",
+  "license": "MIT",
+  "keywords": ["design-system", "shadcn", "react", "tailwindcss", "lint", "mcp"],
+  "icon": "./icon.svg",
+  "documentationUrl": "https://design-system-mcp-demo.vercel.app/docs/plugin",
+  "supportUrl": "https://github.com/dgesteves/onsystem/issues"
+}

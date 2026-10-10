@@ -24,7 +24,7 @@ body:
     id: inspect
     attributes:
       label: inspect output
-      description: Run `npx -y @dgesteves/design-system-mcp inspect` in the project root and paste what it prints.
+      description: Run `npx -y onsystem inspect` in the project root and paste what it prints.
       render: text
     validations:
       required: true
@@ -32,7 +32,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: The output of `npx -y @dgesteves/design-system-mcp --version`, or the version in your lockfile.
+      description: The output of `npx -y onsystem --version`, or the version in your lockfile.
     validations:
       required: true
   - type: dropdown

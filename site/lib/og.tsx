@@ -143,7 +143,7 @@ export function Frame({
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '44px 64px 0' }}>
         <Logo size={40} />
         <span style={{ fontFamily: 'Geist Mono', fontSize: 24, fontWeight: 500, color: C.fg }}>
-          design-system-mcp
+          onsystem
         </span>
       </div>
       <div style={{ display: 'flex', flex: 1, padding: '0 64px' }}>{children}</div>
@@ -230,7 +230,7 @@ export function SessionPanel({ width }: { width: number }) {
           <span style={{ color: C.fgSoft }}>{demo.file}</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <span style={{ color: C.cyanBright }}>design-system · check_ui</span>
+          <span style={{ color: C.cyanBright }}>onsystem · check_ui</span>
         </div>
         <div
           style={{

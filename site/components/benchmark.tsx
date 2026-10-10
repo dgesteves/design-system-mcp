@@ -157,7 +157,7 @@ export function Benchmark({ bench }: { bench: Bench }) {
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="size-2.5 rounded-full" style={{ background: WITH }} />
-          With the design-system plugin
+          With the onsystem plugin
         </span>
       </div>
       <div className="grid gap-4 md:grid-cols-2">

@@ -15,7 +15,7 @@ const description =
 
 export const metadata: Metadata = pageMetadata({
   title: 'Rules',
-  socialTitle: 'design-system-mcp rules',
+  socialTitle: 'onsystem rules',
   description,
   path: '/rules',
 });
@@ -261,8 +261,8 @@ export default function RulesPage() {
                 <InlineCode>
                   [severity, {'{'} &quot;allow&quot;: [...] {'}'}]
                 </InlineCode>
-                , in <InlineCode>design-system-mcp.config.json</InlineCode>. Rules that need tokens
-                skip themselves when the design system has none of that kind, and code that does not
+                , in <InlineCode>onsystem.config.json</InlineCode>. Rules that need tokens skip
+                themselves when the design system has none of that kind, and code that does not
                 parse is reported under <InlineCode>syntax</InlineCode>.{' '}
                 <Link
                   href="/docs/configuration#config-file"

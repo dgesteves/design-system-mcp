@@ -1,7 +1,7 @@
 {
   "name": "site",
   "private": true,
-  "description": "The design-system-mcp website. Its data is generated from the library, the demo design system and the benchmark at build time.",
+  "description": "The onsystem website. Its data is generated from the library, the demo design system and the benchmark at build time.",
   "type": "module",
   "scripts": {
     "generate": "node scripts/generate.mjs",
@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@dgesteves/design-system-mcp": "workspace:*",
+    "onsystem": "workspace:*",
     "geist": "^1.7.2",
     "next": "^16.4.0",
     "react": "^19.3.0",

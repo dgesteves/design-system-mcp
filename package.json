@@ -1,7 +1,7 @@
 {
-  "name": "@dgesteves/design-system-mcp",
+  "name": "onsystem",
   "version": "0.3.3",
-  "mcpName": "io.github.dgesteves/design-system-mcp",
+  "mcpName": "io.github.dgesteves/onsystem",
   "description": "MCP server that gives coding agents ground truth about your React design system: components, props, cva variants, tokens and docs, plus a linter they can run on their own UI.",
   "keywords": [
     "mcp",
@@ -17,11 +17,11 @@
     "claude-code",
     "cursor"
   ],
-  "homepage": "https://github.com/dgesteves/design-system-mcp#readme",
-  "bugs": "https://github.com/dgesteves/design-system-mcp/issues",
+  "homepage": "https://github.com/dgesteves/onsystem#readme",
+  "bugs": "https://github.com/dgesteves/onsystem/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dgesteves/design-system-mcp.git"
+    "url": "git+https://github.com/dgesteves/onsystem.git"
   },
   "license": "MIT",
   "author": "Diogo Esteves (https://github.com/dgesteves)",
@@ -36,7 +36,7 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
-    "design-system-mcp": "dist/cli.js"
+    "onsystem": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -66,7 +66,7 @@
     "demo:check": "cd examples/shadcn-demo && node ../../dist/cli.js check \"app/**/*.tsx\"",
     "demo:inspect": "node dist/cli.js inspect --root examples/shadcn-demo",
     "changeset": "changeset",
-    "version-packages": "changeset version && node scripts/sync-server-json.mjs",
+    "version-packages": "changeset version && node scripts/sync-versions.mjs",
     "release": "pnpm build && changeset publish",
     "prepack": "node scripts/npm-readme.mjs prepack",
     "postpack": "node scripts/npm-readme.mjs postpack"

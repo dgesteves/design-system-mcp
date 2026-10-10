@@ -1,8 +1,4 @@
-import {
-  DesignSystem,
-  type DesignSystemModel,
-  type ResolvedConfig,
-} from '@dgesteves/design-system-mcp';
+import { DesignSystem, type DesignSystemModel, type ResolvedConfig } from 'onsystem';
 
 import data from '@/generated/playground-model.json';
 import { createCheckHandler, createRateLimiter } from '@/lib/check-service';

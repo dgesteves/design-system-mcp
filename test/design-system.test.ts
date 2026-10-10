@@ -28,9 +28,7 @@ describe('extraction cache', () => {
     const config = await loadConfig({ root });
     const first = await buildModel(config);
     expect(first.model.stats.fromCache).toBe(false);
-    expect(fs.existsSync(path.join(root, 'node_modules/.cache/design-system-mcp/model.json'))).toBe(
-      true,
-    );
+    expect(fs.existsSync(path.join(root, 'node_modules/.cache/onsystem/model.json'))).toBe(true);
 
     const second = await buildModel(config);
     expect(second.model.stats.fromCache).toBe(true);
@@ -90,7 +88,7 @@ describe('extraction cache', () => {
       'node_modules/kit/theme.tokens.json': '{ "kit": { "$type": "color", "$value": "#ff0000" } }',
     };
     const names = async (config: object) => {
-      const root = fixture({ ...files, 'design-system-mcp.config.json': JSON.stringify(config) });
+      const root = fixture({ ...files, 'onsystem.config.json': JSON.stringify(config) });
       return (await load(root)).tokens.map((t) => t.name);
     };
     expect(await names({ exclude: ['**/*.stories.tsx'] })).toEqual(['brand']);
@@ -167,7 +165,7 @@ describe('DesignSystemHost', () => {
 
   it('reloads the config file when it changes, including atomic saves', async () => {
     const root = copyFixture();
-    const configFile = path.join(root, 'design-system-mcp.config.json');
+    const configFile = path.join(root, 'onsystem.config.json');
     const host = new DesignSystemHost(await loadConfig({ root }), { cache: false });
     await host.get();
     host.watch();

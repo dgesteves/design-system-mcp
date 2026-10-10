@@ -140,7 +140,7 @@ export const configSchema = z.strictObject(configShape, {
 
 export type Config = z.input<typeof configSchema>;
 
-/** Identity helper for typed `design-system-mcp.config.ts` files. */
+/** Identity helper for typed `onsystem.config.ts` files. */
 export function defineConfig(config: Config): Config {
   return config;
 }
@@ -182,15 +182,29 @@ export interface ResolvedConfig {
   rules: Record<RuleId, ResolvedRule>;
   /** Per-file rule settings, applied in order over `rules`. */
   overrides?: ResolvedOverride[] | undefined;
+  /**
+   * What to tell the user about the config's name: a config file found under its name from
+   * before the rename to onsystem. The CLI prints these once per run, the server logs them once.
+   */
+  deprecations?: string[] | undefined;
 }
 
+/** Config file names, in the order they are looked for. */
 export const CONFIG_FILES = [
-  'design-system-mcp.config.json',
-  'design-system-mcp.config.ts',
-  'design-system-mcp.config.mts',
-  'design-system-mcp.config.js',
-  'design-system-mcp.config.mjs',
+  'onsystem.config.json',
+  'onsystem.config.ts',
+  'onsystem.config.mts',
+  'onsystem.config.js',
+  'onsystem.config.mjs',
 ];
+
+/**
+ * The same names from before the package was renamed from design-system-mcp to onsystem.
+ * They are still read, when no `onsystem.config.*` exists, with a notice to rename the file.
+ */
+export const LEGACY_CONFIG_FILES = CONFIG_FILES.map((name) =>
+  name.replace(/^onsystem\./, 'design-system-mcp.'),
+);
 
 export const DEFAULT_COMPONENTS = [
   'components/ui/**/*.{tsx,jsx}',
@@ -246,9 +260,18 @@ export class ConfigError extends Error {
 export async function loadConfig(options: LoadConfigOptions = {}): Promise<ResolvedConfig> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const searchDir = options.root ? path.resolve(cwd, options.root) : cwd;
-  const configFile = options.config
-    ? path.resolve(cwd, options.config)
-    : CONFIG_FILES.map((name) => path.join(searchDir, name)).find((file) => fs.existsSync(file));
+  const deprecations: string[] = [];
+  let configFile: string | undefined;
+  if (options.config) {
+    configFile = path.resolve(cwd, options.config);
+  } else {
+    const find = (names: readonly string[]) =>
+      names.map((name) => path.join(searchDir, name)).find((file) => fs.existsSync(file));
+    configFile = find(CONFIG_FILES);
+    const legacy = find(LEGACY_CONFIG_FILES);
+    if (legacy) deprecations.push(legacyConfigNotice(legacy, configFile));
+    configFile ??= legacy;
+  }
 
   let raw: unknown = {};
   if (configFile) {
@@ -351,7 +374,18 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     includeDesignSystem: options.includeDesignSystem ?? config.includeDesignSystem ?? false,
     rules,
     overrides,
+    ...(deprecations.length ? { deprecations } : {}),
   };
+}
+
+/** What to say about a config file under its old name, with or without a new one next to it. */
+function legacyConfigNotice(legacy: string, current: string | undefined): string {
+  const name = path.basename(legacy);
+  const renamed = name.replace(/^design-system-mcp\./, 'onsystem.');
+  if (current) {
+    return `${name} is ignored: ${path.basename(current)} is read instead. Delete ${name}.`;
+  }
+  return `${name} is the config's name from before design-system-mcp became onsystem. Rename it to ${renamed} (git mv ${name} ${renamed}); the old name still works for now.`;
 }
 
 function resolveRule(setting: z.infer<typeof ruleSettingSchema>): ResolvedRule {
@@ -387,7 +421,7 @@ export function nodeRunsTypeScript(version: string = process.versions.node): boo
 async function readConfigFile(file: string): Promise<unknown> {
   if (/\.[cm]?ts$/.test(file) && !nodeRunsTypeScript()) {
     throw new ConfigError(
-      `${file} is TypeScript, which Node.js runs from 22.18; this is ${process.version}. Use design-system-mcp.config.json or .mjs, or Node.js 22.18 or later.`,
+      `${file} is TypeScript, which Node.js runs from 22.18; this is ${process.version}. Use onsystem.config.json or .mjs, or Node.js 22.18 or later.`,
     );
   }
   if (file.endsWith('.json')) {
@@ -401,10 +435,14 @@ async function readConfigFile(file: string): Promise<unknown> {
     const mod = (await import(pathToFileURL(file).href)) as { default?: unknown };
     return mod.default ?? mod;
   } catch (error) {
-    const hint = /\.m?ts$/.test(file)
-      ? ' TypeScript configs need Node.js 22.18+ (type stripping); use JSON or .mjs otherwise.'
-      : '';
-    throw new ConfigError(`Could not load ${file}: ${(error as Error).message}.${hint}`);
+    const message = (error as Error).message;
+    // A config that imports defineConfig from the package's old name, which is no longer installed.
+    const hint = message.includes('@dgesteves/design-system-mcp')
+      ? " The package is now onsystem: import { defineConfig } from 'onsystem'."
+      : /\.m?ts$/.test(file)
+        ? ' TypeScript configs need Node.js 22.18+ (type stripping); use JSON or .mjs otherwise.'
+        : '';
+    throw new ConfigError(`Could not load ${file}: ${message}.${hint}`);
   }
 }
 
@@ -420,7 +458,7 @@ function toArray<T>(value: T | T[]): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-/** JSON Schema for editor completion in `design-system-mcp.config.json`. */
+/** JSON Schema for editor completion in `onsystem.config.json`. */
 export function configJsonSchema(): Record<string, unknown> {
   return z.toJSONSchema(configSchema, { target: 'draft-7', io: 'input' });
 }

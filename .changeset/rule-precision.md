@@ -1,5 +1,5 @@
 ---
-'@dgesteves/design-system-mcp': minor
+'onsystem': minor
 ---
 
 Fewer false positives from the component rules, measured on the real-world corpus:

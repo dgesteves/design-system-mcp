@@ -1,6 +1,8 @@
 # Agent benchmark
 
-Does an agent write UI that fits the design system more often with design-system-mcp than without it? This runs Claude Code on the same UI tasks twice, once as it ships and once with the [Claude Code plugin](../../README.md#claude-code-plugin), and scores what it wrote with `design-system-mcp check`.
+Does an agent write UI that fits the design system more often with onsystem than without it? This runs Claude Code on the same UI tasks twice, once as it ships and once with the [Claude Code plugin](https://design-system-mcp-demo.vercel.app/docs/plugin), and scores what it wrote with `onsystem check`.
+
+The runs below were made on 2026-10-08, before the rename, with `@dgesteves/design-system-mcp` 0.1 and its `design-system` plugin.
 
 ## Setup
 
@@ -8,10 +10,10 @@ Does an agent write UI that fits the design system more often with design-system
 - **Tasks:** ten components a chat product needs ([tasks.json](tasks.json)), for example a usage banner with a dismiss button, a delete-all-chats confirmation dialog, a settings card with a green "Connected" label, and a message toolbar of icon buttons. Each prompt ends with the same instruction: use the project's existing UI components and design tokens, create only that file, and do not run commands.
 - **Conditions:**
   - `base`: `claude -p` with no plugin.
-  - `plugin`: the same, plus `--plugin-dir` with the design-system plugin (MCP server, skill and hook) and the MCP tools allowed.
+  - `plugin`: the same, plus `--plugin-dir` with the plugin (MCP server, skill and hook) and the MCP tools allowed.
   - Both use `--permission-mode acceptEdits` and a fresh copy of the project per run.
 - **Models:** Claude Haiku 4.5 and Claude Opus 5, one run per task, condition and model, so 40 runs in all.
-- **Scoring:** `design-system-mcp check` on every file the run created or changed, against a baseline of the untouched project, so only findings the run introduced count. A task is clean when it has no errors.
+- **Scoring:** `onsystem check` on every file the run created or changed, against a baseline of the untouched project, so only findings the run introduced count. A task is clean when it has no errors.
 
 ## Results
 
@@ -34,7 +36,7 @@ What the base runs got wrong:
 | share-dialog     | 1 × `prefer-design-system-component` (native `<label>`; the project has `Label`) | none                                                                  |
 | usage-banner     | 1 × `icon-button-accessible-name`                                                | none                                                                  |
 
-With the plugin, the agents called the design-system tools 5.6 (Haiku) and 7.3 (Opus) times per task on average: `search_components`, `get_component`, `get_tokens` and `check_ui`. The lint-on-edit hook never had to report an error back. Looking the design system up before writing was enough, so the hook acted as a safety net that was never needed in these runs. A [separate run](../../README.md#claude-code-plugin), where Claude was asked to write hardcoded values on purpose, shows the hook catching them and Claude fixing them.
+With the plugin, the agents called the design-system tools 5.6 (Haiku) and 7.3 (Opus) times per task on average: `search_components`, `get_component`, `get_tokens` and `check_ui`. The lint-on-edit hook never had to report an error back. Looking the design system up before writing was enough, so the hook acted as a safety net that was never needed in these runs. A [separate run](https://design-system-mcp-demo.vercel.app/docs/plugin), where Claude was asked to write hardcoded values on purpose, shows the hook catching them and Claude fixing them.
 
 ## Reading it honestly
 

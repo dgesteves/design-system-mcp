@@ -12,10 +12,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 let lib;
 try {
-  lib = await import('@dgesteves/design-system-mcp');
+  lib = await import('onsystem');
 } catch (error) {
   console.error(
-    `Could not load @dgesteves/design-system-mcp (${error.message}).\nBuild the library first: pnpm --dir .. build`,
+    `Could not load onsystem (${error.message}).\nBuild the library first: pnpm --dir .. build`,
   );
   process.exit(1);
 }
@@ -270,21 +270,18 @@ write('playground.json', { file: PLAYGROUND_FILE, presets });
 // ─── What the agent sees: the real MCP server over stdio ────────────────────
 
 const pkg = JSON.parse(
-  fs.readFileSync(
-    fileURLToPath(import.meta.resolve('@dgesteves/design-system-mcp/package.json')),
-    'utf8',
-  ),
+  fs.readFileSync(fileURLToPath(import.meta.resolve('onsystem/package.json')), 'utf8'),
 );
 const cli = path.join(
-  path.dirname(fileURLToPath(import.meta.resolve('@dgesteves/design-system-mcp/package.json'))),
-  pkg.bin['design-system-mcp'],
+  path.dirname(fileURLToPath(import.meta.resolve('onsystem/package.json'))),
+  pkg.bin.onsystem,
 );
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [cli, '--root', demoRoot, '--no-watch', '--no-cache'],
   stderr: 'pipe',
 });
-const client = new Client({ name: 'design-system-mcp-site', version: VERSION });
+const client = new Client({ name: 'onsystem-site', version: VERSION });
 await client.connect(transport);
 const text = (r) => r.content.find((c) => c.type === 'text')?.text ?? '';
 const { tools } = await client.listTools();
@@ -530,9 +527,15 @@ const intro = (markdown) => {
   return (end === -1 ? lines : lines.slice(0, end)).join('\n').trim();
 };
 const skill = fs
-  .readFileSync(path.join(repo, 'plugins/design-system/skills/design-system/SKILL.md'), 'utf8')
+  .readFileSync(path.join(repo, 'plugins/onsystem/skills/onsystem/SKILL.md'), 'utf8')
   .replace(/^---\n[\s\S]*?\n---\n/, '')
   .trim();
+/** A page in docs/, without its `# title`: the site's page has its own. */
+const docsFile = (name) =>
+  fs
+    .readFileSync(path.join(repo, 'docs', name), 'utf8')
+    .replace(/^# .*\n+/, '')
+    .trim();
 /** README text that refers to the README itself, reworded for the site. Fails when it moves. */
 function reword(markdown, from, to) {
   assert.ok(markdown.includes(from), `README text to reword not found: "${from}"`);
@@ -559,4 +562,5 @@ write('docs.json', {
   baseline: section('### Adopting it in an existing codebase'),
   limits: section('### Limits'),
   skill,
+  migrating: docsFile('migrating.md'),
 });
