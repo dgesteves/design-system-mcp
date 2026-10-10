@@ -66,6 +66,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
+    "pack-test": "node scripts/pack-test.mjs",
     "assets": "node scripts/build-assets.mjs",
     "palette": "node scripts/build-palette.mjs",
     "corpus": "node scripts/corpus.mjs",

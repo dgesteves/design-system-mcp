@@ -1,0 +1,3 @@
+# Sources, fixtures and snapshots keep LF on every checkout, Windows included: the tests read
+# them byte for byte (line and column numbers, prettier, the corpus snapshot).
+* text=auto eol=lf
