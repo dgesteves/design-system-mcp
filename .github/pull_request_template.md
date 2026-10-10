@@ -9,4 +9,4 @@
 - [ ] Tests cover the change, with realistic fixtures
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm smoke` pass
 - [ ] A changeset (`pnpm changeset`) for a user-facing change
-- [ ] The README, `schema.json` and `.github/assets` are updated if the change affects them
+- [ ] The docs (`docs/*.md`), the README, `schema.json` and `.github/assets` are updated if the change affects them

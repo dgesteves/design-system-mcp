@@ -36,7 +36,7 @@ Commit `schema.json` when `pnpm build` changes it, and `.github/assets/*.svg` wh
 2. Write the rule in `src/lint/rules/`: a `Rule` whose `run(context)` walks `context.analysis` (JSX elements, class strings, style objects) and calls `context.report()` with source offsets, a message that says what to write instead, and, when the change is mechanical, a `fix` of text edits. Resolve tags with `context.resolve(element)`; read tokens from `context.target.tokens`.
 3. Register it in `RULES` in `src/lint/index.ts`.
 4. Test it in `test/lint.test.ts` against code an agent would actually write. Use the demo (`check(code, rule)`), or a throwaway project built from realistic files with `fixture({ 'components/ui/button.tsx': …, 'app/globals.css': … })`; pass `{ nodeModules: true }` when the components need React or Radix types. Cover what it reports, the fix (`applyFixes`), and what it must leave alone. Files that must stay byte-for-byte, such as a stock shadcn/ui `globals.css`, go in `test/fixtures/`, which Prettier skips.
-5. Add a row to the Rules table in the README, and run `pnpm build` so `schema.json` lists the new id.
+5. Add a row to the Rules table in `docs/rules.md` (the website's rules page is built from it) and to the short table in the README, add an example to `site/scripts/rule-docs.mjs`, and run `pnpm build` so `schema.json` lists the new id.
 
 The same pattern holds for a false positive: reproduce it as a failing test from the real code that triggered it, then fix it.
 
@@ -76,4 +76,4 @@ The registry has no field that points one server at another, so the status messa
 
 ## Pull requests
 
-One change per pull request, with tests, a changeset when users will notice it, and the README updated when behaviour changes. Keep messages, docs and README in the same plain voice: say what happens and what to do, without filler.
+One change per pull request, with tests, a changeset when users will notice it, and the docs updated when behaviour changes. The docs live in `docs/*.md`, which GitHub shows as they are and the website renders (`site/scripts/generate.mjs`); link between them with relative paths (`ci.md#adopting-it-in-an-existing-codebase`), which a test checks. The README stays one screen: what it is, what it checks, a quickstart and links, and every number in it comes from a file in the repository (`test/readme.test.ts` checks them against the corpus and the benchmark). Keep messages, docs and README in the same plain voice: say what happens and what to do, without filler.

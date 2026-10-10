@@ -1,16 +1,9 @@
 import type { ReactNode } from 'react';
 
-import { docsHref, repoLink } from '@/lib/site';
-
-/** Where a README link points from the site: anchors and relative paths go to GitHub. */
-export function resolveReadmeHref(href: string): string {
-  if (/^https?:\/\//.test(href) || href.startsWith('/')) return href;
-  if (href.startsWith('#')) return docsHref(href.slice(1));
-  return repoLink(href.replace(/^\.\//, ''), /\.[a-z]+$/i.test(href) ? 'blob' : 'tree');
-}
+import { resolveDocHref } from '@/lib/site';
 
 /**
- * Inline Markdown from the README: `code`, [links](...), **bold** and _italics_. Enough for
+ * Inline Markdown from the docs: `code`, [links](...), **bold** and _italics_. Enough for
  * table cells and short paragraphs; anything else stays as text.
  */
 export function InlineMarkdown({ text }: { text: string }): ReactNode {
@@ -35,7 +28,7 @@ export function InlineMarkdown({ text }: { text: string }): ReactNode {
       parts.push(
         <a
           key={key}
-          href={resolveReadmeHref(href)}
+          href={resolveDocHref(href)}
           className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-cyan"
         >
           <InlineMarkdown text={label} />

@@ -5,9 +5,9 @@ import { Code } from '@/components/code';
 import { ArrowRightIcon, CheckIcon } from '@/components/icons';
 import { InstallPanel, StarButton } from '@/components/install';
 import { LoopDemo } from '@/components/loop-demo';
-import { InlineMarkdown, resolveReadmeHref } from '@/components/markdown';
+import { InlineMarkdown } from '@/components/markdown';
 import { Eyebrow, InlineCode, Section, TextLink } from '@/components/section';
-import { bench, demo, readme, rules, tools } from '@/lib/data';
+import { bench, corpus, demo, readme, rules, tools } from '@/lib/data';
 import { AUTHOR, docsHref, NPM, REPO, repoLink, SITE_URL } from '@/lib/site';
 
 /** What search engines get as structured data. */
@@ -16,7 +16,7 @@ const jsonLd = {
   '@type': 'SoftwareApplication',
   name: 'onsystem',
   description:
-    'An MCP server and Claude Code plugin that gives coding agents ground truth about a React design system, and a linter they run on their own UI.',
+    'Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'macOS, Linux, Windows',
   softwareVersion: tools.version,
@@ -64,19 +64,22 @@ function Hero() {
       <div className="relative mx-auto w-full max-w-6xl px-4 pt-14 pb-12 sm:px-6 sm:pt-20 lg:pt-24">
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_28.5rem] lg:gap-14">
           <div>
-            <Eyebrow>MCP server · Claude Code plugin · MIT</Eyebrow>
+            <Eyebrow>Claude Code hook · CI check · MCP server · MIT</Eyebrow>
             <h1 className="mt-5 text-[2.15rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance text-fg sm:text-5xl lg:text-[3.15rem]">
-              Coding agents write UI from training data, not from your design system.
+              Keeps coding agents on your design system.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-fg-soft sm:text-xl">
-              onsystem gives them the ground truth, read from your source, and a linter they run on
-              their own output.
+              It knows your real components, props, variants and tokens, catches the moment an agent
+              invents one and has it fix it, and the same check gates your PRs. Local, zero config,
+              works alongside{' '}
+              <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink>.
             </p>
             <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted sm:text-base">
-              It serves your React components, props, <InlineCode>cva</InlineCode> variants and
-              tokens over MCP, and hands the agent <InlineCode>check_ui</InlineCode>: every finding
-              has a rule id, a location and a fix, so the agent corrects itself before you review
-              anything.
+              In Claude Code, the plugin&apos;s hook checks each file right after it is written and
+              hands the errors back, each with its fix. Other agents run{' '}
+              <InlineCode>check_ui</InlineCode> on their own output, and the CI check gates whatever
+              they wrote. Built for design-system and platform teams with a React design-system
+              package; a shadcn/ui app works with no config at all.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
               <StarButton />
@@ -225,6 +228,16 @@ function RealCodebases() {
         <p className="mt-3 text-[15px] leading-relaxed text-muted">
           <InlineMarkdown text={intro} />
         </p>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted">
+          How often it is wrong is measured, not guessed: the{' '}
+          <TextLink href={repoLink('corpus', 'tree')}>corpus</TextLink> runs{' '}
+          <InlineCode>check</InlineCode> on {corpus.repos} public repositories pinned by commit (
+          {corpus.runs} runs, {corpus.findings.toLocaleString('en-US')} findings) and compares the
+          findings with hand labels. In a random sample of {corpus.sample}, {corpus.falsePositives}{' '}
+          are false positives ({((corpus.falsePositives / corpus.sample) * 100).toFixed(1)}%) and{' '}
+          {corpus.debatable} debatable; weighted by run and rule, about{' '}
+          {(corpus.weightedRate * 100).toFixed(1)}% of all findings.
+        </p>
       </div>
       <ul className="mt-8 grid gap-4 lg:grid-cols-3">
         {rows.map(([project = '', found = '', findings = '']) => (
@@ -293,11 +306,11 @@ function HowItWorks() {
     <Section
       id="how-it-works"
       eyebrow="How it works"
-      title="Reads your source. Answers over MCP. Checks what the agent wrote."
+      title="Reads your source. Checks every edit. Gates the pull request."
       lead={
         <p>
           Static analysis from start to finish: no model calls, no API key, and it runs offline. One
-          check of the demo file takes {demo.checkMs.toFixed(1)} ms.
+          check of the demo file takes {demo.checkMs.toFixed(1)} ms, so it can run after every edit.
         </p>
       }
     >
@@ -327,13 +340,36 @@ function HowItWorks() {
             ]}
           />
           <p className="mt-4 border-t border-line pt-4">
-            No config for a shadcn/ui <InlineCode>components.json</InlineCode>, a monorepo whose
+            No config for a shadcn/ui <InlineCode>components.json</InlineCode>, an app whose
             components live in a workspace package (<InlineCode>@acme/ui</InlineCode>), or the
             design-system package itself.{' '}
             <TextLink href={docsHref('zero-config')}>How it finds them</TextLink>.
           </p>
         </Card>
-        <Card step="02" title="Answers the agent over MCP">
+        <Card step="02" title="Checks every edit and every pull request">
+          <p>
+            In Claude Code, the plugin&apos;s hook runs these rules right after each file is written
+            and hands the errors back for Claude to fix. In CI, <InlineCode>check</InlineCode> runs
+            them on every pull request.
+          </p>
+          <ul className="mt-3 grid gap-1.5">
+            {rules.map((rule) => (
+              <li key={rule.id} className="flex items-baseline justify-between gap-3">
+                <span className="truncate font-mono text-[12.5px] text-fg-soft">{rule.id}</span>
+                <span
+                  className={`shrink-0 font-mono text-[11px] ${rule.severity === 'error' ? 'text-magenta-soft' : 'text-cyan'}`}
+                >
+                  {rule.severity}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 border-t border-line pt-4">
+            Any agent can run them itself as <InlineCode>check_ui</InlineCode>, which parses the
+            code on its own, so it works on fragments the agent has not saved.
+          </p>
+        </Card>
+        <Card step="03" title="Answers the agent over MCP">
           <ul className="grid gap-3">
             {tools.tools.map((tool) => (
               <li key={tool.name}>
@@ -352,28 +388,6 @@ function HowItWorks() {
             ))}{' '}
             as resources, and a <InlineCode>{tools.prompts[0]?.name}</InlineCode> prompt. Every tool
             is read-only.
-          </p>
-        </Card>
-        <Card step="03" title="Checks what it wrote">
-          <p>
-            <InlineCode>check_ui</InlineCode> parses the code on its own, so it works on fragments
-            the agent has not saved, and resolves each tag through its imports.
-          </p>
-          <ul className="mt-3 grid gap-1.5">
-            {rules.map((rule) => (
-              <li key={rule.id} className="flex items-baseline justify-between gap-3">
-                <span className="truncate font-mono text-[12.5px] text-fg-soft">{rule.id}</span>
-                <span
-                  className={`shrink-0 font-mono text-[11px] ${rule.severity === 'error' ? 'text-magenta-soft' : 'text-cyan'}`}
-                >
-                  {rule.severity}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 border-t border-line pt-4">
-            The same rules run in CI with <InlineCode>check</InlineCode>, and in Claude Code after
-            every edit through the plugin&apos;s hook.
           </p>
         </Card>
       </div>
@@ -486,8 +500,8 @@ function ShadcnLint() {
         <p>
           <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink> is a linter: it
           polices the classes written against a component and the theme, in React, Svelte and Vue,
-          on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before
-          it writes, and catches what does not exist.
+          on Tailwind v4. onsystem checks that the components, props and variant values the agent
+          used exist, and in Claude Code has the agent fix them right after the edit.
         </p>
       }
     >
@@ -513,7 +527,7 @@ function ShadcnLint() {
           title="onsystem adds"
           tone="cyan"
           items={[
-            'Ground truth before the agent writes: components, props, variants, parts and tokens over MCP',
+            'A Claude Code hook that checks each file after it is written and has the agent fix what it invented, and the same check in CI',
             <>
               Components, props and variant values that do not exist (
               <InlineCode>&lt;Card.Header&gt;</InlineCode>, <InlineCode>tone</InlineCode>,{' '}
@@ -524,8 +538,8 @@ function ShadcnLint() {
               <InlineCode>&lt;Button&gt;</InlineCode>)
             </>,
             'Icon-only buttons without an accessible name',
-            'The agent loop: check_ui as a tool, and a Claude Code hook on every edit',
-            'Tailwind v3 as well as v4, design-system packages and monorepos',
+            'Ground truth before the agent writes, over MCP, and check_ui as a tool for any agent',
+            'Tailwind v3 as well as v4, design-system packages, and apps that import one from a workspace package',
           ]}
         />
         <Column
@@ -667,7 +681,7 @@ No new problems in 504 files (1,307 in the baseline).`;
             <InlineCode>--format github</InlineCode> turns findings into pull request annotations.{' '}
             <InlineCode>--require-design-system</InlineCode> fails the job when the globs stop
             matching, so CI cannot pass by checking nothing.{' '}
-            <TextLink href={resolveReadmeHref('#ci')}>More on CI</TextLink>.
+            <TextLink href={docsHref('ci')}>More on CI</TextLink>.
           </p>
         </div>
       </div>
@@ -688,7 +702,7 @@ function FinalCta() {
             id="start-title"
             className="text-[1.75rem] leading-[1.15] font-semibold tracking-[-0.02em] text-balance text-fg sm:text-4xl"
           >
-            Give your agent the design system it is supposed to use.
+            Hold your agent to the design system you already have.
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-muted sm:text-[17px]">
             Install it, then run <InlineCode>npx -y onsystem inspect</InlineCode> in your app to see

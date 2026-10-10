@@ -8,7 +8,7 @@ export const metadata: Metadata = docsMetadata('/docs/tools');
 
 export default function ToolsPage() {
   return (
-    <DocPage href="/docs/tools" source={['tools']}>
+    <DocPage href="/docs/tools" file="docs/tools.md">
       <MarkdownBlocks markdown={docs.tools} />
     </DocPage>
   );

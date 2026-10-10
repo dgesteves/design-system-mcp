@@ -12,7 +12,7 @@ const skill = docs.skill.replace(/^# .*\n+/, '');
 
 export default function PluginPage() {
   return (
-    <DocPage href="/docs/plugin" source={['claude-code-plugin']}>
+    <DocPage href="/docs/plugin" file="docs/plugin.md">
       <MarkdownBlocks markdown={docs.plugin} />
       <h2
         id="the-skill"

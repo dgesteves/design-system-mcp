@@ -18,11 +18,6 @@ export function repoLink(file: string, kind: 'blob' | 'tree' = 'blob'): string {
   return `${REPO}/${kind}/main/${file}`;
 }
 
-/** A section of the README on GitHub. */
-export function readmeLink(anchor: string): string {
-  return `${REPO}#${anchor}`;
-}
-
 export const MORE = [
   {
     name: 'ask-my-site',
@@ -41,11 +36,22 @@ export function ruleHref(id: string): string {
   return `/rules#${id}`;
 }
 
-/**
- * README anchors that have a page on this site. Links in README text shown here go to the
- * site's page; other anchors go to the README on GitHub.
- */
-export const README_ANCHORS: Record<string, string> = {
+/** The docs/*.md files and the page each one is rendered on. */
+export const DOCS_FILES: Record<string, string> = {
+  'quickstart.md': '/docs',
+  'plugin.md': '/docs/plugin',
+  'ci.md': '/docs/ci',
+  'clients.md': '/docs/clients',
+  'configuration.md': '/docs/configuration',
+  'tools.md': '/docs/tools',
+  'troubleshooting.md': '/docs/troubleshooting',
+  'how-it-works.md': '/docs/how-it-works',
+  'migrating.md': '/docs/migrating',
+  'rules.md': '/rules',
+};
+
+/** Named sections and the page each one is on, for links from the site's own pages. */
+const SECTIONS: Record<string, string> = {
   quickstart: '/docs',
   setup: '/docs/clients',
   'cursor-and-vs-code': '/docs/clients#cursor-and-vs-code',
@@ -53,15 +59,35 @@ export const README_ANCHORS: Record<string, string> = {
   'claude-code-plugin': '/docs/plugin',
   tools: '/docs/tools',
   rules: '/rules',
+  'suppressing-findings': '/rules#suppressing-findings',
   configuration: '/docs/configuration',
   'zero-config': '/docs/configuration#zero-config',
   'config-file': '/docs/configuration#config-file',
   ci: '/docs/ci',
   'adopting-it-in-an-existing-codebase': '/docs/ci#adopting-it-in-an-existing-codebase',
-  limits: '/docs/faq#limits',
+  troubleshooting: '/docs/troubleshooting',
+  'how-it-works': '/docs/how-it-works',
+  limits: '/docs/how-it-works#limits',
 };
 
-/** Where a README anchor points from the site. */
-export function docsHref(anchor: string): string {
-  return README_ANCHORS[anchor] ?? readmeLink(anchor);
+/** The page a named section is on. */
+export function docsHref(section: string): string {
+  const href = SECTIONS[section];
+  if (!href) throw new Error(`No page for the section "${section}"`);
+  return href;
+}
+
+/**
+ * Where a link in the docs Markdown points from the site: another docs file (`ci.md#…`) to its
+ * page, the site's own absolute URLs to paths, a file in the repository (`../schema.json`) to
+ * GitHub, and an anchor to the section on this page.
+ */
+export function resolveDocHref(href: string): string {
+  if (href.startsWith(SITE_URL)) return href.slice(SITE_URL.length) || '/';
+  if (/^https?:\/\//.test(href) || href.startsWith('/') || href.startsWith('#')) return href;
+  const doc = /^(?:\.\/)?([\w-]+\.md)(#[\w-]*)?$/.exec(href);
+  const page = doc?.[1] ? DOCS_FILES[doc[1]] : undefined;
+  if (page) return `${page}${doc?.[2] ?? ''}`;
+  const file = href.replace(/^(?:\.\.?\/)+/, '');
+  return repoLink(file, /\.[a-z]+$/i.test(file) ? 'blob' : 'tree');
 }

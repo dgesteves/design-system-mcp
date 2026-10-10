@@ -6,21 +6,18 @@ import { ArrowRightIcon } from '@/components/icons';
 import { Eyebrow } from '@/components/section';
 import { docsPage, type DocsHref } from '@/lib/docs';
 import { pageMetadata } from '@/lib/metadata';
-import { readmeLink, repoLink } from '@/lib/site';
+import { repoLink } from '@/lib/site';
 
 /** The frame of a docs page: title, lead, content, where it comes from, and the next page. */
 export function DocPage({
   href,
   lead,
-  source,
   file,
   children,
 }: {
   href: DocsHref;
   lead?: ReactNode;
-  /** README section anchors the page is generated from. */
-  source?: string[];
-  /** Or the file in the repository it is generated from, such as `docs/migrating.md`. */
+  /** The file in the repository the page is generated from, such as `docs/ci.md`. */
   file?: string;
   children: ReactNode;
 }) {
@@ -37,24 +34,6 @@ export function DocPage({
         </div>
       )}
       <div className="mt-10 max-w-3xl">{children}</div>
-
-      {source && source.length > 0 && (
-        <p className="mt-12 max-w-3xl border-t border-line pt-5 text-[13px] text-subtle">
-          Generated from the README when the site is built:{' '}
-          {source.map((anchor, i) => (
-            <span key={anchor}>
-              {i > 0 && ', '}
-              <a
-                href={readmeLink(anchor)}
-                className="text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
-              >
-                #{anchor}
-              </a>
-            </span>
-          ))}
-          .
-        </p>
-      )}
 
       {file && (
         <p className="mt-12 max-w-3xl border-t border-line pt-5 text-[13px] text-subtle">

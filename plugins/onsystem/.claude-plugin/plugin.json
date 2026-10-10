@@ -2,7 +2,7 @@
   "name": "onsystem",
   "displayName": "onsystem",
   "version": "0.3.3",
-  "description": "Your React design system as ground truth for Claude: components, props, variants and tokens over MCP, and a hook that lints every UI file Claude writes against them.",
+  "description": "Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.",
   "author": {
     "name": "Diogo Esteves",
     "url": "https://github.com/dgesteves"

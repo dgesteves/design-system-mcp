@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Line } from '@/components/code';
 import { CheckIcon } from '@/components/icons';
 import { InlineMarkdown } from '@/components/markdown';
+import { MarkdownBlocks } from '@/components/markdown-blocks';
 import { Eyebrow, InlineCode, TextLink } from '@/components/section';
 import { ruleCatalog, type RuleEntry } from '@/lib/data';
 import { highlightLines, type Mark } from '@/lib/highlight';
@@ -175,7 +176,7 @@ function Rule({ rule }: { rule: RuleEntry }) {
 }
 
 export default function RulesPage() {
-  const { rules, version, details } = ruleCatalog;
+  const { rules, version, details, suppression } = ruleCatalog;
   return (
     <main id="main" className="relative">
       <div className="glow pointer-events-none absolute inset-x-0 top-0 h-140" aria-hidden="true" />
@@ -228,6 +229,14 @@ export default function RulesPage() {
                   className="flex rounded-md border border-line px-2.5 py-1.5 text-[13px] text-muted transition-colors hover:text-fg lg:mt-3 lg:border-transparent lg:px-2 lg:py-1"
                 >
                   Configuring the rules
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#suppressing-findings"
+                  className="flex rounded-md border border-line px-2.5 py-1.5 text-[13px] text-muted transition-colors hover:text-fg lg:border-transparent lg:px-2 lg:py-1"
+                >
+                  Suppressing findings
                 </a>
               </li>
               <li>
@@ -293,6 +302,22 @@ export default function RulesPage() {
                   ))}
                 </code>
               </pre>
+            </section>
+
+            <section
+              id="suppressing-findings"
+              aria-labelledby="suppressing-findings-title"
+              className="scroll-mt-20 border-t border-line pt-10 pb-12"
+            >
+              <h2
+                id="suppressing-findings-title"
+                className="text-xl font-semibold tracking-tight text-fg"
+              >
+                Suppressing findings
+              </h2>
+              <div className="mt-3">
+                <MarkdownBlocks markdown={suppression} />
+              </div>
             </section>
 
             <section

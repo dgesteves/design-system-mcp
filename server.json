@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.dgesteves/onsystem",
   "title": "onsystem",
-  "description": "Ground truth about your React design system for coding agents, plus a UI linter they can run.",
+  "description": "Keeps coding agents on your design system: knows your real components, props, variants and tokens.",
   "repository": {
     "url": "https://github.com/dgesteves/onsystem",
     "source": "github"

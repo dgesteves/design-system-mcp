@@ -15,7 +15,7 @@ export function InstallPanel({ className = '' }: { className?: string }) {
           <p className={label}>
             Claude Code plugin
             <span className="ml-2 tracking-normal normal-case max-sm:hidden">
-              · server, skill, hook
+              · hook, server, skill
             </span>
           </p>
           <CopyButton

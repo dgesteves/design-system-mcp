@@ -386,19 +386,68 @@ write('bench.json', {
   models,
 });
 
-// ─── From the README ────────────────────────────────────────────────────────
+// ─── The corpus: how often the rules are wrong ──────────────────────────────
 
+// The numbers `pnpm corpus` prints, from the files it writes: the hand labels in the random
+// sample that the snapshot says are still reported, and the findings per run and rule.
+const corpusDir = path.join(repo, 'corpus');
+const readCorpus = (file) => JSON.parse(fs.readFileSync(path.join(corpusDir, file), 'utf8'));
+const corpusSnapshot = readCorpus('snapshot.json');
+// As labelKey in scripts/corpus-lib.ts: a label tied to a suggestion is keyed with it.
+const labelKey = (label) =>
+  label.suggestion === undefined
+    ? label.fingerprint
+    : `${label.fingerprint}@${label.suggestion ?? 'none'}`;
+const sample = readCorpus('labels.json').filter(
+  (label) => label.sample === 'random' && corpusSnapshot.labels[labelKey(label)] === true,
+);
+let corpusFindings = 0;
+let corpusCovered = 0;
+let corpusWeighted = 0;
+for (const [run, { rules }] of Object.entries(corpusSnapshot.runs)) {
+  for (const [rule, counts] of Object.entries(rules)) {
+    const n = counts.errors + counts.warnings;
+    corpusFindings += n;
+    const stratum = sample.filter((label) => label.run === run && label.rule === rule);
+    if (!stratum.length) continue;
+    corpusCovered += n;
+    corpusWeighted +=
+      (n * stratum.filter((label) => label.verdict === 'FP').length) / stratum.length;
+  }
+}
+assert.ok(sample.length > 0 && corpusCovered > 0, 'the corpus should have a labelled sample');
+write('corpus.json', {
+  repos: readCorpus('repos.json').repos.length,
+  runs: Object.keys(corpusSnapshot.runs).length,
+  findings: corpusFindings,
+  sample: sample.length,
+  falsePositives: sample.filter((label) => label.verdict === 'FP').length,
+  debatable: sample.filter((label) => label.verdict === 'D').length,
+  /** False positives as a share of all findings, weighted by each run's and rule's share. */
+  weightedRate: corpusWeighted / corpusCovered,
+});
+
+// ─── From the docs and the README ───────────────────────────────────────────
+
+// The docs pages live in docs/*.md, readable on GitHub and rendered here; the README keeps the
+// install links. Links between docs files (`ci.md#…`) are mapped to site pages when rendered.
 const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8');
+/** A docs/ file without its `# title`: the site's page has its own. */
+function doc(name) {
+  const text = fs.readFileSync(path.join(repo, 'docs', name), 'utf8');
+  assert.ok(/^# .+\n/.test(text), `docs/${name} should start with a # title`);
+  return text.replace(/^# .*\n+/, '').trim();
+}
 
 /**
- * The body of a `## heading` section, up to the next heading of the same or a higher level.
- * Lines inside code fences are not headings (`# Baseline: …` in a shell block).
+ * The body of a `## heading` section of `markdown`, up to the next heading of the same or a
+ * higher level. Lines inside code fences are not headings (`# Baseline: …` in a shell block).
  */
-function section(heading) {
-  const lines = readme.split('\n');
+function section(markdown, heading, where) {
+  const lines = markdown.split('\n');
   const level = heading.match(/^#+/)[0].length;
   const start = lines.indexOf(heading);
-  assert.ok(start !== -1, `README section "${heading}" not found`);
+  assert.ok(start !== -1, `section "${heading}" not found in ${where}`);
   let fenced = false;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
@@ -428,10 +477,12 @@ function table(markdown) {
   return { header: cells(header), rows: rows.map(cells) };
 }
 
-/** The target of the badge link with this alt text. */
-function badgeLink(alt) {
-  const match = new RegExp(`\\[!\\[${alt}\\]\\([^)]*\\)\\]\\(([^)]+)\\)`).exec(readme);
-  assert.ok(match, `README badge "${alt}" not found`);
+/** The target of the link with this text: a README badge (`[![alt](…)](…)`) or a plain link. */
+function linkTo(markdown, text, where) {
+  const match =
+    new RegExp(`\\[!\\[${text}\\]\\([^)]*\\)\\]\\(([^)]+)\\)`).exec(markdown) ??
+    new RegExp(`\\[${text}\\]\\(([^)]+)\\)`).exec(markdown);
+  assert.ok(match, `link "${text}" not found in ${where}`);
   return match[1];
 }
 
@@ -442,31 +493,57 @@ function codeBlock(markdown) {
   return match[1];
 }
 
-const realCodebases = section('## On real codebases');
+const docs = {
+  quickstart: doc('quickstart.md'),
+  plugin: doc('plugin.md'),
+  ci: doc('ci.md'),
+  clients: doc('clients.md'),
+  configuration: doc('configuration.md'),
+  rules: doc('rules.md'),
+  tools: doc('tools.md'),
+  troubleshooting: doc('troubleshooting.md'),
+  howItWorks: doc('how-it-works.md'),
+  migrating: doc('migrating.md'),
+};
+
+// The one-click installs: the README's badges, and the same links in the setup guide.
+const install = {
+  cursor: linkTo(readme, 'Install in Cursor', 'README.md'),
+  vscode: linkTo(readme, 'Install in VS Code', 'README.md'),
+  plugin: codeBlock(docs.plugin),
+};
+for (const [text, href] of [
+  ['Install in Cursor', install.cursor],
+  ['Install in VS Code', install.vscode],
+]) {
+  assert.equal(
+    linkTo(docs.clients, text, 'docs/clients.md'),
+    href,
+    `${text}: README and docs differ`,
+  );
+}
+assert.ok(readme.includes(install.plugin), 'the README should show the plugin install commands');
+
+const realCodebases = section(docs.howItWorks, '## On real codebases', 'docs/how-it-works.md');
 write('readme.json', {
-  install: {
-    cursor: badgeLink('Install in Cursor'),
-    vscode: badgeLink('Install in VS Code'),
-    plugin: codeBlock(section('### Claude Code plugin')),
-  },
+  install,
   realCodebases: {
     intro: realCodebases.split('\n\n')[0],
     ...table(realCodebases),
   },
-  rules: table(section('## Rules')),
   engines: JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).engines,
 });
 
 // ─── The rules catalog ──────────────────────────────────────────────────────
 
 const { ruleDocs } = await import('./rule-docs.mjs');
-const ruleTable = table(section('## Rules'));
+const ruleTable = table(docs.rules);
 const EXAMPLE_FILE = 'app/example.tsx';
 const rules = RULES.map((rule) => {
   const docs = ruleDocs[rule.id];
   assert.ok(docs, `scripts/rule-docs.mjs has no entry for ${rule.id}`);
   const row = ruleTable.rows.find((r) => r[0] === `\`${rule.id}\``);
-  assert.ok(row, `the README Rules table has no row for ${rule.id}`);
+  assert.ok(row, `the docs/rules.md table has no row for ${rule.id}`);
   const before = ds.check(docs.bad, EXAMPLE_FILE);
   const own = before.diagnostics.filter((d) => d.ruleId === rule.id);
   assert.ok(own.length > 0, `the ${rule.id} example should trip it`);
@@ -506,61 +583,23 @@ const rules = RULES.map((rule) => {
     })),
   };
 });
-const rulesSection = section('## Rules');
 write('rules.json', {
   version: VERSION,
   rules,
-  // The paragraph under the README table: how colors, spacing and radius fixes are chosen.
-  details: rulesSection.slice(rulesSection.lastIndexOf('|\n') + 2).trim(),
+  // How colors, spacing and radius fixes are chosen, and how to suppress a finding.
+  details: section(docs.rules, '## How fixes are chosen', 'docs/rules.md'),
+  suppression: section(docs.rules, '## Suppressing findings', 'docs/rules.md'),
 });
 
-// ─── Docs, from the README and the plugin ───────────────────────────────────
+// ─── Docs ───────────────────────────────────────────────────────────────────
 
-/** The part of a section before its first subsection. */
-const intro = (markdown) => {
-  let fenced = false;
-  const lines = markdown.split('\n');
-  const end = lines.findIndex((line) => {
-    if (/^\s*```/.test(line)) fenced = !fenced;
-    return !fenced && /^#{3,} /.test(line);
-  });
-  return (end === -1 ? lines : lines.slice(0, end)).join('\n').trim();
-};
 const skill = fs
   .readFileSync(path.join(repo, 'plugins/onsystem/skills/onsystem/SKILL.md'), 'utf8')
   .replace(/^---\n[\s\S]*?\n---\n/, '')
   .trim();
-/** A page in docs/, without its `# title`: the site's page has its own. */
-const docsFile = (name) =>
-  fs
-    .readFileSync(path.join(repo, 'docs', name), 'utf8')
-    .replace(/^# .*\n+/, '')
-    .trim();
-/** README text that refers to the README itself, reworded for the site. Fails when it moves. */
-function reword(markdown, from, to) {
-  assert.ok(markdown.includes(from), `README text to reword not found: "${from}"`);
-  return markdown.replace(from, to);
-}
 write('docs.json', {
-  quickstart: reword(
-    section('## Quickstart'),
-    'click the install badge at the top, or add the [config](#cursor-and-vs-code) to the repository',
-    'use the install buttons on this page, or add the [config](#cursor-and-vs-code) to the repository',
-  ),
-  setup: intro(section('## Setup')),
-  plugin: section('### Claude Code plugin'),
-  cursorVsCode: reword(
-    section('### Cursor and VS Code'),
-    'The badges at the top install the server in one click.',
-    'The buttons at the top of this page install the server in one click.',
-  ),
-  otherClients: section('### Other clients'),
-  tools: section('## Tools'),
-  zeroConfig: section('### Zero config'),
-  configFile: section('### Config file'),
-  ci: intro(section('## CI')),
-  baseline: section('### Adopting it in an existing codebase'),
-  limits: section('### Limits'),
+  ...docs,
+  // The FAQ and the landing page link to it; the rules page shows the rules.
+  limits: section(docs.howItWorks, '## Limits', 'docs/how-it-works.md'),
   skill,
-  migrating: docsFile('migrating.md'),
 });

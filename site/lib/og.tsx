@@ -295,7 +295,7 @@ export function HomeCard({
     <Frame width={width} height={height} footer={footer}>
       <div style={{ display: 'flex', width: '100%', gap: 48, alignItems: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 22 }}>
-          <Eyebrow>MCP server · Claude Code plugin</Eyebrow>
+          <Eyebrow>Claude Code hook · CI check · MCP</Eyebrow>
           <div
             style={{
               display: 'flex',
@@ -305,7 +305,7 @@ export function HomeCard({
               letterSpacing: -1.2,
             }}
           >
-            Coding agents that build with your design system, not their training data.
+            Keeps coding agents on your design system.
           </div>
           {model && (
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
