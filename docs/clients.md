@@ -4,6 +4,34 @@ The server speaks MCP over stdio, in both protocol eras: the 2026-07-28 revision
 
 Every client gets the same five tools, including `check_ui`, which the agent runs on its own output. Only Claude Code has a hook that checks each edit as it happens, so there use the [plugin](plugin.md) instead; with other agents, add the [CI check](ci.md) so what the agent skips still gets caught.
 
+## Plugins for other agents
+
+The skill and the MCP server also come packaged for other agents, pinned to the same release as the Claude Code plugin. Only the Claude Code plugin has the hook that checks each edit; elsewhere, the [CI check](ci.md) catches what the agent skips.
+
+- **Any agent with Agent Skills** (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode and others): the skill, from the repository. It goes to `.agents/skills/onsystem`, which most agents read, and is linked into `.claude/skills` for Claude Code. Add the MCP server with your client's config below.
+
+  ```sh
+  npx skills add dgesteves/onsystem
+  ```
+
+- **Codex CLI:** Codex reads the same marketplace as Claude Code and installs that plugin's server and skill. It also lists the plugin's hook, which is written for Claude Code's `Write` and `Edit` tools.
+
+  ```sh
+  codex plugin marketplace add dgesteves/onsystem
+  codex plugin add onsystem@dgesteves
+  ```
+
+- **GitHub Copilot CLI:** the [Agent Plugins 1.0](https://github.com/agentplugins/agent-plugins-spec) package, with the server and the skill:
+
+  ```sh
+  copilot plugin install dgesteves/onsystem:plugins/onsystem-agent
+  ```
+
+- **VS Code** (GitHub Copilot agent plugins): run **Chat: Install Plugin From Source** from the Command Palette and enter `dgesteves/onsystem`. VS Code reads the same marketplace as Claude Code and installs that plugin's server and skill. To use the Agent Plugins package instead, add a clone's `plugins/onsystem-agent` folder to the `chat.pluginLocations` setting.
+- **Cursor:** the Cursor plugin, in `plugins/onsystem-cursor`. Until it is listed in the Cursor Marketplace, copy that folder to `~/.cursor/plugins/local/onsystem` and run **Developer: Reload Window**.
+
+A client that loads the Agent Plugins format starts the server in the plugin's folder rather than in your project, so the server finds the project through the workspace roots the client reports, as VS Code and Cursor do. If a client reports none, the server finds no design system: add it with the client's MCP config below instead.
+
 ## Cursor and VS Code
 
 One click installs it: [Install in Cursor](https://cursor.com/en/install-mcp?name=onsystem&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9uc3lzdGVtIiwiLS1yb290IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19) or [Install in VS Code](https://insiders.vscode.dev/redirect/mcp/install?name=onsystem&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22onsystem%22%5D%7D). To share it with the team, commit the config instead:

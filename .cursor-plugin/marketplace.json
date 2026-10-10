@@ -1,0 +1,16 @@
+{
+  "name": "dgesteves",
+  "owner": {
+    "name": "Diogo Esteves"
+  },
+  "metadata": {
+    "description": "Cursor plugins by Diogo Esteves: onsystem keeps Cursor on your React design system."
+  },
+  "plugins": [
+    {
+      "name": "onsystem",
+      "source": "./plugins/onsystem-cursor",
+      "description": "Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint."
+    }
+  ]
+}

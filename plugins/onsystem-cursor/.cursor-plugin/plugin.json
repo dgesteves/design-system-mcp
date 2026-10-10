@@ -1,0 +1,14 @@
+{
+  "name": "onsystem",
+  "displayName": "onsystem",
+  "version": "0.4.0",
+  "description": "Keeps coding agents on your design system: it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside @shadcn/lint.",
+  "author": {
+    "name": "Diogo Esteves"
+  },
+  "homepage": "https://design-system-mcp-demo.vercel.app/docs/clients",
+  "repository": "https://github.com/dgesteves/onsystem",
+  "license": "MIT",
+  "keywords": ["design-system", "shadcn", "react", "tailwindcss", "lint", "mcp", "cursor"],
+  "logo": "icon.svg"
+}
