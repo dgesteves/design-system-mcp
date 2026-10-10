@@ -1,15 +1,17 @@
-# design-system-mcp
+# onsystem
 
 An MCP server that gives coding agents ground truth about your React design system, and a linter they can run on their own UI.
 
+Formerly `@dgesteves/design-system-mcp`: the [migration guide](https://design-system-mcp-demo.vercel.app/docs/migrating) lists what changed and what to rename.
+
 **Website:** [design-system-mcp-demo.vercel.app](https://design-system-mcp-demo.vercel.app), with the loop on a demo design system, the benchmark and a [playground](https://design-system-mcp-demo.vercel.app/playground) that runs `check_ui` on your code.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/dgesteves/design-system-mcp/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0d0f12)](https://github.com/dgesteves/design-system-mcp/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](https://www.npmjs.com/package/@dgesteves/design-system-mcp)
-[![License: MIT](https://img.shields.io/github/license/dgesteves/design-system-mcp?style=flat-square&labelColor=0d0f12&color=22d3ee)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/dgesteves/onsystem/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0d0f12)](https://github.com/dgesteves/onsystem/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/onsystem?style=flat-square&labelColor=0d0f12&color=22d3ee)](https://www.npmjs.com/package/onsystem)
+[![License: MIT](https://img.shields.io/github/license/dgesteves/onsystem?style=flat-square&labelColor=0d0f12&color=22d3ee)](LICENSE)
 
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=design-system&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBkZ2VzdGV2ZXMvZGVzaWduLXN5c3RlbS1tY3AiLCItLXJvb3QiLCIke3dvcmtzcGFjZUZvbGRlcn0iXX0%3D)
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=design-system&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40dgesteves%2Fdesign-system-mcp%22%5D%7D)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=onsystem&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9uc3lzdGVtIiwiLS1yb290IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=onsystem&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22onsystem%22%5D%7D)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-Plugin-d97757?style=flat-square&logo=claude&logoColor=white)](#claude-code-plugin)
 
 <!-- npm-readme:video -->
@@ -32,7 +34,7 @@ Coding agents write UI from their training data, not from your design system. As
 
 The agent cannot see your Storybook or docs site, and TypeScript only catches part of it after the fact. On the demo draft above, `tsc` reports 3 of the 11 problems (the invalid variant, the unknown prop and the missing member) and has no opinion on hex colors, off-scale spacing, native elements or accessible names.
 
-`design-system-mcp` reads your components, tokens and docs, and serves them to the agent over [MCP](https://modelcontextprotocol.io): what exists, which props and variant values are valid, which token to use. It also gives the agent `check_ui`, a linter it calls on its own output. Every finding has a rule id, a location and a concrete fix, so the agent can correct itself before you review anything.
+`onsystem` reads your components, tokens and docs, and serves them to the agent over [MCP](https://modelcontextprotocol.io): what exists, which props and variant values are valid, which token to use. It also gives the agent `check_ui`, a linter it calls on its own output. Every finding has a rule id, a location and a concrete fix, so the agent can correct itself before you review anything.
 
 ## Does it help?
 
@@ -64,25 +66,25 @@ No config is needed in a shadcn/ui project (Tailwind v3 or v4), a monorepo whose
 - **Claude Code**: install the [plugin](#claude-code-plugin), which brings the server, a skill that has Claude look components up before writing UI, and a hook that checks every UI file Claude writes:
 
   ```text
-  /plugin marketplace add dgesteves/design-system-mcp
-  /plugin install design-system@dgesteves
+  /plugin marketplace add dgesteves/onsystem
+  /plugin install onsystem@dgesteves
   ```
 
 - **Cursor or VS Code**: click the install badge at the top, or add the [config](#cursor-and-vs-code) to the repository.
-- **Any other MCP client**: run `npx -y @dgesteves/design-system-mcp` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](#other-clients).
+- **Any other MCP client**: run `npx -y onsystem` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](#other-clients).
 
 **2. See what it found**, from the app's folder:
 
 ```sh
-npx -y @dgesteves/design-system-mcp inspect
+npx -y onsystem inspect
 ```
 
-**3. Try it.** Ask your agent for some UI, such as _"Add a danger-zone card to the settings page."_ It looks the components, variants and tokens up before writing and runs `check_ui` on the result. In Claude Code the plugin's skill loads by itself for UI work (or run `/design-system:design-system`), and the hook checks each file as it is written.
+**3. Try it.** Ask your agent for some UI, such as _"Add a danger-zone card to the settings page."_ It looks the components, variants and tokens up before writing and runs `check_ui` on the result. In Claude Code the plugin's skill loads by itself for UI work (or run `/onsystem:onsystem`), and the hook checks each file as it is written.
 
 **4. Check the codebase**, then add it to [CI](#ci):
 
 ```sh
-npx -y @dgesteves/design-system-mcp check .
+npx -y onsystem check .
 ```
 
 `check .` lints every `.tsx` and `.jsx` file under the folder, whatever the layout, and leaves out the design system's own components, tests and stories, and what git ignores.
@@ -96,8 +98,8 @@ The server speaks MCP over stdio. It finds the project from `--root`, a config f
 The plugin bundles the server, a skill that tells Claude to look components and tokens up before writing UI, and a hook that runs `check` on every `.tsx`/`.jsx` file Claude writes or edits and hands the errors back, so they get fixed in the same turn instead of in review:
 
 ```text
-/plugin marketplace add dgesteves/design-system-mcp
-/plugin install design-system@dgesteves
+/plugin marketplace add dgesteves/onsystem
+/plugin install onsystem@dgesteves
 ```
 
 ```text
@@ -107,11 +109,11 @@ The plugin bundles the server, a skill that tells Claude to look components and 
      1:77 error [prefer-design-system-component] Native <button> where the design system has <Button>.
      …
 ⏺ The hook flagged five issues. Looking up Button and the color tokens before fixing.
-⏺ design-system - get_component (MCP)(name: "Button")
+⏺ onsystem - get_component (MCP)(name: "Button")
 ⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-muted, hook passes
 ```
 
-The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without design-system components (tokens alone don't count), so installing the plugin for every project is safe. When the CLI can't run (npx can't fetch it because of a min-release-age policy, a private registry or no network, or the config is broken), it says so once per session and project, as a message to you, and never blocks the edit. Like `check`, it leaves the design system's own files alone: an edit to `components/ui/button.tsx` changes the design system, which is a call for you and your reviewers rather than a lint error. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx`, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove design-system`) to avoid two copies of the tools.
+The hook only speaks up about what Claude just changed: after an Edit it lists the findings on the edited lines and only counts older ones, it honours a [baseline](#adopting-it-in-an-existing-codebase), and it stays quiet in projects without design-system components (tokens alone don't count), so installing the plugin for every project is safe. When the CLI can't run (npx can't fetch it because of a min-release-age policy, a private registry or no network, or the config is broken), it says so once per session and project, as a message to you, and never blocks the edit. Like `check`, it leaves the design system's own files alone: an edit to `components/ui/button.tsx` changes the design system, which is a call for you and your reviewers rather than a lint error. Warnings go to Claude as context without blocking. It runs the project's own install when there is one, else `npx` with the plugin's exact version, and finds the project from the edited file, so it works in monorepos. If you added the server with `claude mcp add` before, remove that entry (`claude mcp remove onsystem`, or `design-system` from before the rename) to avoid two copies of the tools. The plugin was called `design-system` before 0.4.0: replace it with `/plugin uninstall design-system@dgesteves`, `/plugin marketplace update dgesteves` and `/plugin install onsystem@dgesteves`.
 
 ### Cursor and VS Code
 
@@ -125,9 +127,9 @@ The badges at the top install the server in one click. To share it with the team
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "${workspaceFolder}"]
+      "args": ["-y", "onsystem", "--root", "${workspaceFolder}"]
     }
   }
 }
@@ -143,10 +145,10 @@ The badges at the top install the server in one click. To share it with the team
 ```json
 {
   "servers": {
-    "design-system": {
+    "onsystem": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "${workspaceFolder}"]
+      "args": ["-y", "onsystem", "--root", "${workspaceFolder}"]
     }
   }
 }
@@ -168,9 +170,9 @@ Settings → Developer → Edit Config opens `claude_desktop_config.json` (`~/Li
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"]
     }
   }
 }
@@ -184,15 +186,15 @@ Restart Claude Desktop after saving.
 <summary><strong>Codex CLI</strong></summary>
 
 ```sh
-codex mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app
+codex mcp add onsystem -- npx -y onsystem --root /absolute/path/to/app
 ```
 
 or in `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.design-system]
+[mcp_servers.onsystem]
 command = "npx"
-args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+args = ["-y", "onsystem", "--root", "/absolute/path/to/app"]
 ```
 
 </details>
@@ -201,7 +203,7 @@ args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
 <summary><strong>GitHub Copilot CLI</strong></summary>
 
 ```sh
-copilot mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app
+copilot mcp add onsystem -- npx -y onsystem --root /absolute/path/to/app
 ```
 
 That writes `~/.copilot/mcp-config.json`:
@@ -209,17 +211,17 @@ That writes `~/.copilot/mcp-config.json`:
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "type": "local",
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"],
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"],
       "tools": ["*"]
     }
   }
 }
 ```
 
-In a session, `/mcp show design-system` lists its tools.
+In a session, `/mcp show onsystem` lists its tools.
 
 </details>
 
@@ -231,15 +233,15 @@ Windsurf is now Devin Desktop, and its agent reads the Devin CLI's MCP config: `
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"]
     }
   }
 }
 ```
 
-From the terminal, `devin mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app` adds the same entry.
+From the terminal, `devin mcp add onsystem -- npx -y onsystem --root /absolute/path/to/app` adds the same entry.
 
 </details>
 
@@ -251,9 +253,9 @@ For AI Assistant, open Settings → Tools → AI Assistant → Model Context Pro
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"]
     }
   }
 }
@@ -271,9 +273,9 @@ In Zed's `settings.json`:
 ```json
 {
   "context_servers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"],
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"],
       "env": {}
     }
   }
@@ -290,9 +292,9 @@ In Zed's `settings.json`:
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+      "args": ["-y", "onsystem", "--root", "/absolute/path/to/app"]
     }
   }
 }
@@ -304,18 +306,18 @@ In Zed's `settings.json`:
 <summary><strong>Grok Build</strong></summary>
 
 ```sh
-grok mcp add design-system -- npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app
+grok mcp add onsystem -- npx -y onsystem --root /absolute/path/to/app
 ```
 
 or in `~/.grok/config.toml` (`--scope project` writes `.grok/config.toml` in the repository instead):
 
 ```toml
-[mcp_servers.design-system]
+[mcp_servers.onsystem]
 command = "npx"
-args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
+args = ["-y", "onsystem", "--root", "/absolute/path/to/app"]
 ```
 
-`grok mcp doctor design-system` starts it and lists its tools. Grok Build also reads a project's `.mcp.json` once you trust the folder.
+`grok mcp doctor onsystem` starts it and lists its tools. Grok Build also reads a project's `.mcp.json` once you trust the folder.
 
 </details>
 
@@ -325,7 +327,7 @@ args = ["-y", "@dgesteves/design-system-mcp", "--root", "/absolute/path/to/app"]
 Use this instead of the plugin, not next to it: both register the same tools.
 
 ```sh
-claude mcp add design-system -- npx -y @dgesteves/design-system-mcp
+claude mcp add onsystem -- npx -y onsystem
 ```
 
 To share it with your team, add `--scope project`, which writes `.mcp.json` at the repository root:
@@ -333,9 +335,9 @@ To share it with your team, add `--scope project`, which writes `.mcp.json` at t
 ```json
 {
   "mcpServers": {
-    "design-system": {
+    "onsystem": {
       "command": "npx",
-      "args": ["-y", "@dgesteves/design-system-mcp"]
+      "args": ["-y", "onsystem"]
     }
   }
 }
@@ -343,9 +345,9 @@ To share it with your team, add `--scope project`, which writes `.mcp.json` at t
 
 </details>
 
-Any other MCP client: run `npx -y @dgesteves/design-system-mcp --root /absolute/path/to/app` as a stdio server. On native Windows, wrap it as `cmd /c npx ...`.
+Any other MCP client: run `npx -y onsystem --root /absolute/path/to/app` as a stdio server. On native Windows, wrap it as `cmd /c npx ...`.
 
-The server sends usage instructions during the MCP handshake. Clients that ignore them benefit from one line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules`: _"Before writing UI, use the design-system tools. Run check_ui on every file you change and fix all errors."_
+The server sends usage instructions during the MCP handshake. Clients that ignore them benefit from one line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules`: _"Before writing UI, use the onsystem tools. Run check_ui on every file you change and fix all errors."_
 
 ## Tools
 
@@ -359,7 +361,7 @@ All tools are read-only, have zod-validated input schemas with size limits (up t
 | `get_tokens`        | `category?`, `query?`                           | Tokens with resolved values, dark-mode values and usages (`bg-primary`, `var(--primary)`)                                                                                                                      |
 | `check_ui`          | `code` or `path`, `filename?`, `limit?`         | Diagnostics with rule id, 1-based range, message, suggestion and edit-based fix (up to `limit`, 50 by default, errors first, with totals per rule), and a notice when no components or color tokens were found |
 
-Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. In Claude Code it is a slash command, `/mcp__design-system__build-with-design-system` for a server added as `design-system`.
+Resources: `ds://components/{name}` (Markdown, with name completion) and `ds://tokens` (JSON). Prompt: `build-with-design-system`, which takes a `task` and walks the agent through search, contract, tokens and `check_ui`. In Claude Code it is a slash command, `/mcp__onsystem__build-with-design-system` for a server added as `onsystem`.
 
 What the agent sees, from the [demo](examples/shadcn-demo):
 
@@ -445,11 +447,11 @@ A candidate whose files cannot be found is skipped. Components found through `ex
 
 ### Config file
 
-`design-system-mcp.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](schema.json) gives editor completion.
+`onsystem.config.json` (or `.mjs`, `.js`, or `.ts` on Node.js 22.18 or later) in the project root. Every field is optional; the [JSON Schema](schema.json) gives editor completion.
 
 ```json
 {
-  "$schema": "https://unpkg.com/@dgesteves/design-system-mcp/schema.json",
+  "$schema": "https://unpkg.com/onsystem/schema.json",
   "components": ["src/components/**/*.tsx"],
   "exclude": ["**/*.stories.tsx", "**/*.test.tsx"],
   "tokens": ["src/styles/globals.css", { "path": "tokens/*.tokens.json", "prefix": "acme" }],
@@ -485,7 +487,7 @@ Tokens can be [W3C DTCG](https://www.designtokens.org/) JSON (`$type` inheritanc
 
 Docs are Markdown or MDX, one file per component, matched by `component:` frontmatter, the first heading or the file name. Fenced `tsx`/`jsx` blocks become examples (`title="..."` in the fence names them); JSDoc `@example` tags work too.
 
-CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `--docs` (repeatable), `--no-cache`, `--no-watch`. Run `design-system-mcp --help` for the rest.
+CLI flags override the file: `--root`, `--config`, `--components`, `--tokens`, `--docs` (repeatable), `--no-cache`, `--no-watch`. Run `onsystem --help` for the rest.
 
 ## CI
 
@@ -496,11 +498,11 @@ In folders and globs, `check` also leaves out tests and stories (`*.test.tsx`, `
 Pin it as a dev dependency, so CI, the plugin's hook and everyone on the team run the same version:
 
 ```sh
-npm install --save-dev @dgesteves/design-system-mcp
+npm install --save-dev onsystem
 ```
 
 ```yaml
-- run: npx design-system-mcp check . --format github --require-design-system
+- run: npx onsystem check . --format github --require-design-system
 ```
 
 `--format github` prints workflow commands, so findings show up as annotations on the pull request. `--format json` prints the raw results.
@@ -512,11 +514,11 @@ When no components or no color tokens are found, `check` and `check_ui` say whic
 An established app can start with hundreds of findings (midday's dashboard has about 1,300). Record them once and commit the file:
 
 ```sh
-npx -y @dgesteves/design-system-mcp check "src/**/*.tsx" --update-baseline
-# Baseline: 1,307 findings in 275 files → design-system-mcp.baseline.json
+npx -y onsystem check "src/**/*.tsx" --update-baseline
+# Baseline: 1,307 findings in 275 files → onsystem.baseline.json
 ```
 
-From then on, `check` reads `design-system-mcp.baseline.json` from the root whenever it exists and fails only on new findings: `No new problems in 504 files (1,307 in the baseline).` Entries are keyed by file, rule and the offending text with a count, not by line, so edits elsewhere in a file do not invalidate them, while a second `bg-[#f7f7f7]` where the baseline accepts one is reported. When findings get fixed, `check` says so and prints the command that drops them, which locks in the progress. Entries of a rule you turn off are kept rather than reported as fixed, a malformed baseline (a bad merge, say) is an error rather than something to overwrite, and paths are matched by their real spelling, so `APP/` on macOS or a linked checkout finds the same entries. `--ignore-baseline` shows everything, and `--baseline <file>` uses another path. The baseline applies to the CLI only: `check_ui` still shows an agent every finding in the file it is editing.
+From then on, `check` reads `onsystem.baseline.json` from the root whenever it exists and fails only on new findings: `No new problems in 504 files (1,307 in the baseline).` Entries are keyed by file, rule and the offending text with a count, not by line, so edits elsewhere in a file do not invalidate them, while a second `bg-[#f7f7f7]` where the baseline accepts one is reported. When findings get fixed, `check` says so and prints the command that drops them, which locks in the progress. Entries of a rule you turn off are kept rather than reported as fixed, a malformed baseline (a bad merge, say) is an error rather than something to overwrite, and paths are matched by their real spelling, so `APP/` on macOS or a linked checkout finds the same entries. `--ignore-baseline` shows everything, and `--baseline <file>` uses another path. The baseline applies to the CLI only: `check_ui` still shows an agent every finding in the file it is editing.
 
 ## How it works
 
@@ -527,7 +529,7 @@ From then on, `check` reads `design-system-mcp.baseline.json` from the root when
 1. **Components.** One TypeScript program over the component files, with the project's `tsconfig` (so path aliases and dependency types resolve). For each exported PascalCase function, `forwardRef`, `memo` or class component, and each alias of a library component (`const Dialog = DialogPrimitive.Root`), the checker gives the props type. Props declared in the project, or by packages such as Radix, are listed with types, required flags, defaults (from destructuring, `@default` or `defaultVariants`) and JSDoc. React's DOM attributes are summarised as "…plus 290 props from `React.ComponentProps<"button">`" but kept in full for linting. When dependency types are missing, extraction falls back to what resolves and marks the props as open, so the linter does not guess.
 2. **Variants.** `cva()` and `tv()` calls are read from the AST: values in declaration order, defaults, per-value classes and compound variants. They are linked to a component through `VariantProps<typeof x>` or a call in the className of the element it returns; a definition used further in (a spinner's `loaderVariants`) only adds the variants the component's own lack and that it takes as props. Without either, a call anywhere in its body links it. Boolean keys named like a render state (`isDisabled`, `isPending`, as React Aria's starter passes `renderProps` to `tv()`) style a state rather than offer a variant, so they are not listed as variants, and a key declared by two linked definitions is listed once.
 3. **Composition.** Flat parts (`CardHeader` next to `Card` in `card.tsx`, but not a lone container such as `CheckboxGroup` next to `Checkbox`), static members (`Card.Header = CardHeader`) and `Object.assign(Root, { List })` (members exported or not, shorthand included) become parent/part relationships. The wrapped native element comes from `ComponentProps<"button">`, `ButtonHTMLAttributes<HTMLButtonElement>`, the `forwardRef` element type, or the rendered JSX (including `const Comp = asChild ? Slot : "button"`).
-4. **Model.** Components, tokens and docs form one JSON model, cached in `node_modules/.cache/design-system-mcp` and keyed on the sizes and mtimes of the component, token and docs files, the project files the components import and the tsconfig chain, plus the lockfile, the config and the package version. The server answers the MCP handshake immediately and loads in the background; requests wait for the load. File changes trigger a rebuild that reuses the previous TypeScript program, an edited config file is read again, and clients are notified that resources changed.
+4. **Model.** Components, tokens and docs form one JSON model, cached in `node_modules/.cache/onsystem` and keyed on the sizes and mtimes of the component, token and docs files, the project files the components import and the tsconfig chain, plus the lockfile, the config and the package version. The server answers the MCP handshake immediately and loads in the background; requests wait for the load. File changes trigger a rebuild that reuses the previous TypeScript program, an edited config file is read again, and clients are notified that resources changed.
 5. **Lint.** `check_ui` parses the snippet on its own (no type-checking), resolves each JSX tag through its imports (named, default, namespace, relative, and barrels such as `@/components/ui` or `../components/ui`) to a design-system component, and runs the rules against the model. Fixes are text edits with offsets, so an agent or a tool can apply them mechanically.
 
 ## How it compares
@@ -536,13 +538,13 @@ These tools work at different layers, and several combine well:
 
 |                                                                | What it knows                                                                                                                          | Checks what the agent wrote                                                                                                                         | Needs                                                                                                         |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **design-system-mcp**                                          | Your components' props, `cva` variants, parts, tokens and docs, read from source                                                       | Invented components, props and variants; native elements the design system wraps; hardcoded colors, spacing and radius; icon buttons without a name | Nothing to run or write: zero config for shadcn-style projects (Tailwind v3 or v4) and design-system packages |
+| **onsystem**                                                   | Your components' props, `cva` variants, parts, tokens and docs, read from source                                                       | Invented components, props and variants; native elements the design system wraps; hardcoded colors, spacing and radius; icon buttons without a name | Nothing to run or write: zero config for shadcn-style projects (Tailwind v3 or v4) and design-system packages |
 | [@shadcn/lint](https://github.com/shadcn-ui/lint)              | Your components, variants and theme, found through `components.json` in shadcn/ui projects, plus per-component contracts you can write | Tailwind classes: restyling a component, raw colors, arbitrary values, inline styles, unknown and dynamic classes                                   | ESLint 9.30+ or Oxlint, Tailwind v4; React, Svelte or Vue                                                     |
 | [Storybook MCP](https://storybook.js.org/docs/ai/mcp/overview) | Stories and a component manifest                                                                                                       | Runs component tests, including accessibility checks if set up                                                                                      | A running Storybook (10.6, preview)                                                                           |
 | [shadcn MCP](https://ui.shadcn.com/docs/mcp)                   | Registries: what you can install                                                                                                       | —                                                                                                                                                   | —                                                                                                             |
 | [Figma MCP](https://github.com/figma/mcp-server-guide)         | The design: frames, variables, Code Connect                                                                                            | —                                                                                                                                                   | Figma                                                                                                         |
 
-@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. design-system-mcp gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values) along with native elements and missing accessible names, on Tailwind v3 or v4, without Storybook or a design file. Running both in CI is a sensible setup.
+@shadcn/lint is a linter: it polices the classes written against a component and the theme, in React, Svelte and Vue, on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before it writes, and catches what does not exist (components, props, variant values) along with native elements and missing accessible names, on Tailwind v3 or v4, without Storybook or a design file. Running both in CI is a sensible setup.
 
 ## Design decisions
 

@@ -160,7 +160,7 @@ export interface CreateServerOptions {
 /** Builds the MCP server: five tools, two resources and one prompt. Transport-agnostic. */
 export function createServer({ getDesignSystem }: CreateServerOptions): McpServer {
   const server = new McpServer(
-    { name: NAME, title: 'Design System MCP', version: VERSION },
+    { name: NAME, title: 'onsystem', version: VERSION },
     { instructions: INSTRUCTIONS, capabilities: { resources: { listChanged: true } } },
   );
 

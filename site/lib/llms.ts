@@ -32,7 +32,7 @@ const summary =
 export function llmsTxt(): string {
   const [model] = bench.models;
   const lines = [
-    '# design-system-mcp',
+    '# onsystem',
     '',
     `> ${summary}`,
     '',
@@ -42,7 +42,7 @@ export function llmsTxt(): string {
     '',
     `- Claude Code: \`${PLUGIN_COMMANDS.split('\n').join('` then `')}\``,
     `- Any MCP client, over stdio: \`${NPX}\``,
-    '- CI: `npx design-system-mcp check . --format github --require-design-system`',
+    '- CI: `npx onsystem check . --format github --require-design-system`',
     '',
     model
       ? `Benchmark: Claude Code built the same ten components for vercel/ai-chatbot with and without the plugin. ${bench.models.map((m) => `${m.name}: ${String(m.base.clean)}/${String(m.base.runs)} → ${String(m.plugin.clean)}/${String(m.plugin.runs)} clean, ${String(m.base.errors)} → ${String(m.plugin.errors)} errors`).join('; ')}.`
@@ -103,8 +103,9 @@ export function llmsFullTxt(): string {
     ],
     ['CI', `${docs.ci}\n\n### Adopting it in an existing codebase\n\n${docs.baseline}`],
     ['Limits', docs.limits],
+    ['Migrating from @dgesteves/design-system-mcp', docs.migrating],
   ];
-  return `# design-system-mcp\n\n> ${summary}\n\n${sections
+  return `# onsystem\n\n> ${summary}\n\n${sections
     .map(([title, body]) => `## ${title}\n\n${absolute(body)}`)
     .join('\n\n')}\n`;
 }

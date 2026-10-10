@@ -389,7 +389,7 @@ async function hero() {
     .map((r) => `${r.found} → ${r.fix}`)
     .join('; ')}. After applying them, check_ui reports no problems.`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="t d">
-  <title id="t">design-system-mcp: an agent checks its UI against the design system</title>
+  <title id="t">onsystem: an agent checks its UI against the design system</title>
   <desc id="d">${escapeXml(desc)}</desc>
   <defs>${glyphDefs()}</defs>
   ${frame(W, H)}
@@ -457,7 +457,7 @@ function architecture() {
     box(col.src, top, 252, 84, 'Components', ['components/ui/*.tsx']),
     box(col.src, top + 104, 252, 84, 'Tokens', ['globals.css', '*.tokens.json (DTCG)']),
     box(col.src, top + 208, 252, 84, 'Docs', ['docs/*.md, *.mdx']),
-    box(col.src, top + 312, 252, 84, 'Config (optional)', ['design-system-mcp.config']),
+    box(col.src, top + 312, 252, 84, 'Config (optional)', ['onsystem.config']),
   ];
   const extractors = [
     box(col.ext, top, 262, 84, 'TypeScript checker', ['props, defaults, JSDoc']),
@@ -498,7 +498,7 @@ function architecture() {
     { accent: true },
   );
   const cli = box(col.out, top + 270, 258, 126, 'CLI · CI', [
-    'design-system-mcp check',
+    'onsystem check',
     'exit 1 on errors',
     '--format github',
   ]);
@@ -528,7 +528,7 @@ function architecture() {
   );
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="t d">
-  <title id="t">design-system-mcp architecture</title>
+  <title id="t">onsystem architecture</title>
   <defs>${glyphDefs()}</defs>
   <desc id="d">Component sources, tokens, docs and config are read by the TypeScript checker, a cva/tv parser, token parsers and a docs parser into a design-system model that is cached on disk and rebuilt on change, with a BM25 index, an OKLCH token index and the lint rules. The model is served to agents by an MCP server over stdio (five tools, two resources) and to CI by the check CLI.</desc>
   ${frame(W, H)}

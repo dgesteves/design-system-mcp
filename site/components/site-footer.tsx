@@ -12,7 +12,7 @@ export function SiteFooter() {
         <div className="max-w-xs">
           <div className="flex items-center gap-2.5">
             <LogoMark className="size-6" />
-            <span className="font-mono text-[13px] font-semibold text-fg">design-system-mcp</span>
+            <span className="font-mono text-[13px] font-semibold text-fg">onsystem</span>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-muted">
             Ground truth about your React design system for coding agents, and a linter they run on

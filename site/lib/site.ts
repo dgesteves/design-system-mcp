@@ -1,14 +1,14 @@
 import { readme, tools } from '@/lib/data';
 
 export const SITE_URL = 'https://design-system-mcp-demo.vercel.app';
-export const REPO = 'https://github.com/dgesteves/design-system-mcp';
-export const NPM = 'https://www.npmjs.com/package/@dgesteves/design-system-mcp';
+export const REPO = 'https://github.com/dgesteves/onsystem';
+export const NPM = 'https://www.npmjs.com/package/onsystem';
 export const REGISTRY =
-  'https://registry.modelcontextprotocol.io/?q=io.github.dgesteves%2Fdesign-system-mcp';
+  'https://registry.modelcontextprotocol.io/?q=io.github.dgesteves%2Fonsystem';
 export const AUTHOR = { name: 'Diogo Esteves', url: 'https://github.com/dgesteves' };
 
 export const VERSION = tools.version;
-export const NPX = 'npx -y @dgesteves/design-system-mcp';
+export const NPX = 'npx -y onsystem';
 export const PLUGIN_COMMANDS = readme.install.plugin;
 export const CURSOR_INSTALL = readme.install.cursor;
 export const VSCODE_INSTALL = readme.install.vscode;

@@ -1,4 +1,4 @@
-import type { Diagnostic } from '@dgesteves/design-system-mcp';
+import type { Diagnostic } from 'onsystem';
 
 import playgroundJson from '@/generated/playground.json';
 

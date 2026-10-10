@@ -39,8 +39,7 @@ export function formatDiagnostics(
         return `::${level} ${props}::${escapeData(d.message)}`;
       }),
     );
-    if (fixedHint)
-      lines.push(`::notice title=design-system-mcp baseline::${escapeData(fixedHint)}`);
+    if (fixedHint) lines.push(`::notice title=onsystem baseline::${escapeData(fixedHint)}`);
     return lines.join('\n');
   }
 

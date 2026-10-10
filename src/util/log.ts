@@ -9,9 +9,9 @@ export interface Logger {
 }
 
 export const stderrLogger: Logger = {
-  info: (message) => process.stderr.write(`[design-system-mcp] ${message}\n`),
-  warn: (message) => process.stderr.write(`[design-system-mcp] warning: ${message}\n`),
-  error: (message) => process.stderr.write(`[design-system-mcp] error: ${message}\n`),
+  info: (message) => process.stderr.write(`[onsystem] ${message}\n`),
+  warn: (message) => process.stderr.write(`[onsystem] warning: ${message}\n`),
+  error: (message) => process.stderr.write(`[onsystem] error: ${message}\n`),
 };
 
 export const silentLogger: Logger = {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Claude Code PostToolUse hook: after Claude writes or edits a .tsx/.jsx file,
-// run `design-system-mcp check` on it and hand the findings back.
+// run `onsystem check` on it and hand the findings back.
 //
 // - Errors: exit 2 with the findings on stderr, which Claude Code shows to
 //   Claude so it fixes them before moving on. For an Edit, only findings on
@@ -13,9 +13,13 @@
 //   and project, on stderr and as a `systemMessage` the user sees. It never
 //   blocks the edit, and Claude is not asked to fix it.
 //
-// The CLI is the project's own install when there is one, else npx. Both run
-// through Node directly, never a shell, so paths are passed as they are.
-// DESIGN_SYSTEM_MCP_BIN points at another CLI script, for tests.
+// The CLI is the project's own install when there is one, else npx, pinned to
+// this plugin's release. Both run through Node directly, never a shell, so paths
+// are passed as they are. It reads the project's files and writes nothing but a
+// marker in the system temp folder for the one-time notice; the only network
+// access is npx fetching the package from the npm registry.
+// ONSYSTEM_BIN points at another CLI script, for tests. DESIGN_SYSTEM_MCP_BIN,
+// its name before the rename, still works, with a one-time notice.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -24,13 +28,19 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
-const PACKAGE = '@dgesteves/design-system-mcp';
-// This plugin's release line; scripts/sync-server-json.mjs moves it with each release.
-const RANGE = '^0.3.0';
+const PACKAGE = 'onsystem';
+// The exact release this plugin runs; scripts/sync-versions.mjs sets it with each release.
+const VERSION = '0.3.3';
 const UI_FILE = /\.[jt]sx$/i;
 const MAX_FINDINGS = 30;
 // Where the CLI looks for the design system: the nearest of these marks the project.
 const PROJECT_FILES = [
+  'onsystem.config.json',
+  'onsystem.config.ts',
+  'onsystem.config.mts',
+  'onsystem.config.js',
+  'onsystem.config.mjs',
+  // The names from before the rename, which the CLI still reads.
   'design-system-mcp.config.json',
   'design-system-mcp.config.ts',
   'design-system-mcp.config.mts',
@@ -39,6 +49,7 @@ const PROJECT_FILES = [
   'components.json',
   'package.json',
 ];
+const BIN = process.env.ONSYSTEM_BIN || process.env.DESIGN_SYSTEM_MCP_BIN || undefined;
 
 const input = await readInput();
 const filePath = input?.tool_input?.file_path;
@@ -51,6 +62,13 @@ const sessionDir =
 const file = path.resolve(sessionDir, filePath);
 const root = projectRoot(path.dirname(file)) ?? sessionDir;
 const name = path.relative(root, file) || file;
+if (!process.env.ONSYSTEM_BIN && process.env.DESIGN_SYSTEM_MCP_BIN) {
+  // On stderr, the debug log, and only when the hook passes: a blocked edit's stderr is Claude's.
+  const text = 'DESIGN_SYSTEM_MCP_BIN is the name ONSYSTEM_BIN had before the rename: rename it.';
+  process.on('exit', (code) => {
+    if (code === 0) once('env-notice', text, () => fs.writeSync(2, `${text}\n`));
+  });
+}
 const cli = resolveCli(root);
 if (!cli) cannotRun('npx was not found next to this Node.js.');
 
@@ -107,7 +125,7 @@ const note = elsewhere
 
 if (errors) {
   process.stderr.write(
-    `${name}: this change breaks the project's design system (design-system-mcp check). ` +
+    `${name}: this change breaks the project's design system (onsystem check). ` +
       'Fix these errors before moving on; get_component and get_tokens list the valid props, variants and tokens.\n\n' +
       `${shown.join('\n')}${note}\n`,
   );
@@ -117,7 +135,7 @@ process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
-      additionalContext: `design-system-mcp check: warnings in ${name}. Prefer the suggested scale values and tokens.\n${shown.join('\n')}${note}`,
+      additionalContext: `onsystem check: warnings in ${name}. Prefer the suggested scale values and tokens.\n${shown.join('\n')}${note}`,
     },
   }),
 );
@@ -128,30 +146,36 @@ process.exit(0);
  * on stderr (the debug log) and as a `systemMessage` the user sees. Never blocks.
  */
 function cannotRun(reason) {
-  const usesNpx = !process.env.DESIGN_SYSTEM_MCP_BIN && !installedCli(root);
+  const usesNpx = !BIN && !installedCli(root);
   const advice = /config|tsconfig|Token file/i.test(reason)
-    ? 'Fix the config, or run `design-system-mcp inspect` to see the problem.'
+    ? 'Fix the config, or run `onsystem inspect` to see the problem.'
     : usesNpx
       ? `Install it in the project to run it without npx: npm install --save-dev ${PACKAGE}`
-      : `Run \`design-system-mcp check ${name}\` to see why.`;
-  const text = `design-system-mcp could not check ${name}, so edits are not being checked against the design system: ${reason} ${advice}`;
+      : `Run \`onsystem check ${name}\` to see why.`;
+  const text = `onsystem could not check ${name}, so edits are not being checked against the design system: ${reason} ${advice}`;
+  once('hook-notice', text, () => {
+    process.stderr.write(`${text}\n`);
+    process.stdout.write(JSON.stringify({ systemMessage: text }));
+  });
+  process.exit(0);
+}
+
+/** Runs `say` once per session and project (per day without a session), through a marker file. */
+function once(kind, text, say) {
   const day = new Date().toISOString().slice(0, 10);
   const key = createHash('sha256')
     .update(`${input.session_id ?? day}\0${root}`)
     .digest('hex')
     .slice(0, 16);
-  const marker = path.join(os.tmpdir(), 'design-system-mcp', `hook-notice-${key}`);
-  if (!fs.existsSync(marker)) {
-    try {
-      fs.mkdirSync(path.dirname(marker), { recursive: true });
-      fs.writeFileSync(marker, `${text}\n`);
-    } catch {
-      // Without a marker the notice may repeat; it still never blocks.
-    }
-    process.stderr.write(`${text}\n`);
-    process.stdout.write(JSON.stringify({ systemMessage: text }));
+  const marker = path.join(os.tmpdir(), 'onsystem', `${kind}-${key}`);
+  if (fs.existsSync(marker)) return;
+  try {
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, `${text}\n`);
+  } catch {
+    // Without a marker the notice may repeat; it still never blocks.
   }
-  process.exit(0);
+  say();
 }
 
 /** Why the CLI did not run, in a sentence, without anything that could hold a credential. */
@@ -161,7 +185,7 @@ function failure(result) {
     return 'it did not finish within 55 seconds.';
   const stderr = String(result.stderr ?? '');
   if (/ENOVERSIONS|No versions available/i.test(stderr)) {
-    return `npm found no version of ${PACKAGE}@${RANGE} it may install (ENOVERSIONS), as with a min-release-age policy.`;
+    return `npm found no version of ${PACKAGE}@${VERSION} it may install (ENOVERSIONS), as with a min-release-age policy.`;
   }
   if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|ENETUNREACH|ETIMEDOUT|network/i.test(stderr)) {
     return 'npm could not reach the registry (offline?).';
@@ -193,8 +217,7 @@ function projectRoot(dir) {
 
 /** [node, script, ...args] for the CLI: an override, the project's install, or npx. */
 function resolveCli(dir) {
-  const override = process.env.DESIGN_SYSTEM_MCP_BIN;
-  if (override) return [process.execPath, override];
+  if (BIN) return [process.execPath, BIN];
   const installed = installedCli(dir);
   if (installed) return [process.execPath, installed];
   // npm's own npx script, run with this Node: no shell, so no quoting or .cmd issues on Windows.
@@ -203,8 +226,8 @@ function resolveCli(dir) {
     path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'),
     path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js'),
   ].find((f) => fs.existsSync(f));
-  if (npx) return [process.execPath, npx, '--yes', `${PACKAGE}@${RANGE}`];
-  return process.platform === 'win32' ? undefined : ['npx', '--yes', `${PACKAGE}@${RANGE}`];
+  if (npx) return [process.execPath, npx, '--yes', `${PACKAGE}@${VERSION}`];
+  return process.platform === 'win32' ? undefined : ['npx', '--yes', `${PACKAGE}@${VERSION}`];
 }
 
 /** The CLI script of the project's own install, if it has one. */
@@ -214,7 +237,7 @@ function installedCli(dir) {
       `${PACKAGE}/package.json`,
     );
     const { bin } = JSON.parse(fs.readFileSync(manifest, 'utf8'));
-    const script = typeof bin === 'string' ? bin : bin?.['design-system-mcp'];
+    const script = typeof bin === 'string' ? bin : bin?.[PACKAGE];
     return script ? path.resolve(path.dirname(manifest), script) : undefined;
   } catch {
     // Not installed in the project: npx runs it.

@@ -6,19 +6,22 @@ import { ArrowRightIcon } from '@/components/icons';
 import { Eyebrow } from '@/components/section';
 import { docsPage, type DocsHref } from '@/lib/docs';
 import { pageMetadata } from '@/lib/metadata';
-import { readmeLink } from '@/lib/site';
+import { readmeLink, repoLink } from '@/lib/site';
 
 /** The frame of a docs page: title, lead, content, where it comes from, and the next page. */
 export function DocPage({
   href,
   lead,
   source,
+  file,
   children,
 }: {
   href: DocsHref;
   lead?: ReactNode;
   /** README section anchors the page is generated from. */
   source?: string[];
+  /** Or the file in the repository it is generated from, such as `docs/migrating.md`. */
+  file?: string;
   children: ReactNode;
 }) {
   const { page, previous, next } = docsPage(href);
@@ -50,6 +53,19 @@ export function DocPage({
             </span>
           ))}
           .
+        </p>
+      )}
+
+      {file && (
+        <p className="mt-12 max-w-3xl border-t border-line pt-5 text-[13px] text-subtle">
+          Generated from{' '}
+          <a
+            href={repoLink(file)}
+            className="text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
+          >
+            {file}
+          </a>{' '}
+          when the site is built.
         </p>
       )}
 

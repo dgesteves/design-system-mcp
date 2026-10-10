@@ -1,11 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
-  DesignSystem,
-  type DesignSystemModel,
-  type ResolvedConfig,
-} from '@dgesteves/design-system-mcp';
+import { DesignSystem, type DesignSystemModel, type ResolvedConfig } from 'onsystem';
 import { describe, expect, it } from 'vitest';
 
 import {

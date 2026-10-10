@@ -1,6 +1,6 @@
 {
-  "$id": "https://unpkg.com/@dgesteves/design-system-mcp/schema.json",
-  "title": "design-system-mcp config",
+  "$id": "https://unpkg.com/onsystem/schema.json",
+  "title": "onsystem config",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {

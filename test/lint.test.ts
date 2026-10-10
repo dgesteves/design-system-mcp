@@ -192,7 +192,7 @@ describe('no-hardcoded-color', () => {
   it('takes the base theme from whichever stylesheet holds it, never the dark one', async () => {
     const system = await load(
       fixture({
-        'design-system-mcp.config.json': '{ "tokens": ["styles/*.css"] }',
+        'onsystem.config.json': '{ "tokens": ["styles/*.css"] }',
         'styles/dark.css': `.dark { --background: oklch(0.145 0 0); --primary: oklch(0.922 0 0); }`,
         'styles/light.css': `@theme inline { --color-background: var(--background); --color-primary: var(--primary); }
 :root { --background: oklch(1 0 0); --primary: oklch(0.205 0 0); }`,
@@ -727,7 +727,7 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
 
     const pill = await load(
       fixture({
-        'design-system-mcp.config.json': '{ "tokens": ["a.css"] }',
+        'onsystem.config.json': '{ "tokens": ["a.css"] }',
         'a.css': `@import "tailwindcss";
 @theme { --radius-*: initial; --radius-card: 0.75rem; --radius-pill: 9999px; }`,
       }),
@@ -742,7 +742,7 @@ describe('no-hardcoded-spacing and no-hardcoded-radius', () => {
   it('only offers classes that survive a namespace reset, from any stylesheet', async () => {
     const system = await load(
       fixture({
-        'design-system-mcp.config.json': '{ "tokens": ["styles/*.css"] }',
+        'onsystem.config.json': '{ "tokens": ["styles/*.css"] }',
         'styles/a.css': '@import "tailwindcss";',
         'styles/b.css': `@theme {
           --spacing-*: initial; --spacing-sm: 0.5rem; --spacing-md: 1rem;
@@ -862,7 +862,7 @@ export function Select(props: React.ComponentProps<"button">) {
       fixture(
         {
           'tsconfig.json': TSCONFIG,
-          'design-system-mcp.config.json': '{ "elements": { "a": "TextLink" }, "tokens": [] }',
+          'onsystem.config.json': '{ "elements": { "a": "TextLink" }, "tokens": [] }',
           'components/ui/link.tsx': `import * as React from "react"
 export function TextLink(props: { href: string; children?: React.ReactNode }) {
   return <span data-href={props.href}>{props.children}</span>
@@ -1178,7 +1178,7 @@ describe('no-unknown-component on a partly extracted design system', () => {
   // dub's config leaves the icons folder out, and its barrel re-exports it.
   const files = {
     'tsconfig.json': TSCONFIG,
-    'design-system-mcp.config.json': '{ "exclude": ["**/icons/**"] }',
+    'onsystem.config.json': '{ "exclude": ["**/icons/**"] }',
     'components/ui/button.tsx': `export function Button(props: { children?: string }) { return <button>{props.children}</button> }`,
     'components/ui/table-new.tsx': `export function Table(props: { children?: string }) { return <table>{props.children}</table> }`,
     'components/ui/icons/index.tsx': `export function TrashIcon() { return <svg /> }
@@ -1237,7 +1237,7 @@ export default () => <Button><Spinner /><TrashIcon /><Fancy /><Buton /></Button>
     const own = await load(
       fixture({
         ...files,
-        'design-system-mcp.config.json': '{ "components": ["components/ui/table-new.tsx"] }',
+        'onsystem.config.json': '{ "components": ["components/ui/table-new.tsx"] }',
         'components/ui/table.tsx': `export const Table = (props: { children?: string }) => <table>{props.children}</table>
 const Body = (props: { children?: string }) => <tbody>{props.children}</tbody>
 Table.Body = Body`,
@@ -1332,7 +1332,7 @@ describe('import suggestions', () => {
     // Components in a flat src/ folder, imported by relative path, as in Vite starters.
     const root = fixture({
       'tsconfig.json': JSON.stringify({ compilerOptions: { jsx: 'react-jsx', strict: true } }),
-      'design-system-mcp.config.json': JSON.stringify({ components: ['src/ui/*.tsx'] }),
+      'onsystem.config.json': JSON.stringify({ components: ['src/ui/*.tsx'] }),
       'src/ui/Button.tsx': `export function Button(props: { variant?: "primary" | "secondary"; children?: unknown }) {
   return <button>{props.children as string}</button>
 }`,

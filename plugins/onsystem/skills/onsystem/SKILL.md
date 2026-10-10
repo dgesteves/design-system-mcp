@@ -1,11 +1,11 @@
 ---
-name: design-system
-description: Build or change React UI with this project's own design system. Use when writing or editing components, pages or styles in .tsx/.jsx files, choosing colors, spacing or radius, or reviewing UI code. Look components, props, variants and tokens up with the design-system MCP tools instead of guessing, and fix every check_ui finding.
+name: onsystem
+description: Build or change React UI with this project's own design system. Use when writing or editing components, pages or styles in .tsx/.jsx files, choosing colors, spacing or radius, or reviewing UI code. Look components, props, variants and tokens up with the onsystem MCP tools instead of guessing, and fix every check_ui finding.
 ---
 
 # Building UI with the project's design system
 
-The `design-system` MCP server reads this project's components (props, `cva` variants, parts), design tokens and component docs. Use it as ground truth: training data does not know this project's `Button` variants or color tokens.
+The `onsystem` MCP server reads this project's components (props, `cva` variants, parts), design tokens and component docs. Use it as ground truth: training data does not know this project's `Button` variants or color tokens.
 
 ## Before writing UI
 
@@ -19,4 +19,4 @@ The `design-system` MCP server reads this project's components (props, `cva` var
 
 Run `check_ui` on every file you changed and fix every error. Each finding has a rule id, a location and usually the exact fix. The plugin's hook also runs the same check after each edit and reports errors back to you; fix them before moving on rather than working around them.
 
-If the project has a `design-system-mcp.baseline.json`, the command-line `check` (and the hook) report only findings the baseline does not already accept. `check_ui` shows everything in the file; fix what you introduced, and leave unrelated pre-existing findings alone unless asked.
+If the project has an `onsystem.baseline.json`, the command-line `check` (and the hook) report only findings the baseline does not already accept. `check_ui` shows everything in the file; fix what you introduced, and leave unrelated pre-existing findings alone unless asked.

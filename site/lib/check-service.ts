@@ -1,6 +1,6 @@
 import vm from 'node:vm';
 
-import type { CheckResult } from '@dgesteves/design-system-mcp';
+import type { CheckResult } from 'onsystem';
 
 /**
  * The playground's check endpoint, kept apart from the route so it can be tested with its own
@@ -146,7 +146,7 @@ export function createCheckHandler({ check, maxBytes, timeoutMs, limiter }: Chec
     fail(
       413,
       'too_large',
-      `The playground checks up to ${kb(maxBytes)} of code${bytes ? `, and this is ${kb(bytes)}` : ''}. The CLI and the MCP server have no such limit: run npx -y @dgesteves/design-system-mcp check on the file.`,
+      `The playground checks up to ${kb(maxBytes)} of code${bytes ? `, and this is ${kb(bytes)}` : ''}. The CLI and the MCP server have no such limit: run npx -y onsystem check on the file.`,
     );
 
   return async function handle(request: Request): Promise<Response> {

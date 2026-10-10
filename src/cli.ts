@@ -10,6 +10,7 @@ import {
   applyBaseline,
   BASELINE_FILE,
   countBaseline,
+  LEGACY_BASELINE_FILE,
   readBaseline,
   updateBaseline,
   writeBaseline,
@@ -24,7 +25,7 @@ import { relativePath, toPosix } from './util/paths.js';
 import { plural, unique } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
 
-const README = 'https://github.com/dgesteves/design-system-mcp#readme';
+const DOCS = 'https://design-system-mcp-demo.vercel.app/docs';
 
 const HELP = `${NAME} ${VERSION}
 
@@ -32,15 +33,15 @@ Gives coding agents ground truth about your React design system, and lints
 the UI they write against it.
 
 Usage
-  design-system-mcp [serve] [options]     Start the MCP server on stdio (default)
-  design-system-mcp check <paths...>      Lint files, folders or globs with the check_ui
-                                          rules (for CI)
-  design-system-mcp inspect               Print what was extracted from the project
-  design-system-mcp help                  Show this help
+  onsystem [serve] [options]     Start the MCP server on stdio (default)
+  onsystem check <paths...>      Lint files, folders or globs with the check_ui rules
+                                 (for CI)
+  onsystem inspect               Print what was extracted from the project
+  onsystem help                  Show this help
 
 Options
   --root <dir>            Project root (default: the config file's directory, or cwd)
-  --config <file>         Config file (default: design-system-mcp.config.{json,ts,mjs,js})
+  --config <file>         Config file (default: onsystem.config.{json,ts,mjs,js})
   --components <glob>     Component sources, repeatable (default: found through
                           components.json or a workspace package, else
                           components/ui/**/*.{tsx,jsx} and src/components/ui/...)
@@ -75,7 +76,7 @@ Examples
   npx -y ${NAME} check . --format github --require-design-system
   npx -y ${NAME} check . --update-baseline   # adopt in an existing codebase
 
-Docs: ${README}
+Docs: ${DOCS}
 `;
 
 export interface Io {
@@ -122,7 +123,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       },
     });
   } catch (error) {
-    io.stderr(`${(error as Error).message}\n\nRun design-system-mcp --help for usage.`);
+    io.stderr(`${(error as Error).message}\n\nRun ${NAME} --help for usage.`);
     return 2;
   }
   const { values, positionals } = parsed;
@@ -174,7 +175,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       case 'inspect':
         return await inspect(configOptions, values, io);
       default:
-        io.stderr(`Unknown command "${command}". Run design-system-mcp --help for usage.`);
+        io.stderr(`Unknown command "${command}". Run ${NAME} --help for usage.`);
         return 2;
     }
   } catch (error) {
@@ -207,7 +208,7 @@ async function check(
     return 2;
   }
   if (!patterns.length) {
-    io.stderr('check: pass files, folders or globs, e.g. design-system-mcp check .');
+    io.stderr(`check: pass files, folders or globs, e.g. ${NAME} check .`);
     return 2;
   }
   const format = values.format as OutputFormat;
@@ -223,6 +224,7 @@ async function check(
   }
 
   const config = await loadConfig(configOptions);
+  warnDeprecated(config.deprecations, format, io);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
   // An existing path is taken literally, so `app/(marketing)` and `[slug]` are not
   // glob syntax. A directory means every TSX/JSX file under it. A file named outright
@@ -304,7 +306,14 @@ async function check(
   const update = values['update-baseline'];
   const baselineFile = values.baseline
     ? path.resolve(io.cwd, values.baseline)
-    : path.join(ds.root, BASELINE_FILE);
+    : defaultBaseline(
+        ds.root,
+        values['ignore-baseline']
+          ? undefined
+          : (text) => {
+              warnDeprecated([text], format, io);
+            },
+      );
   // Read before an update too: a baseline mangled by a merge conflict must not be overwritten silently.
   const baseline = values['ignore-baseline'] ? undefined : readBaseline(baselineFile);
   if (values.baseline && !update && !values['ignore-baseline'] && !baseline) {
@@ -385,7 +394,7 @@ async function check(
   for (const text of [notice, unchecked]) {
     if (!text) continue;
     if (format === 'pretty') io.stdout(text);
-    else if (format === 'github') io.stdout(`::warning title=design-system-mcp::${text}`);
+    else if (format === 'github') io.stdout(`::warning title=${NAME}::${text}`);
     else io.stderr(text);
   }
 
@@ -405,6 +414,7 @@ async function inspect(
   io: Io,
 ): Promise<number> {
   const config = await loadConfig(configOptions);
+  warnDeprecated(config.deprecations, 'pretty', io);
   const ds = await loadDesignSystem(config, { cache: values.cache, logger: silentLogger });
   const { model } = ds;
   if (values.format === 'json') {
@@ -442,6 +452,37 @@ async function inspect(
   }
   io.stdout(lines.join('\n'));
   return 0;
+}
+
+/**
+ * Says once what a file's old name means: on stderr, or as a workflow warning with
+ * `--format github` so it shows on the run. Never on stdout otherwise, which JSON output owns.
+ */
+function warnDeprecated(messages: string[] | undefined, format: string, io: Io): void {
+  for (const text of messages ?? []) {
+    if (format === 'github') io.stdout(`::warning title=${NAME}::${text}`);
+    else io.stderr(text);
+  }
+}
+
+/**
+ * The baseline in the root: `onsystem.baseline.json`, or one still under its name from
+ * before the rename, which is read (and updated) where it is, with a notice to rename it.
+ */
+function defaultBaseline(root: string, warn: ((text: string) => void) | undefined): string {
+  const current = path.join(root, BASELINE_FILE);
+  const legacy = path.join(root, LEGACY_BASELINE_FILE);
+  if (!fs.existsSync(legacy)) return current;
+  if (fs.existsSync(current)) {
+    warn?.(
+      `${LEGACY_BASELINE_FILE} is ignored: ${BASELINE_FILE} is read instead. Delete ${LEGACY_BASELINE_FILE}.`,
+    );
+    return current;
+  }
+  warn?.(
+    `${LEGACY_BASELINE_FILE} is the baseline's name from before design-system-mcp became onsystem. Rename it to ${BASELINE_FILE} (git mv ${LEGACY_BASELINE_FILE} ${BASELINE_FILE}); the old name still works for now.`,
+  );
+  return legacy;
 }
 
 /** Tests and stories, which `check` leaves out of folders and globs unless asked. */

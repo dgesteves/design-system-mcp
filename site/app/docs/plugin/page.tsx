@@ -23,11 +23,11 @@ export default function PluginPage() {
       <p className="mt-4 leading-relaxed text-muted">
         Claude loads it by itself for UI work, or with{' '}
         <code className="rounded bg-white/[0.06] px-1 py-px font-mono text-[0.88em] text-fg-soft">
-          /design-system:design-system
+          /onsystem:onsystem
         </code>
         . This is its text, from{' '}
         <a
-          href={repoLink('plugins/design-system/skills/design-system/SKILL.md')}
+          href={repoLink('plugins/onsystem/skills/onsystem/SKILL.md')}
           className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-cyan"
         >
           SKILL.md

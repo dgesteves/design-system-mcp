@@ -14,7 +14,7 @@ import { AUTHOR, docsHref, NPM, REPO, repoLink, SITE_URL } from '@/lib/site';
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
-  name: 'design-system-mcp',
+  name: 'onsystem',
   description:
     'An MCP server and Claude Code plugin that gives coding agents ground truth about a React design system, and a linter they run on their own UI.',
   applicationCategory: 'DeveloperApplication',
@@ -69,8 +69,8 @@ function Hero() {
               Coding agents write UI from training data, not from your design system.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-fg-soft sm:text-xl">
-              design-system-mcp gives them the ground truth, read from your source, and a linter
-              they run on their own output.
+              onsystem gives them the ground truth, read from your source, and a linter they run on
+              their own output.
             </p>
             <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted sm:text-base">
               It serves your React components, props, <InlineCode>cva</InlineCode> variants and
@@ -178,7 +178,7 @@ function Proof() {
           <TextLink href="https://github.com/vercel/ai-chatbot">vercel/ai-chatbot</TextLink>, a real
           shadcn/ui app: once as it ships, once with the{' '}
           <TextLink href={docsHref('claude-code-plugin')}>plugin</TextLink>. Then{' '}
-          <InlineCode>design-system-mcp check</InlineCode> scored every file it wrote.
+          <InlineCode>onsystem check</InlineCode> scored every file it wrote.
         </p>
       }
     >
@@ -401,7 +401,7 @@ function AgentView() {
      1:77 error [prefer-design-system-component] Native <button> where the design system has <Button>.
      …
 ⏺ The hook flagged five issues. Looking up Button and the color tokens before fixing.
-⏺ design-system - get_component (MCP)(name: "Button")
+⏺ onsystem - get_component (MCP)(name: "Button")
 ⏺ Write(app/promo/page.tsx)   →   <Button variant="destructive"> on bg-muted, hook passes`;
   return (
     <section
@@ -486,8 +486,8 @@ function ShadcnLint() {
         <p>
           <TextLink href="https://github.com/shadcn-ui/lint">@shadcn/lint</TextLink> is a linter: it
           polices the classes written against a component and the theme, in React, Svelte and Vue,
-          on Tailwind v4. design-system-mcp gives the agent the components, props, variants and
-          tokens before it writes, and catches what does not exist.
+          on Tailwind v4. onsystem gives the agent the components, props, variants and tokens before
+          it writes, and catches what does not exist.
         </p>
       }
     >
@@ -510,7 +510,7 @@ function ShadcnLint() {
           ]}
         />
         <Column
-          title="design-system-mcp adds"
+          title="onsystem adds"
           tone="cyan"
           items={[
             'Ground truth before the agent writes: components, props, variants, parts and tokens over MCP',
@@ -622,12 +622,12 @@ function WorksWith() {
 }
 
 function Adoption() {
-  const baseline = `$ npx -y @dgesteves/design-system-mcp check "src/**/*.tsx" --update-baseline
-Baseline: 1,307 findings in 275 files → design-system-mcp.baseline.json
+  const baseline = `$ npx -y onsystem check "src/**/*.tsx" --update-baseline
+Baseline: 1,307 findings in 275 files → onsystem.baseline.json
 
-$ npx -y @dgesteves/design-system-mcp check "src/**/*.tsx"
+$ npx -y onsystem check "src/**/*.tsx"
 No new problems in 504 files (1,307 in the baseline).`;
-  const ci = `- run: npx design-system-mcp check . --format github --require-design-system`;
+  const ci = `- run: npx onsystem check . --format github --require-design-system`;
   return (
     <Section
       id="baseline"
@@ -691,8 +691,7 @@ function FinalCta() {
             Give your agent the design system it is supposed to use.
           </h2>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-muted sm:text-[17px]">
-            Install it, then run{' '}
-            <InlineCode>npx -y @dgesteves/design-system-mcp inspect</InlineCode> in your app to see
+            Install it, then run <InlineCode>npx -y onsystem inspect</InlineCode> in your app to see
             what it found. If it gets something wrong on your codebase, an issue with the snippet is
             the most useful thing you can send.
           </p>

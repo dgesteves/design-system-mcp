@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "A small shadcn/ui-style design system (cva + Tailwind v4 tokens) used to demo design-system-mcp.",
+  "description": "A small shadcn/ui-style design system (cva + Tailwind v4 tokens) used to demo onsystem.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

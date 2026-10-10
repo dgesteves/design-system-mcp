@@ -4,7 +4,9 @@ import path from 'node:path';
 import { ConfigError } from './config.js';
 import type { CheckResult, Diagnostic } from './types.js';
 
-export const BASELINE_FILE = 'design-system-mcp.baseline.json';
+export const BASELINE_FILE = 'onsystem.baseline.json';
+/** The baseline's name from before the rename to onsystem: still read when the new one is absent. */
+export const LEGACY_BASELINE_FILE = 'design-system-mcp.baseline.json';
 
 /**
  * Findings a project accepts for now, so `check` fails only on new ones.
@@ -40,7 +42,7 @@ export function readBaseline(file: string): Entries | undefined {
   }
   const invalid = (why: string) =>
     new ConfigError(
-      `${file} is not a valid design-system-mcp baseline (${why}). Fix it, or delete it and run check --update-baseline.`,
+      `${file} is not a valid onsystem baseline (${why}). Fix it, or delete it and run check --update-baseline.`,
     );
   let parsed: unknown;
   try {

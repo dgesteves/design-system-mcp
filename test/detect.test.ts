@@ -347,7 +347,7 @@ export default () => <><button>Save</button><Button aria-label="Add"><Icons.Add 
 
     const workspace = fixture({
       ...uiPackage,
-      'packages/ui/design-system-mcp.config.json': json({
+      'packages/ui/onsystem.config.json': json({
         components: ['src/components/button.tsx'],
       }),
     });
@@ -414,7 +414,7 @@ export default () => <><Button variant="danger">Delete</Button><button>Cancel</b
   it('reads an importPath pattern from the config', async () => {
     const root = path.join(workspace(), 'apps/web');
     fs.writeFileSync(
-      path.join(root, 'design-system-mcp.config.json'),
+      path.join(root, 'onsystem.config.json'),
       json({
         components: ['../../packages/ui/primitives/**/*.tsx'],
         importPath: '@acme/ui/{path}',

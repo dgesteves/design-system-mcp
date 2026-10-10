@@ -8,7 +8,7 @@ export const dynamic = 'force-static';
 
 export async function GET() {
   return new ImageResponse(
-    <HomeCard width={1280} height={640} footer="github.com/dgesteves/design-system-mcp" />,
+    <HomeCard width={1280} height={640} footer="github.com/dgesteves/onsystem" />,
     { width: 1280, height: 640, fonts: await ogFonts() },
   );
 }

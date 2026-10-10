@@ -129,6 +129,8 @@ export interface Docs {
   baseline: string;
   limits: string;
   skill: string;
+  /** docs/migrating.md, without its title. */
+  migrating: string;
 }
 
 export interface MarkdownTable {

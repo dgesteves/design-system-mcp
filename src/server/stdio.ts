@@ -6,7 +6,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
-import { CONFIG_FILES, loadConfig, type LoadConfigOptions } from '../config.js';
+import {
+  CONFIG_FILES,
+  LEGACY_CONFIG_FILES,
+  loadConfig,
+  type LoadConfigOptions,
+} from '../config.js';
 import { DesignSystemHost } from '../design-system.js';
 import type { Logger } from '../util/log.js';
 import { createServer } from './index.js';
@@ -42,6 +47,8 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   const start = async (root: string | undefined) => {
     try {
       const config = await loadConfig({ ...options, root });
+      // Once, at start: a reload of the config does not repeat them.
+      for (const text of config.deprecations ?? []) logger.warn(text);
       if (config.detected) logger.info(`found the design system through ${config.detected}`);
       const host = new DesignSystemHost(config, {
         cache: options.cache,
@@ -74,7 +81,9 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   const explicit =
     options.root !== undefined ||
     options.config !== undefined ||
-    CONFIG_FILES.some((file) => fs.existsSync(path.join(options.cwd, file)));
+    [...CONFIG_FILES, ...LEGACY_CONFIG_FILES].some((file) =>
+      fs.existsSync(path.join(options.cwd, file)),
+    );
 
   if (explicit) {
     await start(options.root);

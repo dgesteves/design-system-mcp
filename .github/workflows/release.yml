@@ -20,7 +20,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       # No registry-url and no token: npm trusted publishing authenticates this workflow with
-      # OIDC, so there is no secret to leak or rotate.
+      # OIDC, so there is no secret to leak or rotate. The package `onsystem` trusts this
+      # repository's release.yml (`npm trust github onsystem --repo dgesteves/onsystem
+      # --file release.yml --allow-publish`); provenance also checks that package.json's
+      # `repository` is the repository this runs in.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -50,10 +53,12 @@ jobs:
         if: steps.changesets.outputs.has-changesets == 'false'
         run: |
           version=$(node -p "require('./package.json').version")
-          listed=$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.dgesteves/design-system-mcp" \
+          listed=$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.dgesteves/onsystem" \
             | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
                 const servers = JSON.parse(s).servers ?? [];
-                const listed = servers.some(({ server = {} }) => server.version === process.argv[1]);
+                const listed = servers.some(
+                  ({ server = {} }) => server.name === "io.github.dgesteves/onsystem" && server.version === process.argv[1],
+                );
                 console.log(listed ? "yes" : "no");
               });' "$version")
           if [ "$listed" = yes ]; then
@@ -63,7 +68,7 @@ jobs:
           # The registry checks that npm serves the version, and npm can take a minute to serve
           # one it has just accepted.
           for attempt in $(seq 1 30); do
-            npm view "@dgesteves/design-system-mcp@$version" version > /dev/null 2>&1 && break
+            npm view "onsystem@$version" version > /dev/null 2>&1 && break
             sleep 10
           done
           curl -fsSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher

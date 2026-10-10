@@ -1,4 +1,4 @@
-# @dgesteves/design-system-mcp
+# onsystem (formerly @dgesteves/design-system-mcp)
 
 ## 0.3.3
 

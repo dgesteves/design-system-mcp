@@ -4,7 +4,7 @@ import { DOCS_PAGES } from '@/lib/docs';
 import { C, ogFonts, PageCard, Panel } from '@/lib/og';
 
 export const alt =
-  'design-system-mcp docs: quickstart, setup for each agent, the Claude Code plugin, configuration, tools, CI and the FAQ.';
+  'onsystem docs: quickstart, setup for each agent, the Claude Code plugin, configuration, tools, CI and the FAQ.';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 

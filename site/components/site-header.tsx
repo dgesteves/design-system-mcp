@@ -33,7 +33,7 @@ export function SiteHeader() {
         <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-md">
           <LogoMark className="size-7" />
           <span className="font-mono text-[13px] font-semibold tracking-tight text-fg">
-            design-system-mcp
+            onsystem
           </span>
           <span className="hidden rounded-full border border-line px-1.5 py-px font-mono text-[11px] text-muted sm:inline">
             v{VERSION}
@@ -52,7 +52,7 @@ export function SiteHeader() {
           <a
             href={REPO}
             className="ml-1 inline-flex size-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-line-strong hover:text-fg"
-            aria-label="design-system-mcp on GitHub"
+            aria-label="onsystem on GitHub"
           >
             <GitHubIcon className="size-4" />
           </a>

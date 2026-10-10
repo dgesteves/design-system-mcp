@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { randomUUID } from 'node:crypto';
@@ -9,11 +10,19 @@ import { describe, expect, it } from 'vitest';
 import { fixture } from './helpers.js';
 
 const REPO = path.resolve(import.meta.dirname, '..');
-const PLUGIN = path.join(REPO, 'plugins/design-system');
+const PLUGIN = path.join(REPO, 'plugins/onsystem');
 const HOOK = path.join(PLUGIN, 'hooks/check-ui.mjs');
+const SYNC = path.join(REPO, 'scripts/sync-versions.mjs');
 
 const readJson = (file: string) =>
   JSON.parse(fs.readFileSync(path.join(REPO, file), 'utf8')) as Record<string, unknown>;
+const { version: VERSION } = readJson('package.json') as { version: string };
+/** The environment without the variables that point the hook at a CLI. */
+const withoutBin = ({
+  ONSYSTEM_BIN: _bin,
+  DESIGN_SYSTEM_MCP_BIN: _legacy,
+  ...env
+}: NodeJS.ProcessEnv) => env;
 
 describe('Claude Code plugin manifests', () => {
   it('lists the plugin in the marketplace and points every config at real files', () => {
@@ -21,25 +30,32 @@ describe('Claude Code plugin manifests', () => {
       name: string;
       plugins: { name: string; source: string }[];
     };
-    const plugin = readJson('plugins/design-system/.claude-plugin/plugin.json');
+    const plugin = readJson('plugins/onsystem/.claude-plugin/plugin.json');
     const pkg = readJson('package.json') as { name: string; version: string };
+    expect(pkg.name).toBe('onsystem');
+    expect(plugin.name).toBe('onsystem');
     // Claude Code updates installed plugins when `version` changes: it ships with each release.
     expect(plugin.version).toBe(pkg.version);
     expect(marketplace.name).toBe('dgesteves');
     expect(marketplace.plugins).toEqual([
-      expect.objectContaining({ name: plugin.name, source: './plugins/design-system' }),
+      expect.objectContaining({ name: plugin.name, source: './plugins/onsystem' }),
     ]);
 
-    const mcp = readJson('plugins/design-system/.mcp.json') as {
+    // The server and the hook run exactly this release: the plugin directory refuses ranges.
+    const mcp = readJson('plugins/onsystem/.mcp.json') as {
       mcpServers: Record<string, { command: string; args: string[] }>;
     };
-    const [major, minor] = pkg.version.split('.');
-    const range = `^${major}.${minor}.0`;
-    expect(mcp.mcpServers['design-system']?.args).toContain(`${pkg.name}@${range}`);
-    // The hook runs the same release line.
-    expect(fs.readFileSync(HOOK, 'utf8')).toContain(`const RANGE = '${range}';`);
+    expect(Object.keys(mcp.mcpServers)).toEqual(['onsystem']);
+    expect(mcp.mcpServers.onsystem).toEqual({
+      command: 'npx',
+      args: ['-y', `${pkg.name}@${pkg.version}`],
+    });
+    const hookSource = fs.readFileSync(HOOK, 'utf8');
+    expect(hookSource).toContain(`const PACKAGE = '${pkg.name}';`);
+    expect(hookSource).toContain(`const VERSION = '${pkg.version}';`);
+    expect(hookSource).not.toMatch(/@\^|@~|@latest/);
 
-    const hooks = readJson('plugins/design-system/hooks/hooks.json') as {
+    const hooks = readJson('plugins/onsystem/hooks/hooks.json') as {
       hooks: { PostToolUse: { matcher: string; hooks: { command: string }[] }[] };
     };
     const [entry] = hooks.hooks.PostToolUse;
@@ -47,8 +63,97 @@ describe('Claude Code plugin manifests', () => {
     expect(entry?.hooks[0]?.command).toBe('node "${CLAUDE_PLUGIN_ROOT}/hooks/check-ui.mjs"');
     expect(fs.existsSync(HOOK)).toBe(true);
 
-    const skill = fs.readFileSync(path.join(PLUGIN, 'skills/design-system/SKILL.md'), 'utf8');
-    expect(skill).toMatch(/^---\nname: design-system\ndescription: .+\n---\n/);
+    const skill = fs.readFileSync(path.join(PLUGIN, 'skills/onsystem/SKILL.md'), 'utf8');
+    expect(skill).toMatch(/^---\nname: onsystem\ndescription: .+\n---\n/);
+
+    // The MCP Registry entry names the same package and version.
+    const server = readJson('server.json') as {
+      name: string;
+      version: string;
+      packages: { identifier: string; version: string }[];
+    };
+    expect(server.name).toBe((readJson('package.json') as { mcpName: string }).mcpName);
+    expect(server.version).toBe(pkg.version);
+    expect(server.packages).toEqual([
+      expect.objectContaining({ identifier: pkg.name, version: pkg.version }),
+    ]);
+  });
+
+  it('meets the Claude plugin directory checks that a test can make', () => {
+    const plugin = readJson('plugins/onsystem/.claude-plugin/plugin.json');
+    expect(plugin).toMatchObject({
+      description: expect.any(String) as string,
+      author: { name: 'Diogo Esteves' },
+      license: 'MIT',
+      icon: './icon.svg',
+    });
+    expect(plugin.name).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/);
+    // The icon is the site's.
+    expect(fs.readFileSync(path.join(PLUGIN, 'icon.svg'), 'utf8')).toBe(
+      fs.readFileSync(path.join(REPO, 'site/app/icon.svg'), 'utf8'),
+    );
+
+    // A README of at least 40 words outside code blocks, which says what the hook runs and touches.
+    const readme = fs.readFileSync(path.join(PLUGIN, 'README.md'), 'utf8');
+    const prose = readme.replace(/```[\s\S]*?```/g, '');
+    expect(prose.split(/\s+/).filter((w) => /\w/.test(w)).length).toBeGreaterThanOrEqual(40);
+    expect(prose).toContain('## What it runs');
+    expect(prose).toContain('## What data it touches');
+
+    // Small text files only, no system files, no package-manager config, no lockfile install.
+    const files = fs.readdirSync(PLUGIN, { recursive: true, withFileTypes: true });
+    for (const entry of files.filter((f) => f.isFile())) {
+      const file = path.join(entry.parentPath, entry.name);
+      expect(fs.statSync(file).size, file).toBeLessThan(256 * 1024);
+      expect(entry.name).not.toMatch(
+        /^(?:\.DS_Store|Thumbs\.db|desktop\.ini|\.npmrc|package(?:-lock)?\.json)$/,
+      );
+    }
+  });
+
+  it('keeps the version pins in sync with package.json, and says when they drift', () => {
+    const sync = (...args: string[]) =>
+      spawnSync(process.execPath, [SYNC, ...args], { encoding: 'utf8' });
+    expect(sync('--check').status).toBe(0);
+
+    // A copy of the files it writes, at another version, as `changeset version` leaves them.
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'onsystem-sync-'));
+    try {
+      for (const file of [
+        'package.json',
+        '.prettierrc.json',
+        'server.json',
+        'plugins/onsystem/.claude-plugin/plugin.json',
+        'plugins/onsystem/.mcp.json',
+        'plugins/onsystem/hooks/check-ui.mjs',
+      ]) {
+        fs.mkdirSync(path.dirname(path.join(copy, file)), { recursive: true });
+        fs.copyFileSync(path.join(REPO, file), path.join(copy, file));
+      }
+      const manifest = path.join(copy, 'package.json');
+      fs.writeFileSync(
+        manifest,
+        fs.readFileSync(manifest, 'utf8').replace(/"version": "[^"]+"/, '"version": "9.8.7"'),
+      );
+      const drift = sync('--check', '--root', copy);
+      expect(drift.status).toBe(1);
+      expect(drift.stderr).toContain('Not at onsystem@9.8.7: server.json, ');
+
+      expect(sync('--root', copy).status).toBe(0);
+      expect(sync('--check', '--root', copy).status).toBe(0);
+      const read = (file: string) => fs.readFileSync(path.join(copy, file), 'utf8');
+      expect(read('plugins/onsystem/.mcp.json')).toContain('"onsystem@9.8.7"');
+      expect(read('plugins/onsystem/hooks/check-ui.mjs')).toContain("const VERSION = '9.8.7';");
+      expect(JSON.parse(read('plugins/onsystem/.claude-plugin/plugin.json'))).toMatchObject({
+        version: '9.8.7',
+      });
+      expect(JSON.parse(read('server.json'))).toMatchObject({
+        version: '9.8.7',
+        packages: [{ identifier: 'onsystem', version: '9.8.7' }],
+      });
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
   });
 });
 
@@ -65,8 +170,8 @@ if (name === 'scoped.tsx') { console.log(result([d('error', 2), d('error', 8)]))
 if (name === 'warn.tsx') { console.log(result([d('warning', 4)])); process.exit(0); }
 if (name === 'where.tsx') { console.log(result([{ ...d('error', 1), message: 'cwd=' + process.cwd() }])); process.exit(1); }
 if (name === 'shape.tsx') { console.log(JSON.stringify({ results: [] })); process.exit(0); }
-if (name === 'broken.tsx') { console.error('Invalid config in /app/design-system-mcp.config.json:'); process.exit(2); }
-if (name === 'policy.tsx') { console.error('npm error code ENOVERSIONS\\nnpm error No versions available for @dgesteves/design-system-mcp'); process.exit(1); }
+if (name === 'broken.tsx') { console.error('Invalid config in /app/onsystem.config.json:'); process.exit(2); }
+if (name === 'policy.tsx') { console.error('npm error code ENOVERSIONS\\nnpm error No versions available for onsystem'); process.exit(1); }
 if (name === 'teapot.tsx') { console.error('npm error 418 I am a teapot: https://bot:s3cret@registry.acme.dev/pkg'); process.exit(1); }
 if (!process.argv.includes('--quiet-without-design-system')) process.exit(3);
 console.log(result([]));
@@ -80,11 +185,14 @@ console.log(result([]));
     ),
     'packages/web/package.json': '{"name":"web"}',
   });
-  function hook(payload: unknown) {
+  function hook(payload: unknown, env: Record<string, string> = {}) {
     const run = spawnSync(process.execPath, [HOOK], {
       input: typeof payload === 'string' ? payload : JSON.stringify(payload),
       encoding: 'utf8',
-      env: { ...process.env, DESIGN_SYSTEM_MCP_BIN: path.join(project, 'stub.mjs') },
+      env: {
+        ...withoutBin(process.env),
+        ...(Object.keys(env).length ? env : { ONSYSTEM_BIN: path.join(project, 'stub.mjs') }),
+      },
     });
     return { code: run.status, stdout: run.stdout, stderr: run.stderr };
   }
@@ -100,7 +208,7 @@ console.log(result([]));
     expect(code).toBe(2);
     expect(stdout).toBe('');
     expect(stderr).toBe(
-      "app/bad.tsx: this change breaks the project's design system (design-system-mcp check). Fix these errors before moving on; get_component and get_tokens list the valid props, variants and tokens.\n\n" +
+      "app/bad.tsx: this change breaks the project's design system (onsystem check). Fix these errors before moving on; get_component and get_tokens list the valid props, variants and tokens.\n\n" +
         '1:2 error [no-hardcoded-color] Hardcoded color `bg-[#ef4444]` → `bg-destructive`.\n' +
         '1:9 warning [no-hardcoded-color] Hardcoded color `bg-[#ef4444]` → `bg-destructive`.\n',
     );
@@ -159,8 +267,7 @@ console.log(result([]));
     const session = { session_id: randomUUID() };
     const first = hook({ ...edit('policy.tsx'), ...session });
     expect(first.code).toBe(0);
-    const notice =
-      'design-system-mcp could not check app/policy.tsx, so edits are not being checked against the design system: npm found no version of @dgesteves/design-system-mcp@^0.3.0 it may install (ENOVERSIONS), as with a min-release-age policy. Run `design-system-mcp check app/policy.tsx` to see why.';
+    const notice = `onsystem could not check app/policy.tsx, so edits are not being checked against the design system: npm found no version of onsystem@${VERSION} it may install (ENOVERSIONS), as with a min-release-age policy. Run \`onsystem check app/policy.tsx\` to see why.`;
     expect(JSON.parse(first.stdout)).toEqual({ systemMessage: notice });
     expect(first.stderr).toBe(`${notice}\n`);
     // Once per session and project.
@@ -172,12 +279,33 @@ console.log(result([]));
     // A broken config, in another session.
     const config = hook({ ...edit('broken.tsx'), session_id: randomUUID() });
     expect(config.code).toBe(0);
-    expect(config.stderr).toContain(': Invalid config in /app/design-system-mcp.config.json:');
-    expect(config.stderr).toContain('Fix the config, or run `design-system-mcp inspect`');
+    expect(config.stderr).toContain(': Invalid config in /app/onsystem.config.json:');
+    expect(config.stderr).toContain('Fix the config, or run `onsystem inspect`');
     // Other npm errors pass on their first line, without credentials.
     const teapot = hook({ ...edit('teapot.tsx'), session_id: randomUUID() });
     expect(teapot.stderr).toContain('npm error 418 I am a teapot: https://registry.acme.dev/pkg.');
     expect(teapot.stderr).not.toContain('s3cret');
+  });
+
+  it('still reads DESIGN_SYSTEM_MCP_BIN, and says once that it was renamed', () => {
+    const session = { session_id: randomUUID() };
+    const legacy = { DESIGN_SYSTEM_MCP_BIN: path.join(project, 'stub.mjs') };
+    // It runs the CLI that one names. A blocked edit's stderr is for Claude: no notice there.
+    const blocked = hook({ ...edit('bad.tsx'), ...session }, legacy);
+    expect(blocked.code).toBe(2);
+    expect(blocked.stderr).toContain('1:2 error [no-hardcoded-color]');
+    expect(blocked.stderr).not.toContain('DESIGN_SYSTEM_MCP_BIN');
+    // On the debug log when the hook passes, once per session and project.
+    expect(hook({ ...edit('clean.tsx'), ...session }, legacy)).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: 'DESIGN_SYSTEM_MCP_BIN is the name ONSYSTEM_BIN had before the rename: rename it.\n',
+    });
+    expect(hook({ ...edit('clean.tsx'), ...session }, legacy)).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
   });
 
   it('stays silent for clean files, other files, unexpected output and bad input', () => {
