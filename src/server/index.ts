@@ -1,8 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer, ResourceTemplate, type CallToolResult } from '@modelcontextprotocol/server';
 import * as z from 'zod';
 
 import type { Catalog, CatalogEntry, ProjectSet, ServedProject } from '../catalog.js';
@@ -34,6 +33,10 @@ When writing or changing UI in this project:
 In a monorepo served from its root, pass \`path\` (the file you are editing) to list_components, get_component, search_components and get_tokens, and \`path\` or \`filename\` to check_ui, so each answer comes from that file's own project.`;
 
 const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
+
+/** What a client may cache: what never changes while the server runs, and what does. */
+const STATIC = { ttlMs: 3_600_000, cacheScope: 'private' } as const;
+const FRESH = { ttlMs: 0, cacheScope: 'private' } as const;
 
 /** Input limits, so one oversized request cannot stall the server. */
 const MAX_NAME = 256;
@@ -74,7 +77,8 @@ const diagnosticSchema = z.object({
   source: z.string(),
   suggestion: z.string().optional(),
   fix: z
-    .array(z.object({ range: z.tuple([int(), int()]), text: z.string() }))
+    // Two integers, not a tuple: a tuple's 2020-12 `prefixItems` fails clients that validate as draft-07.
+    .array(z.object({ range: z.array(int()).length(2), text: z.string() }))
     .optional()
     .describe('Edits (0-based offsets into the checked code) that apply the suggestion.'),
 });
@@ -235,7 +239,21 @@ function summary(c: ComponentInfo) {
 export function createServer({ getDesignSystem, getProjects }: CreateServerOptions): McpServer {
   const server = new McpServer(
     { name: NAME, title: 'onsystem', version: VERSION },
-    { instructions: INSTRUCTIONS, capabilities: { resources: { listChanged: true } } },
+    {
+      instructions: INSTRUCTIONS,
+      capabilities: { resources: { listChanged: true } },
+      // 2026-07-28 caching hints. The tools, prompts and templates are fixed for the life of
+      // the process; the component resources follow the code, so they are not to be reused.
+      // Private: they describe one person's project.
+      cacheHints: {
+        'server/discover': STATIC,
+        'tools/list': STATIC,
+        'prompts/list': STATIC,
+        'resources/templates/list': STATIC,
+        'resources/list': FRESH,
+        'resources/read': FRESH,
+      },
+    },
   );
 
   /** The design system for `target` at a workspace root, or the merged catalog without one. */
@@ -264,8 +282,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'List design-system components',
       description:
         'List every component in the project design system with a one-line description, the native element it renders, its variant values, its parts and its import. Call this before writing UI in this project. At a monorepo root, pass `path` for the project of the file you are editing; without it, every project is listed, each component with its package.',
-      inputSchema: { path: projectPath },
-      outputSchema: { components: z.array(componentSummarySchema) },
+      inputSchema: z.object({ path: projectPath }),
+      outputSchema: z.object({ components: z.array(componentSummarySchema) }),
       annotations: READ_ONLY,
     },
     async ({ path: target }): Promise<CallToolResult> => {
@@ -296,15 +314,15 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'Get a component contract',
       description:
         'Get the full contract of one component: import, props with types and defaults, cva variants and the classes each applies, parts (sub-components), design tokens it uses, usage guidelines and examples from its docs. Call it before using a component. Accepts "Button", "CardHeader" or "Card.Header". At a monorepo root, pass `path` (the file you are editing) to get the component its project uses.',
-      inputSchema: {
+      inputSchema: z.object({
         name: z
           .string()
           .min(1)
           .max(MAX_NAME)
           .describe('Component name, e.g. "Button" or "CardHeader".'),
         path: projectPath,
-      },
-      outputSchema: componentSchema,
+      }),
+      outputSchema: z.object(componentSchema),
       annotations: READ_ONLY,
     },
     async ({ name, path: target }): Promise<CallToolResult> => {
@@ -372,12 +390,12 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'Search components by intent',
       description:
         'Find components by what you want to build, e.g. "confirm a destructive action", "status label", "text field with validation". Ranks names, descriptions, docs, props and variant values with BM25 (local, no API key). Use it when you do not know which component fits.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().min(1).max(MAX_QUERY).describe('What the UI should do, in plain words.'),
         limit: z.number().int().min(1).max(20).default(5).describe('Maximum results.'),
         path: projectPath,
-      },
-      outputSchema: {
+      }),
+      outputSchema: z.object({
         results: z.array(
           z.object({
             name: z.string(),
@@ -389,7 +407,7 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
             ...originShape,
           }),
         ),
-      },
+      }),
       annotations: READ_ONLY,
     },
     async ({ query, limit, path: target }): Promise<CallToolResult> => {
@@ -436,7 +454,7 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'Get design tokens',
       description:
         'List design tokens with resolved values, dark-mode values and how to use each (Tailwind class or CSS variable). Filter by category (color, spacing, radius, typography, shadow, other) or a substring. Use these instead of hex codes, px values or Tailwind default palette classes.',
-      inputSchema: {
+      inputSchema: z.object({
         category: z.enum(TOKEN_CATEGORIES).optional().describe('Only tokens of this category.'),
         query: z
           .string()
@@ -444,8 +462,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
           .optional()
           .describe('Substring to match in names, usages or descriptions.'),
         path: projectPath,
-      },
-      outputSchema: { tokens: z.array(tokenSchema) },
+      }),
+      outputSchema: z.object({ tokens: z.array(tokenSchema) }),
       annotations: READ_ONLY,
     },
     async ({ category, query, path: target }): Promise<CallToolResult> => {
@@ -499,7 +517,7 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'Check UI code against the design system',
       description:
         'Lint TSX/JSX against the design system. Reports hardcoded colors, spacing and radius (with the nearest token), native elements that have a design-system component, unknown components, props and variant values, and icon-only buttons without an accessible name. Each diagnostic has line/column, a rule id, a message and a suggested fix. Run it on every snippet or file you write and fix all errors. Pass `code` for unsaved code, or `path` for a file in the project.',
-      inputSchema: {
+      inputSchema: z.object({
         code: z
           .string()
           .max(MAX_CODE)
@@ -528,8 +546,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
           .describe(
             `Most diagnostics to return, errors first (default ${DEFAULT_LIMIT}). The counts and byRule cover all of them.`,
           ),
-      },
-      outputSchema: {
+      }),
+      outputSchema: z.object({
         file: z.string(),
         ok: z.boolean().describe('True when there are no errors.'),
         errorCount: int(),
@@ -557,7 +575,7 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
           .describe(
             'Set when no components or no color tokens were found, so rules did not run, or when components came from modules the model does not include.',
           ),
-      },
+      }),
       annotations: READ_ONLY,
     },
     async ({ code, path: filePath, filename, limit }): Promise<CallToolResult> => {
@@ -737,12 +755,12 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       title: 'Build UI with the design system',
       description:
         'Build a piece of UI using only design-system components and tokens, then verify it with check_ui.',
-      argsSchema: {
+      argsSchema: z.object({
         task: z
           .string()
           .max(MAX_QUERY * 4)
           .describe('What to build, e.g. "a settings card that lets owners delete the workspace".'),
-      },
+      }),
     },
     async ({ task }) => {
       const found = await scope();

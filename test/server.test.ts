@@ -3,6 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  Client as ModernClient,
+  InMemoryTransport as ModernInMemoryTransport,
+} from '@modelcontextprotocol/client';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ListRootsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -372,6 +376,60 @@ describe('project root from MCP client roots', () => {
     await client.connect(clientTransport);
     const result = await client.callTool({ name: 'list_components', arguments: {} });
     expect(text(result)).toContain('Button <button>');
+    await client.close();
+    await server.close();
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it('takes a working directory that holds a project over the roots the client reports', async () => {
+    const cwd = fixture({
+      'package.json': '{ "name": "here" }',
+      'components/ui/chip.tsx': 'export function Chip() { return <span /> }\n',
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd,
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const client = new Client(
+      { name: 'roots-client', version: '1.0.0' },
+      { capabilities: { roots: {} } },
+    );
+    let asked = 0;
+    client.setRequestHandler(ListRootsRequestSchema, () => {
+      asked++;
+      return { roots: [{ uri: pathToFileURL(DEMO_ROOT).href, name: 'demo' }] };
+    });
+    await client.connect(clientTransport);
+    const result = await client.callTool({ name: 'list_components', arguments: {} });
+    expect(text(result)).toContain('Chip');
+    expect(asked).toBe(0);
+    await client.close();
+    await server.close();
+  });
+
+  it('uses the working directory for a 2026-07-28 client, which has no roots to offer', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-modern-'));
+    const [clientTransport, serverTransport] = ModernInMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd,
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const client = new ModernClient(
+      { name: 'modern', version: '1.0.0' },
+      { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+    );
+    await client.connect(clientTransport);
+    const result = await client.callTool({ name: 'list_components', arguments: {} });
+    expect(text(result)).toContain(
+      `No components found. Check the "components" globs in the config (root: ${cwd})`,
+    );
     await client.close();
     await server.close();
     fs.rmSync(cwd, { recursive: true, force: true });

@@ -78,7 +78,7 @@
     "postpack": "node scripts/npm-readme.mjs postpack"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "culori": "^4.0.2",
     "postcss": "^8.5.29",
     "stemmer": "^2.0.1",
@@ -90,6 +90,8 @@
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/culori": "^4.0.1",
     "@types/node": "^24.19.1",
     "eslint": "^10.12.0",
