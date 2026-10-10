@@ -175,6 +175,35 @@ describe('design-system-mcp without a design system', () => {
     expect(github.stdout.split('\n').at(-1)).toBe(`::warning title=design-system-mcp::${NOTICE}`);
   });
 
+  it('says once, for all files, which components it could not check', async () => {
+    const root = fixture({
+      'design-system-mcp.config.json': '{ "exclude": ["**/icons/**"] }',
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: { jsx: 'react-jsx', paths: { '@/*': ['./*'] } },
+      }),
+      'components/ui/button.tsx':
+        'export function Button(props: { children?: string }) { return <button>{props.children}</button> }',
+      'components/ui/icons/index.tsx': 'export function Spinner() { return <svg /> }',
+      'app/a.tsx':
+        'import { Spinner } from "@/components/ui/icons"\nexport default () => <Spinner />',
+      'app/b.tsx':
+        'import { Spinner } from "@/components/ui/icons"\nexport default () => <Spinner />',
+    });
+    const notice =
+      '<Spinner> comes from "@/components/ui/icons", which the design-system model does not include, so it was not checked (in 2 files).';
+    const pretty = await run(['check', 'app', '--no-cache'], root);
+    expect(pretty.code).toBe(0);
+    expect(pretty.stdout.split(notice)).toHaveLength(2);
+    const github = await run(['check', 'app', '--no-cache', '--format', 'github'], root);
+    expect(github.stdout).toContain(`::warning title=design-system-mcp::${notice}`);
+    const json = await run(['check', 'app', '--no-cache', '--format', 'json'], root);
+    expect((JSON.parse(json.stdout) as { unchecked?: unknown }[])[0]?.unchecked).toEqual({
+      names: ['Spinner'],
+      modules: ['@/components/ui/icons'],
+    });
+    expect(json.stderr).toContain(notice);
+  });
+
   it('fails with --require-design-system, and names what is missing', async () => {
     expect(await run(['check', '.', '--require-design-system', '--no-cache'], plain())).toEqual({
       code: 2,

@@ -3,6 +3,7 @@ import path from 'node:path';
 import ts from 'typescript';
 
 import type { ComponentInfo, PropInfo, TextEdit } from '../../types.js';
+import { propertyName } from '../../extract/cva.js';
 import { toPosix } from '../../util/paths.js';
 import { closest } from '../../util/strings.js';
 import {
@@ -75,6 +76,9 @@ export const preferDesignSystemComponent: Rule = {
       }
       const component = context.target.elements.get(key);
       if (!component) continue;
+      // Inside a component of the same name (a design system's own `Table` around a <table>),
+      // the element is how that component is built.
+      if (enclosingComponent(element.node) === component.name) continue;
       // Renaming the tag is only safe when the component takes the element's
       // attributes; a match by name (Radix `Dialog` for `<dialog>`, `Select`
       // for `<select>`) needs a rewrite.
@@ -100,6 +104,25 @@ export const preferDesignSystemComponent: Rule = {
   },
 };
 
+/** The PascalCase function or class component a node sits in: `Table` for `const Table = forwardRef(...)`. */
+function enclosingComponent(node: ts.Node): string | undefined {
+  let name: string | undefined;
+  ts.findAncestor(node.parent, (current) => {
+    if ((ts.isFunctionDeclaration(current) || ts.isClassDeclaration(current)) && current.name) {
+      name = current.name.text;
+    } else if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
+      // Through `forwardRef(...)` and `memo(...)` to the variable it is assigned to.
+      let up: ts.Node = current.parent;
+      while (ts.isCallExpression(up) || ts.isParenthesizedExpression(up)) up = up.parent;
+      name = ts.isVariableDeclaration(up) && ts.isIdentifier(up.name) ? up.name.text : undefined;
+    } else {
+      name = undefined;
+    }
+    return name !== undefined && /^[A-Z]/.test(name);
+  });
+  return name !== undefined && /^[A-Z]/.test(name) ? name : undefined;
+}
+
 // ─── no-unknown-component ───────────────────────────────────────────────────
 
 export const noUnknownComponent: Rule = {
@@ -111,6 +134,20 @@ export const noUnknownComponent: Rule = {
     for (const element of context.analysis.elements) {
       const resolution = context.resolve(element);
       const range = tagRange(context, element);
+
+      // A name from a module the model left out may well be real: the check says once, for all
+      // files, that it was not checked, rather than call it invented.
+      if (
+        resolution.kind === 'missing-export' &&
+        target.outsideModel(
+          resolution.source,
+          resolution.name.split('.')[0] ?? resolution.name,
+          context.file,
+        )
+      ) {
+        context.unchecked(resolution.name, resolution.source);
+        continue;
+      }
 
       if (resolution.kind === 'missing-member') {
         const { owner, member } = resolution;
@@ -400,10 +437,83 @@ const ICON_LABELS: [RegExp, string][] = [
   [/^(Info)/, 'More information'],
 ];
 
-type Content = 'text' | 'icon' | 'empty';
+/**
+ * What a button holds: text (or a labelled element), icons only, nothing, or
+ * something this rule cannot see into, such as `<AvatarWithText primaryText=…>`
+ * or an app component: then it says nothing.
+ */
+type Content = 'text' | 'unknown' | 'icon' | 'empty';
+
+/** Text wins, then content the rule cannot read, then icons. */
+const PRECEDENCE: Content[] = ['text', 'unknown', 'icon', 'empty'];
+function combine(a: Content, b: Content): Content {
+  return PRECEDENCE.indexOf(a) <= PRECEDENCE.indexOf(b) ? a : b;
+}
 
 /** i18n components that render text: react-intl's `Formatted*`, react-i18next's and Lingui's `Trans`. */
 const TEXT_COMPONENTS = /^(?:Formatted[A-Z]\w*|Trans|Translate)$/;
+
+/** `XIcon`, `IconX`, `Icon`, `Icons.Add`. */
+const ICON_NAME = /^Icons?(?:$|[A-Z.])|Icon$/;
+
+/** Icon libraries, and a project's own icon modules (`@/components/icons`, `@acme/ui/icons`). */
+const ICON_SOURCE =
+  /^(?:lucide-react|lucide|@lucide\/.+|@heroicons\/.+|@radix-ui\/react-icons|react-icons(?:\/.+)?|@tabler\/icons(?:-react)?|@phosphor-icons\/.+|phosphor-react|@remixicon\/react|react-feather|@mui\/icons-material(?:\/.+)?|iconoir-react|@iconify\/react|@primer\/octicons-react|@fortawesome\/react-fontawesome)$|(?:^|\/)icons?(?:\/|$)/;
+
+/** Props an icon takes; any other prop with text or markup in it means the child shows more than an icon. */
+const ICON_PROPS =
+  /^(?:className|class|style|size|width|height|color|fill|stroke|strokeWidth|absoluteStrokeWidth|weight|variant|name|icon|viewBox|mirrored|focusable|role|id|key|ref|type|aria-hidden|data-[\w-]+)$/;
+
+/** Common icon names, for fragments that use an icon without importing it. */
+const ICON_WORDS =
+  /^(?:Chevron|Arrow|Check|Circle|Square|Star|Heart|Bell|Mail|Lock|Unlock|Eye|Calendar|Clock|Home|Loader|Spinner|Send|Save|Pin|Link|External|Sun|Moon|Grip|Drag|Bookmark|Archive|Bold|Italic|Undo|Redo|Play|Pause|Stop|Minus|Ellipsis|Dots|Kebab|Hamburger)/;
+
+/**
+ * Whether a PascalCase child is an icon: by its name (`XIcon`), where it comes
+ * from (an icon library or icons module), or a common icon name (`Trash2`,
+ * `ChevronLeft`) when it is not imported or comes from a design system that
+ * re-exports its icons (`import { ChevronLeft } from "@dub/ui"`) without
+ * being one of its components.
+ */
+function isIconLike(tag: string, context: RuleContext): boolean {
+  if (ICON_NAME.test(tag)) return true;
+  const shaped = ICON_WORDS.test(tag) || ICON_LABELS.some(([pattern]) => pattern.test(tag));
+  const head = tag.split('.')[0] ?? tag;
+  const binding = context.analysis.imports.get(head);
+  if (binding) {
+    if (ICON_SOURCE.test(binding.source)) return true;
+    const { target } = context;
+    return (
+      shaped &&
+      target.isDesignSystemImport(binding.source, context.file) &&
+      !target.components.has(binding.imported)
+    );
+  }
+  if (context.analysis.declared.has(head)) return false;
+  return shaped;
+}
+
+/** A prop whose value is text or markup (`text="Export"`, `primaryText={<span>…</span>}`), other than an icon's own. */
+function hasTextualProps(opening: ts.JsxOpeningElement | ts.JsxSelfClosingElement): boolean {
+  return opening.attributes.properties.some((attribute) => {
+    if (!ts.isJsxAttribute(attribute) || ICON_PROPS.test(attributeName(attribute))) return false;
+    const init = attribute.initializer;
+    if (!init) return false;
+    if (ts.isStringLiteral(init)) return init.text.trim() !== '';
+    const value = ts.isJsxExpression(init) ? init.expression : init;
+    return (
+      value !== undefined &&
+      valueBranches(value).some(
+        (branch) =>
+          ts.isStringLiteralLike(branch) ||
+          ts.isTemplateExpression(branch) ||
+          ts.isJsxElement(branch) ||
+          ts.isJsxSelfClosingElement(branch) ||
+          ts.isJsxFragment(branch),
+      )
+    );
+  });
+}
 
 /** `<svg><title>Close</title>…</svg>`: the title is the image's accessible name. */
 function hasSvgTitle(svg: ts.Node, context: RuleContext): boolean {
@@ -447,12 +557,16 @@ function classify(children: readonly ts.Node[], context: RuleContext, icons: str
       } else if (TEXT_COMPONENTS.test(tag)) {
         kind = 'text';
       } else if (/^[A-Z]/.test(tag)) {
-        icons.push(tag);
-        kind = 'icon';
+        if (!hasTextualProps(opening) && isIconLike(tag, context)) {
+          icons.push(tag);
+          kind = 'icon';
+        } else {
+          kind = 'unknown';
+        }
       }
     }
     if (kind === 'text') return 'text';
-    if (kind === 'icon') result = 'icon';
+    result = combine(result, kind);
   }
   return result;
 }
@@ -474,7 +588,7 @@ function classifyReturned(
           ? 'empty'
           : 'text';
     if (kind === 'text') return 'text';
-    if (kind === 'icon') result = 'icon';
+    result = combine(result, kind);
   }
   return result;
 }
@@ -501,17 +615,43 @@ function hasLabel(attributes: readonly ts.JsxAttribute[]): boolean {
 /**
  * The element whose `render` prop this one is, as in Base UI's
  * `<Dialog.Close render={<Button size="icon" />}><XIcon /></Dialog.Close>`:
- * the rendered button takes the host's children and attributes.
+ * the rendered button takes the host's children and attributes. Also through
+ * a condition (`render={disabled ? undefined : <button />}`). `object` when it
+ * is the `render` of an object, such as a story's `args`, whose host the rule
+ * cannot see.
  */
-function renderHost(context: RuleContext, element: JsxNode): JsxNode | undefined {
-  const expression = element.node.parent;
-  const attribute = ts.isJsxExpression(expression) ? expression.parent : undefined;
+function renderHost(context: RuleContext, element: JsxNode): JsxNode | 'object' | undefined {
+  let node: ts.Node = element.node;
+  for (;;) {
+    const parent = node.parent;
+    if (ts.isParenthesizedExpression(parent)) node = parent;
+    else if (ts.isConditionalExpression(parent) && node !== parent.condition) node = parent;
+    else if (
+      ts.isBinaryExpression(parent) &&
+      [
+        ts.SyntaxKind.AmpersandAmpersandToken,
+        ts.SyntaxKind.BarBarToken,
+        ts.SyntaxKind.QuestionQuestionToken,
+      ].includes(parent.operatorToken.kind)
+    ) {
+      node = parent;
+    } else break;
+  }
+  const parent = node.parent;
+  if (
+    ts.isPropertyAssignment(parent) &&
+    parent.initializer === node &&
+    propertyName(parent.name) === 'render'
+  ) {
+    return 'object';
+  }
+  const attribute = ts.isJsxExpression(parent) ? parent.parent : undefined;
   if (!attribute || !ts.isJsxAttribute(attribute) || attributeName(attribute) !== 'render') {
     return undefined;
   }
   const opening = attribute.parent.parent;
-  const node = ts.isJsxOpeningElement(opening) ? opening.parent : opening;
-  return context.analysis.elements.find((e) => e.node === node);
+  const host = ts.isJsxOpeningElement(opening) ? opening.parent : opening;
+  return context.analysis.elements.find((e) => e.node === host);
 }
 
 /** `hidden`, `aria-hidden`, `aria-hidden="true"` or `{true}`: not an element anyone reads or clicks. */
@@ -554,16 +694,22 @@ export const iconButtonAccessibleName: Rule = {
       const resolution = context.resolve(element);
       if (!isButton(context, element) || element.hasSpread) continue;
       if (findAttribute(element, 'asChild') || isHidden(element)) continue;
-      // A button passed as `render` is judged by its host's children and label;
-      // a host that is a button itself is checked on its own.
+      // A button passed as `render` is judged by its host's children and label, and its own;
+      // a host that is a button itself is checked on its own. A story's `args.render` is
+      // rendered with args the rule does not follow.
       const host = renderHost(context, element);
+      if (host === 'object') continue;
       if (host && (isButton(context, host) || host.hasSpread)) continue;
       if (hasLabel(element.attributes) || (host && hasLabel(host.attributes))) continue;
       const icons: string[] = [];
-      const content = classify((host ?? element).children, context, icons);
+      const children = host ? [...host.children, ...element.children] : element.children;
+      // A host with no children shows what its props say (`<Chip label=… render={<button />}>`).
+      const content: Content =
+        host && !children.length ? 'unknown' : classify(children, context, icons);
       const sizeIcon = attributeLiterals(element, 'size').some((v) => v.text.includes('icon'));
       if (
         content === 'text' ||
+        content === 'unknown' ||
         (content === 'empty' && !sizeIcon && resolution.kind !== 'intrinsic')
       )
         continue;

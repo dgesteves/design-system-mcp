@@ -6,6 +6,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod';
 
 import type { DesignSystem } from '../design-system.js';
+import { uncheckedNotice } from '../lint/index.js';
 import { TOKEN_CATEGORIES } from '../types.js';
 import { isInside, relativePath } from '../util/paths.js';
 import { NAME, VERSION } from '../version.js';
@@ -267,10 +268,16 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         errorCount: z.number().int(),
         warningCount: z.number().int(),
         diagnostics: z.array(diagnosticSchema),
+        unchecked: z
+          .object({ names: z.array(z.string()), modules: z.array(z.string()) })
+          .optional()
+          .describe('Components imported from modules the model does not include, not checked.'),
         notice: z
           .string()
           .optional()
-          .describe('Set when no components or no color tokens were found, so rules did not run.'),
+          .describe(
+            'Set when no components or no color tokens were found, so rules did not run, or when components came from modules the model does not include.',
+          ),
       },
       annotations: READ_ONLY,
     },
@@ -310,8 +317,10 @@ export function createServer({ getDesignSystem }: CreateServerOptions): McpServe
         file = relativePath(ds.root, absolute);
       }
       const result = ds.check(source, file);
-      // A clean result without components or color tokens says little.
-      const notice = ds.notice();
+      // A clean result without components or color tokens, or with components the model
+      // leaves out, says little.
+      const notice =
+        [ds.notice(), uncheckedNotice([result])].filter(Boolean).join('\n\n') || undefined;
       return {
         content: [{ type: 'text', text: renderCheck(result) + (notice ? `\n\n${notice}` : '') }],
         structuredContent: {

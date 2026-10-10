@@ -195,4 +195,9 @@ export interface CheckResult {
   warningCount: number;
   /** With a baseline: findings it accepted, left out of `diagnostics` and the counts. */
   baselined?: number;
+  /**
+   * Components imported from design-system modules the model does not include
+   * (extraction is incomplete), which the rules could not check.
+   */
+  unchecked?: { names: string[]; modules: string[] };
 }

@@ -26,6 +26,8 @@ export interface RuleContext {
   isDesignSystemSource: boolean;
   resolve(element: JsxNode): Resolution;
   report(report: Report): void;
+  /** Records a component the model does not include, which the rules cannot check. */
+  unchecked(name: string, module: string): void;
 }
 
 export interface Rule {
@@ -79,6 +81,9 @@ export function resolveElement(
   }
 
   let owner: ComponentInfo | undefined;
+  // Imported and declared again in an inner scope (`const Icon = icons[name]` next to an
+  // imported `Icon` type): which one a tag means depends on scope, so it is not judged.
+  if (binding && analysis.declared.has(head)) return { kind: 'external' };
   if (binding) {
     if (!target.isDesignSystemImport(binding.source, file)) return { kind: 'external' };
     const imported =
@@ -86,6 +91,9 @@ export function resolveElement(
         ? (target.defaultExport(binding.source, file)?.name ?? head)
         : binding.imported;
     owner = target.components.get(imported);
+    if (owner && target.declaredElsewhere(owner, imported, binding.source, file)) {
+      return { kind: 'external' };
+    }
     if (!owner) {
       // `<Icons.Add />` from `@acme/ui/icons`: a member of an export that is
       // not a component. A bare `<Icons />` renders an object, so it stays reported.

@@ -88,6 +88,7 @@ function checkParsed(
   const analysis = analyze(sourceFile);
   const diagnostics: Diagnostic[] = [];
   const cache = new Map<unknown, Resolution>();
+  const unchecked = { names: new Set<string>(), modules: new Set<string>() };
   // A byte-order mark is a character to TypeScript but not a column to editors.
   // Offsets (fix ranges) stay on the text as given.
   const bom = code.charCodeAt(0) === 0xfeff ? 1 : 0;
@@ -133,6 +134,10 @@ function checkParsed(
         if (report.fix?.length) diagnostic.fix = report.fix;
         diagnostics.push(diagnostic);
       },
+      unchecked(name, module) {
+        unchecked.names.add(name);
+        unchecked.modules.add(module);
+      },
     };
     rule.run(context);
   }
@@ -155,12 +160,43 @@ function checkParsed(
   diagnostics.sort(
     (a, b) => a.line - b.line || a.column - b.column || a.ruleId.localeCompare(b.ruleId),
   );
-  return {
+  const result: CheckResult = {
     file,
     diagnostics,
     errorCount: diagnostics.filter((d) => d.severity === 'error').length,
     warningCount: diagnostics.filter((d) => d.severity === 'warning').length,
   };
+  if (unchecked.names.size) {
+    result.unchecked = { names: [...unchecked.names], modules: [...unchecked.modules] };
+  }
+  return result;
+}
+
+/**
+ * One notice for the components a check could not see, across files: the
+ * model left their modules out, so "no problems" says nothing about them.
+ */
+export function uncheckedNotice(results: readonly CheckResult[]): string | undefined {
+  const names = new Set<string>();
+  const modules = new Set<string>();
+  let files = 0;
+  for (const result of results) {
+    if (!result.unchecked) continue;
+    files++;
+    for (const name of result.unchecked.names) names.add(name);
+    for (const module of result.unchecked.modules) modules.add(module);
+  }
+  if (!names.size) return undefined;
+  const list = [...names];
+  const shown = list.slice(0, 4).map((n) => `<${n}>`);
+  const more = list.length > shown.length ? ` and ${list.length - shown.length} more` : '';
+  const from = [...modules].slice(0, 3).map((m) => `"${m}"`);
+  const moreModules = modules.size > from.length ? ` and ${modules.size - from.length} more` : '';
+  const where = results.length > 1 ? ` (in ${files} ${files === 1 ? 'file' : 'files'})` : '';
+  return (
+    `${shown.join(', ')}${more} ${list.length === 1 ? 'comes' : 'come'} from ${from.join(', ')}${moreModules}, which the design-system model does not include, so ${list.length === 1 ? 'it was' : 'they were'} not checked${where}. ` +
+    'Extraction looks incomplete: `inspect` lists what was found; add the missing files to "components" in the config.'
+  );
 }
 
 /** Syntax errors through the public API: a one-file program with no libs or resolution. */

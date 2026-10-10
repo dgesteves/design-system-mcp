@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import type { ResolvedConfig } from '../config.js';
+import type { ModuleResolver } from '../modules.js';
 import { TokenIndex } from '../tokens/index.js';
 import { tokenFamily } from '../tokens/roles.js';
 import type { ComponentInfo, DesignSystemModel, Token } from '../types.js';
@@ -59,6 +60,55 @@ const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
   textarea: ['rows', 'cols'],
 };
 
+/**
+ * Component names that say what a native element is: `Button` is a `<button>`,
+ * `Link` an `<a>`. Matched whole; a longer name ending in one (`IconButton`,
+ * `SearchInput`, `DataTable`) is related more loosely.
+ */
+const ELEMENT_NAMES: Record<string, string[]> = {
+  a: ['Link', 'A'],
+  button: ['Button'],
+  dialog: ['Dialog', 'Modal'],
+  details: ['Details', 'Disclosure'],
+  hr: ['Separator', 'Divider', 'Hr'],
+  img: ['Img', 'Image'],
+  input: ['Input', 'TextInput', 'TextField'],
+  label: ['Label'],
+  meter: ['Meter'],
+  progress: ['Progress', 'ProgressBar'],
+  select: ['Select', 'NativeSelect'],
+  table: ['Table'],
+  textarea: ['Textarea', 'TextArea'],
+};
+
+/**
+ * Names that may mean the element or something else: Radix's popover `Anchor`,
+ * shadcn/ui's `Field` (a layout around a control). Related loosely, like a suffix.
+ */
+const LOOSE_NAMES: Record<string, string[]> = {
+  a: ['Anchor'],
+  input: ['Field'],
+};
+
+/**
+ * How a component's name relates to a native element: `exact` for `Button` and
+ * `<button>`, `suffix` for `IconButton` (and the ambiguous `Anchor` or `Field`), or none.
+ */
+export function nameRelation(name: string, element: string): 'exact' | 'suffix' | undefined {
+  const words = ELEMENT_NAMES[element];
+  if (!words) return undefined;
+  if (words.includes(name)) return 'exact';
+  if (LOOSE_NAMES[element]?.includes(name)) return 'suffix';
+  return words.some((word) => word.length > 1 && name.length > word.length && name.endsWith(word))
+    ? 'suffix'
+    : undefined;
+}
+
+/** The replaceable element a component is named for, if any: `select` for `Select` and `NativeSelect`. */
+function namedFor(name: string): string | undefined {
+  return Object.keys(ELEMENT_NAMES).find((element) => nameRelation(name, element) !== undefined);
+}
+
 /** What the lint rules need to know about the design system. */
 export class LintTarget {
   readonly components = new Map<string, ComponentInfo>();
@@ -73,12 +123,19 @@ export class LintTarget {
   private readonly importPaths: Set<string>;
   private readonly importPrefixes: string[];
   /** Component files relative to the root, without extension (`components/ui/button`). */
-  private readonly modules = new Set<string>();
+  private readonly componentModules = new Set<string>();
   private readonly moduleDirs = new Set<string>();
 
+  /**
+   * `resolver` finds the module an import points at and what it exports
+   * (`@calcom/ui/components/icon` → `components/icon/index.ts`), so a name from
+   * a module the model left out is not taken for an invented one. Without it,
+   * every missing name is invented.
+   */
   constructor(
     readonly model: DesignSystemModel,
     readonly config: Pick<ResolvedConfig, 'elements' | 'importPath'>,
+    private readonly resolver?: Pick<ModuleResolver, 'locate' | 'exportsOf'>,
   ) {
     for (const component of model.components) {
       this.components.set(component.name, component);
@@ -92,17 +149,19 @@ export class LintTarget {
     this.exports = new Set(model.exports);
 
     // Root components only: `BreadcrumbLink` is an `a`, but `<a>` should not become a breadcrumb part.
+    // A component replaces an element it is named for (`Button`, `Link`, `Input`). One that only
+    // renders the element, or whose name merely ends like it (`IconButton`), replaces it only when
+    // it needs nothing the element does not: `<button>` never becomes `<DataTableColumnHeader>`
+    // (it needs `column` and `title`), nor `<label>` a `<FileUpload>` that takes no `htmlFor`.
     for (const component of model.components) {
       if (component.parent) continue;
-      const fromElement =
-        component.element && REPLACEABLE_ELEMENTS.has(component.element)
-          ? component.element
-          : undefined;
-      const fromName = REPLACEABLE_ELEMENTS.has(component.name.toLowerCase())
-        ? component.name.toLowerCase()
-        : undefined;
-      for (const element of [fromName, fromElement]) {
-        if (!element) continue;
+      const named = namedFor(component.name);
+      for (const element of REPLACEABLE_ELEMENTS) {
+        const relation = nameRelation(component.name, element);
+        if (!relation && component.element !== element) continue;
+        // `Select` renders a <button> trigger, but it is a select, not a button.
+        if (!relation && named) continue;
+        if (relation !== 'exact' && !this.plainFor(component, element)) continue;
         const existing = this.elements.get(element);
         if (!existing || fit(component, element) > fit(existing, element)) {
           this.elements.set(element, component);
@@ -131,7 +190,7 @@ export class LintTarget {
             .filter(Boolean),
         );
     for (const file of this.componentFiles) {
-      for (const module of modulePaths(file)) this.modules.add(module);
+      for (const module of modulePaths(file)) this.componentModules.add(module);
       this.moduleDirs.add(path.posix.dirname(file));
     }
   }
@@ -146,7 +205,7 @@ export class LintTarget {
     if (specifier.startsWith('.')) {
       const resolved = this.resolveRelative(specifier, fromFile);
       return (
-        this.modules.has(resolved) ||
+        this.componentModules.has(resolved) ||
         this.moduleDirs.has(resolved) ||
         this.moduleDirs.has(path.posix.dirname(resolved))
       );
@@ -155,6 +214,55 @@ export class LintTarget {
     // `@/components/ui/button`, or the barrel `@/components/ui` itself.
     return this.importPrefixes.some(
       (prefix) => specifier.startsWith(prefix) || specifier === prefix.slice(0, -1),
+    );
+  }
+
+  /**
+   * Whether `name`, imported from the design system, may be a real export the
+   * model left out rather than an invented one: its module exists outside the
+   * folders extraction read and exports `name`, or re-exports from such a
+   * module (an excluded `icons/` folder, a barrel's `export * from "./icons"`).
+   * A module declared in a package's `exports` but not on disk counts too,
+   * except the design system's own import path.
+   */
+  outsideModel(specifier: string, name: string, fromFile = 'snippet.tsx'): boolean {
+    const location = this.resolver?.locate(specifier, fromFile);
+    if (!location) return false;
+    if (!location.file) {
+      return !this.importPaths.has(specifier) && specifier !== this.config.importPath;
+    }
+    return this.mayExport(location.file, name, 0);
+  }
+
+  /**
+   * Whether an import names another declaration than the model's component of
+   * that name: `import { Table } from "./Table"` in a package whose model has
+   * `Table` from `TableNew.tsx`, while `Table.tsx` declares a `Table` of its own.
+   */
+  declaredElsewhere(
+    component: ComponentInfo,
+    name: string,
+    specifier: string,
+    fromFile: string,
+  ): boolean {
+    const { resolver } = this;
+    const file = resolver?.locate(specifier, fromFile)?.file;
+    if (!resolver || !file) return false;
+    const modules = modulePaths(file);
+    if (modulePaths(component.source.file).some((module) => modules.includes(module))) return false;
+    if (modules.some((module) => this.componentModules.has(module))) return false;
+    return resolver.exportsOf(file)?.declared.includes(name) === true;
+  }
+
+  private mayExport(file: string, name: string, depth: number): boolean {
+    if (modulePaths(file).some((module) => this.componentModules.has(module))) return false;
+    const exports = this.resolver?.exportsOf(file);
+    if (!exports) return depth > 0;
+    // Declared in a folder extraction read (an icon map next to the components), it was seen
+    // and is no component; declared anywhere else, the model never looked.
+    if (exports.names.includes(name)) return !this.moduleDirs.has(path.posix.dirname(file));
+    return exports.starFrom.some(
+      (from) => from === undefined || depth >= 3 || this.mayExport(from, name, depth + 1),
     );
   }
 
@@ -172,6 +280,22 @@ export class LintTarget {
       for (const name of this.model.propSets[inherited.set] ?? []) accepted.add(name);
     }
     return needed.every((name) => accepted.has(name));
+  }
+
+  /**
+   * Whether a component asks for nothing beyond what the element takes: no
+   * required prop of its own, and the element's own attributes (`htmlFor` for a
+   * label). Unknown when its props do not fully resolve, so false.
+   */
+  private plainFor(component: ComponentInfo, element: string): boolean {
+    if (component.openProps) return false;
+    const accepted = new Set<string>();
+    for (const inherited of component.inherits) {
+      for (const name of this.model.propSets[inherited.set] ?? []) accepted.add(name);
+    }
+    if (component.props.some((p) => p.required && !accepted.has(p.name))) return false;
+    for (const prop of component.props) accepted.add(prop.name);
+    return (ELEMENT_ATTRIBUTES[element] ?? []).every((name) => accepted.has(name));
   }
 
   /** The component a module exports as `default`, for `import Anything from "..."`. */
@@ -239,8 +363,10 @@ function familyUsage(model: DesignSystemModel): Map<string, Set<string>> {
  * it (`Button` over `IconButton` for <button>).
  */
 function fit(component: ComponentInfo, element: string): number {
+  const relation = nameRelation(component.name, element);
   return (
-    (component.element === element ? 2 : 0) + (component.name.toLowerCase() === element ? 1 : 0)
+    (component.element === element ? 2 : 0) +
+    (relation === 'exact' ? 1 : relation === 'suffix' ? 0.5 : 0)
   );
 }
 

@@ -15,7 +15,7 @@ import {
 } from './baseline.js';
 import { ConfigError, loadConfig } from './config.js';
 import { componentFiles, loadDesignSystem } from './design-system.js';
-import { formatDiagnostics, type OutputFormat } from './lint/index.js';
+import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/index.js';
 import { serveStdio } from './server/stdio.js';
 import type { CheckResult, Diagnostic } from './types.js';
 import { stderrLogger, silentLogger } from './util/log.js';
@@ -319,6 +319,9 @@ async function check(
     results.push({ ...result, file: relativePath(io.cwd, file) });
   }
 
+  // Components the model leaves out were not checked: say so once, not in every file.
+  const unchecked = uncheckedNotice(results);
+
   if (update) {
     const next = updateBaseline(baseline, checked, realRoot, disabled);
     writeBaseline(baselineFile, next);
@@ -327,6 +330,7 @@ async function check(
       `Baseline: ${count(counts.findings, 'finding')} in ${count(counts.files, 'file')} → ${displayPath(io.cwd, baselineFile)}`,
     );
     if (notice) io.stderr(notice);
+    if (unchecked) io.stderr(unchecked);
     return 0;
   }
 
@@ -339,10 +343,11 @@ async function check(
       : undefined,
   });
   if (output) io.stdout(output);
-  if (notice) {
-    if (format === 'pretty') io.stdout(notice);
-    else if (format === 'github') io.stdout(`::warning title=design-system-mcp::${notice}`);
-    else io.stderr(notice);
+  for (const text of [notice, unchecked]) {
+    if (!text) continue;
+    if (format === 'pretty') io.stdout(text);
+    else if (format === 'github') io.stdout(`::warning title=design-system-mcp::${text}`);
+    else io.stderr(text);
   }
 
   const errors = results.reduce((n, r) => n + r.errorCount, 0);

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadConfig } from '../src/config.js';
 import { loadDesignSystem, type DesignSystem } from '../src/design-system.js';
-import { applyFixes } from '../src/lint/index.js';
+import { applyFixes, uncheckedNotice } from '../src/lint/index.js';
 import type { Diagnostic } from '../src/types.js';
 import { ACME_ROOT, DEMO_ROOT, fixture, load, loadOnce, TSCONFIG, withRules } from './helpers.js';
 
@@ -912,6 +912,59 @@ export function BreadcrumbLink(props: React.ComponentProps<"a">) {
     expect(check(`<a href="/docs">Docs</a>`, rule, system)).toEqual([]);
   });
 
+  it('suggests a component only for an element it is named for, or one it can stand in for', async () => {
+    // openstatus's DataTableColumnHeader renders a <button> but needs `column` and `title`; dub's
+    // FileUpload renders a <label> but takes no `htmlFor`; its Avatar needs an `identifier`.
+    const system = await load(
+      fixture(
+        {
+          'tsconfig.json': TSCONFIG,
+          'components/ui/data-table-column-header.tsx': `import * as React from "react"
+export function DataTableColumnHeader({ column, title, ...props }: React.ComponentProps<"button"> & { column: { id: string }; title: string }) {
+  return <button {...props}>{title}</button>
+}`,
+          'components/ui/file-upload.tsx': `export function FileUpload(props: { onFile?: (file: File) => void }) {
+  return <label><input type="file" /></label>
+}`,
+          'components/ui/avatar.tsx': `export function Avatar(props: { identifier: string; imageUrl?: string }) {
+  return <img src={props.imageUrl} alt={props.identifier} />
+}`,
+          'components/ui/select.tsx': `import * as React from "react"
+export function Select(props: React.ComponentProps<"button">) {
+  return <button {...props} />
+}`,
+          'components/ui/separator.tsx': `import * as React from "react"
+export function Separator(props: React.ComponentProps<"div">) {
+  return <div role="separator" {...props} />
+}`,
+          'components/ui/icon-button.tsx': `import * as React from "react"
+export function IconButton(props: React.ComponentProps<"button">) {
+  return <button {...props} />
+}`,
+        },
+        { nodeModules: true },
+      ),
+    );
+    const code = `<form><button>Go</button><label htmlFor="name">Name</label><img src="/logo.png" alt="Acme" /><hr /></form>`;
+    // IconButton is the only component that is named like a button and takes what one does.
+    expect(check(code, rule, system).map((d) => d.message.split('.')[0])).toEqual([
+      'Native <button> where the design system has <IconButton>',
+      'Native <hr> where the design system has <Separator>',
+    ]);
+  });
+
+  it('leaves the element alone inside a component of the same name, not inside others', () => {
+    // openstatus's own custom Table next to its components, outside the files the model read.
+    const own = `import * as React from "react"
+export function Button({ className, ...props }: React.ComponentProps<"button">) {
+  return <button className={className} {...props} />
+}
+export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>((props, ref) => <input ref={ref} {...props} />)`;
+    expect(check(own, rule)).toEqual([]);
+    const app = `export function AmountInput() { return <input type="number" /> }`;
+    expect(check(app, rule).map((d) => d.suggestion)).toEqual(['<Input>']);
+  });
+
   it('leaves containers, non-text inputs and allowed elements alone', () => {
     expect(
       check(`<div><span /><input type="checkbox" /><label htmlFor="x">X</label></div>`, rule),
@@ -1027,6 +1080,97 @@ export default () => <Button><Icons.Add /><UI.Icons.Close /><Iconz.Add /><UI.Ico
     expect(
       check(`import * as UI from "@/components/ui/button"\n<UI.Button.Header />`, rule, system),
     ).toHaveLength(1);
+  });
+});
+
+describe('no-unknown-component on a partly extracted design system', () => {
+  const rule = 'no-unknown-component';
+  // dub's config leaves the icons folder out, and its barrel re-exports it.
+  const files = {
+    'tsconfig.json': TSCONFIG,
+    'design-system-mcp.config.json': '{ "exclude": ["**/icons/**"] }',
+    'components/ui/button.tsx': `export function Button(props: { children?: string }) { return <button>{props.children}</button> }`,
+    'components/ui/table-new.tsx': `export function Table(props: { children?: string }) { return <table>{props.children}</table> }`,
+    'components/ui/icons/index.tsx': `export function TrashIcon() { return <svg /> }
+export const Spinner = () => <svg />`,
+    'components/ui/index.ts': `export * from "./button"\nexport * from "./icons"`,
+    'components/ui/core/index.ts': `export * from "../button"`,
+  };
+  let system: DesignSystem;
+  beforeAll(async () => {
+    system = await load(fixture(files));
+  });
+
+  it('says once that names from a module the model left out were not checked', () => {
+    const result = system.check(
+      `import { Button } from "@/components/ui/button"
+import { Spinner, TrashIcon } from "@/components/ui/icons"
+import { Fancy } from "@/components/ui/fancy"
+import { Buton } from "@/components/ui/button"
+export default () => <Button><Spinner /><TrashIcon /><Fancy /><Buton /></Button>`,
+      'app/page.tsx',
+    );
+    // Invented names are still errors: a module that does not exist, a name a component file lacks.
+    expect(
+      result.diagnostics.filter((d) => d.ruleId === rule).map((d) => [d.source, d.severity]),
+    ).toEqual([
+      ['Fancy', 'error'],
+      ['Buton', 'error'],
+    ]);
+    expect(result.unchecked).toEqual({
+      names: ['Spinner', 'TrashIcon'],
+      modules: ['@/components/ui/icons'],
+    });
+    expect(uncheckedNotice([result, result])).toBe(
+      '<Spinner>, <TrashIcon> come from "@/components/ui/icons", which the design-system model does not include, so they were not checked (in 2 files). Extraction looks incomplete: `inspect` lists what was found; add the missing files to "components" in the config.',
+    );
+  });
+
+  it('follows barrels: a name may come from what they re-export, unless all of it was read', () => {
+    const barrel = system.check(
+      `import { Button, Spinner } from "@/components/ui"\n<Button><Spinner /></Button>`,
+      'app/page.tsx',
+    );
+    expect(barrel.diagnostics.filter((d) => d.ruleId === rule)).toEqual([]);
+    expect(barrel.unchecked?.names).toEqual(['Spinner']);
+    // A barrel of extracted files only: an unknown name is invented.
+    const core = system.check(
+      `import { Fancy } from "@/components/ui/core"\n<Fancy />`,
+      'app/page.tsx',
+    );
+    expect(core.diagnostics.map((d) => [d.source, d.severity])).toEqual([['Fancy', 'error']]);
+    expect(core.unchecked).toBeUndefined();
+  });
+
+  it("does not take another file's component of the same name for the model's", async () => {
+    // cal.com's TableExamples imports the Table of ./Table, while the model knows TableNew's.
+    const own = await load(
+      fixture({
+        ...files,
+        'design-system-mcp.config.json': '{ "components": ["components/ui/table-new.tsx"] }',
+        'components/ui/table.tsx': `export const Table = (props: { children?: string }) => <table>{props.children}</table>
+const Body = (props: { children?: string }) => <tbody>{props.children}</tbody>
+Table.Body = Body`,
+      }),
+    );
+    expect(
+      own.check(
+        `import { Table } from "./table"\n<Table><Table.Body /></Table>`,
+        'components/ui/examples.tsx',
+      ).diagnostics,
+    ).toEqual([]);
+  });
+
+  it('leaves a name alone that a local declaration shadows', () => {
+    // dub imports the `Icon` type and renders `const Icon = iconMap[event]`.
+    const code = `import { Button, Icon } from "@/components/ui"
+function Row({ event }: { event: string }) {
+  const Icon = icons[event]
+  return <Button><Icon className="size-4" /></Button>
+}`;
+    expect(system.check(code, 'app/page.tsx').diagnostics.filter((d) => d.ruleId === rule)).toEqual(
+      [],
+    );
   });
 });
 
@@ -1283,6 +1427,65 @@ describe('icon-button-accessible-name', () => {
       'Icon-only <Button> has no accessible name. Add aria-label="Delete" describing the action, or visually hidden text.',
     );
     expect(applyFixes(code, d ? [d] : [])).toContain('<Button aria-label="Delete" size="icon"');
+  });
+
+  it('counts only icon-like children as icons', () => {
+    const icon = (code: string) => check(`${IMPORTS}${code}`, rule).map((d) => d.source);
+    // Children that show text through their props, or app components it cannot see into.
+    expect(
+      icon(`import { IconMenu } from "@/components/icon-menu"
+<button><IconMenu text="Export as CSV" icon={<Download />} /></button>`),
+    ).toEqual([]);
+    expect(
+      icon(`import { AvatarWithText } from "@/components/avatar-with-text"
+<Button variant="ghost"><AvatarWithText primaryText={<span>Acme</span>} /></Button>`),
+    ).toEqual([]);
+    expect(
+      icon(`import { Logo } from "@/components/logo"
+<button><Logo /></button>`),
+    ).toEqual([]);
+    // Icons by library, icons module, name, or a common icon name in a fragment.
+    expect(
+      icon(`import { Trash2 } from "lucide-react"
+<button><Trash2 /></button>`),
+    ).toEqual(['button']);
+    expect(
+      icon(`import { CircleXmark } from "@acme/ui/icons"
+<button><CircleXmark /></button>`),
+    ).toEqual(['button']);
+    expect(
+      icon(`import { Icons } from "@/components/icons"
+<button><Icons.Close /></button>`),
+    ).toEqual(['button']);
+    expect(
+      icon(`import { CloseIcon } from "@/components/close"
+<button><CloseIcon /></button>`),
+    ).toEqual(['button']);
+    expect(check(`<button><Trash2 /></button>`, rule).map((d) => d.source)).toEqual(['button']);
+  });
+
+  it("follows conditional and object render props, and a rendered button's own children", () => {
+    const code = (body: string) => check(`${IMPORTS}${body}`, rule).map((d) => d.source);
+    // twenty's FileChip: the chip's label is its content.
+    expect(
+      code(`import { Chip } from "@/components/chip"
+<Chip label="Report.pdf" render={disabled ? undefined : <button type="button" />} />`),
+    ).toEqual([]);
+    // A story's args: the component renders the button with args the rule does not follow.
+    expect(
+      code(
+        `export const Open = { args: { children: "Open details", render: <button type="button" /> } }`,
+      ),
+    ).toEqual([]);
+    // shadcn's website: the rendered button carries its own sr-only text.
+    expect(
+      code(`import { PopoverTrigger } from "@/components/popover"
+<PopoverTrigger render={<Button size="icon"><InfoIcon /><span className="sr-only">Details</span></Button>} />`),
+    ).toEqual([]);
+    expect(
+      code(`import { PopoverTrigger } from "@/components/popover"
+<PopoverTrigger render={<Button size="icon"><InfoIcon /></Button>} />`),
+    ).toEqual(['Button']);
   });
 
   it('reads render props: a function child shows what it returns', () => {
