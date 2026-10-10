@@ -7,8 +7,10 @@
 //   node scripts/corpus.mjs sample <run>     print unlabelled findings with their code, to label
 //
 // It fails when the counts differ from the snapshot (pass --update to accept them, as with Jest
-// snapshots), when a finding labelled TP is no longer reported, or when one labelled FP comes
-// back after a fix. It ends with the false-positive rate of the labelled sample.
+// snapshots), when a finding labelled TP is no longer reported, when one labelled FP comes
+// back after a fix, or when a run from a monorepo root (`sameAs`) reports other files or
+// findings for a project than the run from that project's folder. It ends with the
+// false-positive rate of the labelled sample.
 //
 // The repositories are untrusted. They are fetched shallow and sparse (source, styles,
 // manifests and docs only), never installed or built, and nothing in them runs: a run whose
@@ -27,8 +29,10 @@ import {
   findings,
   invalidLabels,
   labelKey,
+  outside,
   percent,
   random,
+  rootDifferences,
   ruleCounts,
 } from './corpus-lib.ts';
 
@@ -201,12 +205,19 @@ function check(selected) {
 
   const current = {};
   const found = [];
+  const byRun = {};
   for (const run of selected) {
     const started = performance.now();
     const { inspect, results } = runOne(run);
     const runFindings = findings(run.name, results);
     found.push(...runFindings);
-    current[run.name] = { inspect, files: results.length, rules: ruleCounts(runFindings) };
+    byRun[run.name] = { files: results.map((r) => r.file), findings: runFindings };
+    current[run.name] = {
+      inspect,
+      files: results.length,
+      rules: ruleCounts(runFindings),
+      ...(run.sameAs ? { added: ruleCounts(outside(runFindings, Object.keys(run.sameAs))) } : {}),
+    };
     const errors = runFindings.filter((f) => f.severity === 'error').length;
     console.log(
       `${run.name.padEnd(22)} ${String(results.length).padStart(5)} files  ${String(runFindings.length).padStart(5)} findings (${errors} errors, ${runFindings.filter((f) => f.fixable).length} fixable)  ${seconds(started)}`,
@@ -242,6 +253,31 @@ function check(selected) {
   }
   if (result.labelChanges.length) lines.push('');
 
+  // A run from a monorepo root must report each project's files as the run from its folder does.
+  const rootFailures = [];
+  for (const run of selected.filter((r) => r.sameAs)) {
+    for (const [folder, other] of Object.entries(run.sameAs)) {
+      if (!byRun[other]) {
+        lines.push(`${run.name}: ${folder} not compared, since ${other} did not run.`);
+        continue;
+      }
+      const differences = rootDifferences(byRun[run.name], folder, byRun[other]);
+      if (differences.length) {
+        rootFailures.push(
+          `${run.name} differs from ${other} in ${folder}:\n    ${differences.slice(0, 10).join('\n    ')}${differences.length > 10 ? `\n    …and ${differences.length - 10} more` : ''}`,
+        );
+      } else {
+        const { files, findings: same } = byRun[other];
+        lines.push(
+          `${run.name}: ${folder} reports what ${other} does, file for file (${files.length} files, ${same.length} findings).`,
+        );
+      }
+    }
+  }
+  if (selected.some((r) => r.sameAs)) lines.push('');
+
+  // A root run's findings in those folders are the other runs' findings again: the rate
+  // counts only what it adds (`added`).
   const rate = falsePositiveRate(result.present, current);
   const tally = (p) => `${p.tp} TP, ${p.fp} FP, ${p.d} debatable`;
   const relevant = labels.filter((l) => l.run in current);
@@ -258,8 +294,10 @@ function check(selected) {
   );
   console.log(lines.join('\n'));
 
-  if (result.labelFailures.length) {
-    console.error(`\n${result.labelFailures.map((f) => `✗ ${f}`).join('\n')}`);
+  if (result.labelFailures.length || rootFailures.length) {
+    console.error(
+      `\n${[...result.labelFailures, ...rootFailures].map((f) => `✗ ${f}`).join('\n')}`,
+    );
     return 1;
   }
   const changed = result.changes.length > 0 || result.changedRuns.length > 0;
@@ -341,6 +379,8 @@ function cli(cliArgs, cwd) {
 /** What `inspect` found, without the machine-specific root and timing. */
 function summarizeInspect(text) {
   const lines = text.split('\n');
+  // At a monorepo root: every project with what was found in it.
+  if (lines.some((l) => l.startsWith('workspace '))) return summarizeWorkspace(lines);
   const field = (key) =>
     lines
       .find((l) => l.startsWith(`${key} `))
@@ -366,6 +406,48 @@ function summarizeInspect(text) {
   };
 }
 
+/** `inspect` at a monorepo root: the workspace line, and per project its counts. */
+function summarizeWorkspace(lines) {
+  const projects = {};
+  let current;
+  for (const line of lines) {
+    // A project's folder, then its package name: `apps/web (@acme/web)`.
+    const header = /^([^\s(]+)(?: \(.+\))?$/.exec(line);
+    if (header && !/^(?:root|workspace|config)$/.test(header[1])) {
+      current = projects[header[1]] = {
+        detected: null,
+        files: null,
+        components: 0,
+        parts: 0,
+        tokens: {},
+        warnings: 0,
+      };
+      continue;
+    }
+    const field = /^ {2}(\w+)\s+(.*)$/.exec(line);
+    if (!current || !field) {
+      if (!line.startsWith('  ')) current = undefined;
+      continue;
+    }
+    const [, key, value] = field;
+    if (key === 'detected') current.detected = value;
+    else if (key === 'files') current.files = value;
+    else if (key === 'components') {
+      const counts = /^(\d+) \+ (\d+) parts/.exec(value);
+      current.components = counts ? Number(counts[1]) : 0;
+      current.parts = counts ? Number(counts[2]) : 0;
+    } else if (key === 'tokens') {
+      for (const pair of value === 'none' ? [] : value.split(', ')) {
+        const [category, n] = pair.split(' ');
+        current.tokens[category] = Number(n);
+      }
+    } else if (key === 'warnings') current.warnings = Number(/^\d+/.exec(value)?.[0] ?? 0);
+  }
+  const workspace = lines.find((l) => l.startsWith('workspace '))?.slice('workspace '.length);
+  const others = /^Without a design system \((\d+)\)/m.exec(lines.join('\n'));
+  return { workspace: workspace?.trim() ?? null, projects, others: others ? Number(others[1]) : 0 };
+}
+
 // ─── Sampling findings to label ───────────────────────────────────────────────
 
 function sample(run) {
@@ -374,6 +456,8 @@ function sample(run) {
   const results = fresh ? readJson(cached) : runOne(run).results;
   const labelled = new Set(readJson(LABELS).map((l) => l.fingerprint));
   let pool = findings(run.name, results).filter((f) => !labelled.has(f.fingerprint));
+  // A root run's findings in its projects' folders are labelled through those runs.
+  if (run.sameAs) pool = outside(pool, Object.keys(run.sameAs));
   if (values.rule) pool = pool.filter((f) => f.rule === values.rule);
   if (values.file) pool = pool.filter((f) => f.file.includes(values.file));
   if (values.line) pool = pool.filter((f) => f.line === Number(values.line));

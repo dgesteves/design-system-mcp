@@ -1,12 +1,12 @@
 # Troubleshooting
 
-Most problems show up in `npx onsystem inspect`, run from the app's folder: it prints the root, the config it read, how it found the design system (`detected`), and every component and token category it extracted. Start there.
+Most problems show up in `npx onsystem inspect`: from the app's folder it prints the root, the config it read, how it found the design system (`detected`), and every component and token category it extracted; from a monorepo root, the same for each project. Start there.
 
 ## inspect found nothing
 
 `inspect` prints `Components (0 + 0 parts)`, or `check` says `No design system found (no components or color tokens)`.
 
-1. **Run it from the app's folder**, the one with the app's `package.json` and, in a shadcn/ui project, `components.json`. At a monorepo root it finds nothing: see the [next section](#a-monorepo-root-finds-nothing).
+1. **Run it from the app's folder**, the one with the app's `package.json` and, in a shadcn/ui project, `components.json`, or from the monorepo root: see the [next section](#a-monorepo-root-misses-a-project).
 2. **Read the `detected` line.** It says how the components were found. With no `detected` line, none of the [zero-config layouts](configuration.md#zero-config) matched: a `components.json`, a design-system package's `exports`, a workspace dependency named like a design system (`@acme/ui`), or a flat `src/` of components that wrap a primitives library.
 3. **Point at them with a config file.** An `onsystem.config.json` in the app's folder with a `components` glob is enough; add `tokens` when the stylesheet is not one of the default paths:
 
@@ -22,21 +22,14 @@ Most problems show up in `npx onsystem inspect`, run from the app's folder: it p
 
 In CI, `check --require-design-system` turns "nothing found" into a failure (exit code 2), so a moved design system cannot pass by checking nothing.
 
-## A monorepo root finds nothing
+## A monorepo root misses a project
 
-Zero config looks for the design system from the folder it starts in. At a workspace root there is usually no `components.json`, and the root package is not a design system, so `inspect` lists no components, `check .` has nothing to compare against, and `list_components` answers `No components found`. On Documenso, Dub and openstatus, `inspect` at the root finds 0 components; from `apps/remix`, Documenso's `@documenso/ui` comes back with 99.
+At a workspace root, `inspect` lists every project it found (`apps/remix (@documenso/remix)`, with what was detected in it) and then `Without a design system`, the packages where zero config found no components. On Documenso, `inspect` at the root finds `apps/remix` with `@documenso/ui`'s 99 components; on Cal.com, `apps/web`, `packages/ui`, `packages/coss-ui`, `packages/platform/atoms` and the feature packages that use `@calcom/ui`. [How projects are found](configuration.md#monorepo-roots).
 
-Monorepo root mode is not supported yet. Run from the app's folder instead:
-
-```sh
-cd apps/web
-npx onsystem inspect
-npx onsystem check .
-```
-
-- **CI:** set `working-directory: apps/web` on the step, or `cd` into it.
-- **MCP clients:** pass the app's folder as `--root` (`"args": ["-y", "onsystem", "--root", "/absolute/path/to/apps/web"]`), or open the app's folder in the editor.
-- **Claude Code:** the hook already works from the root, since it finds the project from each edited file. The plugin's MCP server starts in the folder Claude Code was started in, so start Claude Code in the app's folder for the tools to find the components.
+- **A package is listed without a design system.** Run `npx onsystem inspect --root packages/that-one` to see what zero config looked at there, and give it an `onsystem.config.json` with `components` if its layout is not one zero config reads: a package with a config of its own is always a project.
+- **The root is read as one project.** A `components.json`, a `components/ui` folder at the root, or a root config that sets `components` makes the root one project, as before. Move `components` into each app's config, or remove it from the root's.
+- **The MCP tools answer for the wrong app.** At a root the tools need the file being edited: `get_component` with `path`, `check_ui` with `path` or `filename`. Without one they list every project together, and a name that two packages use (`Button` in `@calcom/ui` and `@coss/ui`) comes back as a list to pick from.
+- **One app per job in CI:** `working-directory: apps/web` checks that app alone, and `--require-design-system` there fails when its design system goes missing; at the root it fails only when no package has one.
 
 ## Components show 0 props
 

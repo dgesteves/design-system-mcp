@@ -21,6 +21,12 @@ export interface ModuleExports {
   declared: string[];
   /** Files relative to the root; undefined where the specifier does not resolve. */
   starFrom: (string | undefined)[];
+  /**
+   * Names it re-exports from another module, and under which name that module exports
+   * them: `export { Button } from "./Button"`, `export { Root as Dialog } from "./dialog"`,
+   * or an imported binding exported again. `from` is undefined where it does not resolve.
+   */
+  reexports: Map<string, { from: string | undefined; name: string }>;
 }
 
 /**
@@ -92,10 +98,26 @@ function readExports(
   const names: string[] = [];
   const declared: string[] = [];
   const starFrom: (string | undefined)[] = [];
+  const reexports = new Map<string, { from: string | undefined; name: string }>();
   const own = (name: string) => {
     names.push(name);
     declared.push(name);
   };
+  // `import { Button } from "./Button"` then `export { Button }`: a re-export, not a declaration.
+  const imported = new Map<string, { specifier: string; name: string }>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      imported.set(element.name.text, {
+        specifier: statement.moduleSpecifier.text,
+        name: (element.propertyName ?? element.name).text,
+      });
+    }
+  }
   const exported = (node: ts.Node) =>
     ts.canHaveModifiers(node) &&
     (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
@@ -112,9 +134,21 @@ function readExports(
         names.push(clause.name.text);
       } else {
         for (const element of clause.elements) {
+          const name = element.name.text;
+          const local = (element.propertyName ?? element.name).text;
           // `export { Table }` exports a local; `export { Table } from "./table"` re-exports.
-          if (from === undefined) own(element.name.text);
-          else names.push(element.name.text);
+          const binding = from === undefined ? imported.get(local) : undefined;
+          if (from === undefined && !binding) {
+            own(name);
+            continue;
+          }
+          names.push(name);
+          reexports.set(
+            name,
+            binding
+              ? { from: resolve(binding.specifier), name: binding.name }
+              : { from: from === undefined ? undefined : resolve(from), name: local },
+          );
         }
       }
     } else if (ts.isVariableStatement(statement) && exported(statement)) {
@@ -131,5 +165,5 @@ function readExports(
       own(statement.name.text);
     }
   }
-  return { names, declared, starFrom };
+  return { names, declared, starFrom, reexports };
 }

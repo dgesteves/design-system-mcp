@@ -90,10 +90,9 @@ export function resolveElement(
       binding.imported === 'default'
         ? (target.defaultExport(binding.source, file)?.name ?? head)
         : binding.imported;
-    owner = target.components.get(imported);
-    if (owner && target.declaredElsewhere(owner, imported, binding.source, file)) {
-      return { kind: 'external' };
-    }
+    owner = target.componentFor(imported, binding.source, file);
+    // The import leads to another declaration of that name than the model's.
+    if (!owner && target.components.has(imported)) return { kind: 'external' };
     if (!owner) {
       // `<Icons.Add />` from `@acme/ui/icons`: a member of an export that is
       // not a component. A bare `<Icons />` renders an object, so it stays reported.

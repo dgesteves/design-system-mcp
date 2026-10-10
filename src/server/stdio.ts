@@ -14,7 +14,9 @@ import {
 } from '../config.js';
 import { DesignSystemHost } from '../design-system.js';
 import type { Logger } from '../util/log.js';
+import { loadTarget } from '../workspace.js';
 import { createServer } from './index.js';
+import { WorkspaceProjects } from './projects.js';
 
 export interface ServeOptions extends LoadConfigOptions {
   cwd: string;
@@ -25,30 +27,68 @@ export interface ServeOptions extends LoadConfigOptions {
   transport?: Transport;
 }
 
+type Served = { host: DesignSystemHost } | { projects: WorkspaceProjects };
+
 /**
  * Starts the server (on stdio unless another transport is given). The project
  * root comes from `--root`/`--config`, a config file in the working directory,
  * or else the client's MCP roots (for clients that launch servers from their
- * own directory).
+ * own directory). At a monorepo root with no design system of its own, it serves
+ * every project in it, each file answered by its own project.
  */
 export async function serveStdio(options: ServeOptions): Promise<McpServer> {
   const { logger } = options;
-  let resolveHost: (host: DesignSystemHost) => void = () => undefined;
+  let resolveHost: (served: Served) => void = () => undefined;
   let rejectHost: (error: unknown) => void = () => undefined;
-  const hostReady = new Promise<DesignSystemHost>((resolve, reject) => {
+  const hostReady = new Promise<Served>((resolve, reject) => {
     resolveHost = resolve;
     rejectHost = reject;
   });
   // Errors surface through tool results; do not crash on an unobserved rejection.
   hostReady.catch(() => undefined);
 
-  const server = createServer({ getDesignSystem: async () => (await hostReady).get() });
+  const server = createServer({
+    getDesignSystem: async () => {
+      const served = await hostReady;
+      if ('host' in served) return served.host.get();
+      throw new Error('This server serves a workspace root: pass a path.');
+    },
+    getProjects: async () => {
+      const served = await hostReady;
+      return 'projects' in served ? served.projects : undefined;
+    },
+  });
+  const notify = () => {
+    if (!server.isConnected()) return;
+    // McpServer.sendResourceListChanged() drops this promise, so a failed send
+    // would surface as an unhandled rejection.
+    server.server.sendResourceListChanged().catch((error: unknown) => {
+      logger.warn(`could not notify the client: ${(error as Error).message}`);
+    });
+  };
 
   const start = async (root: string | undefined) => {
     try {
-      const config = await loadConfig({ ...options, root });
+      const target = await loadTarget({ ...options, root });
+      const { config, workspace } = target;
       // Once, at start: a reload of the config does not repeat them.
       for (const text of config.deprecations ?? []) logger.warn(text);
+      if (workspace) {
+        const projects = new WorkspaceProjects(workspace, {
+          cache: options.cache,
+          watch: options.watch,
+          logger,
+          onChange: notify,
+        });
+        logger.info(
+          `monorepo root: ${workspace.projects.length} of ${workspace.projects.length + workspace.others.length} workspace packages have a design system${workspace.projects.length ? ` (${workspace.projects.map((p) => p.dir).join(', ')})` : ''}`,
+        );
+        server.server.onclose = () => {
+          projects.close();
+        };
+        resolveHost({ projects });
+        return;
+      }
       if (config.detected) logger.info(`found the design system through ${config.detected}`);
       const host = new DesignSystemHost(config, {
         cache: options.cache,
@@ -56,14 +96,7 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
         // Keep CLI overrides when the config file is edited.
         loadConfig: () => loadConfig({ ...options, root }),
       });
-      host.onChange(() => {
-        if (!server.isConnected()) return;
-        // McpServer.sendResourceListChanged() drops this promise, so a failed send
-        // would surface as an unhandled rejection.
-        server.server.sendResourceListChanged().catch((error: unknown) => {
-          logger.warn(`could not notify the client: ${(error as Error).message}`);
-        });
-      });
+      host.onChange(notify);
       if (options.watch) host.watch();
       host.get().catch((error: unknown) => {
         logger.error((error as Error).message);
@@ -71,7 +104,7 @@ export async function serveStdio(options: ServeOptions): Promise<McpServer> {
       server.server.onclose = () => {
         host.close();
       };
-      resolveHost(host);
+      resolveHost({ host });
     } catch (error) {
       logger.error((error as Error).message);
       rejectHost(error);

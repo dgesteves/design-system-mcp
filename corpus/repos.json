@@ -1,5 +1,5 @@
 {
-  "$comment": "Public repositories pinned by commit, checked by scripts/corpus.mjs. `paths` limits the sparse fetch to those folders (plus root files and every package.json, tsconfig and components.json); without it the whole repository is fetched. A run's `args` are extra flags for `check`. Only source, styles, manifests and docs are fetched, and nothing in them is installed, built or run.",
+  "$comment": "Public repositories pinned by commit, checked by scripts/corpus.mjs. `paths` limits the sparse fetch to those folders (plus root files and every package.json, tsconfig and components.json); without it the whole repository is fetched. A run's `args` are extra flags for `check`. A run from a monorepo root lists in `sameAs` the folders that another run checks from inside them, and must report the same files and findings there, file for file. Only source, styles, manifests and docs are fetched, and nothing in them is installed, built or run.",
   "repos": [
     {
       "name": "saas-starter",
@@ -32,7 +32,15 @@
       "url": "https://github.com/documenso/documenso",
       "sha": "38ecb217effcc53a7164d7123c51336f636bd3b2",
       "paths": ["apps/remix", "packages"],
-      "runs": [{ "name": "documenso", "cwd": "apps/remix", "check": ["."] }]
+      "runs": [
+        { "name": "documenso", "cwd": "apps/remix", "check": ["."] },
+        {
+          "name": "documenso-root",
+          "cwd": ".",
+          "check": ["."],
+          "sameAs": { "apps/remix": "documenso" }
+        }
+      ]
     },
     {
       "name": "dub",
@@ -47,6 +55,12 @@
           "cwd": "apps/web",
           "config": "configs/dub.json",
           "check": ["."]
+        },
+        {
+          "name": "dub-root",
+          "cwd": ".",
+          "check": ["."],
+          "sameAs": { "apps/web": "dub-web", "packages/ui": "dub-ui" }
         }
       ]
     },
@@ -58,7 +72,17 @@
       "runs": [
         { "name": "openstatus-dashboard", "cwd": "apps/dashboard", "check": ["."] },
         { "name": "openstatus-web", "cwd": "apps/web", "check": ["."] },
-        { "name": "openstatus-ui", "cwd": "packages/ui", "check": ["."] }
+        { "name": "openstatus-ui", "cwd": "packages/ui", "check": ["."] },
+        {
+          "name": "openstatus-root",
+          "cwd": ".",
+          "check": ["."],
+          "sameAs": {
+            "apps/dashboard": "openstatus-dashboard",
+            "apps/web": "openstatus-web",
+            "packages/ui": "openstatus-ui"
+          }
+        }
       ]
     },
     {
@@ -69,7 +93,17 @@
       "runs": [
         { "name": "calcom-web", "cwd": "apps/web", "check": ["."] },
         { "name": "calcom-ui", "cwd": "packages/ui", "check": ["."] },
-        { "name": "calcom-atoms", "cwd": "packages/platform/atoms", "check": ["."] }
+        { "name": "calcom-atoms", "cwd": "packages/platform/atoms", "check": ["."] },
+        {
+          "name": "calcom-root",
+          "cwd": ".",
+          "check": ["."],
+          "sameAs": {
+            "apps/web": "calcom-web",
+            "packages/ui": "calcom-ui",
+            "packages/platform/atoms": "calcom-atoms"
+          }
+        }
       ]
     },
     {

@@ -184,6 +184,7 @@ console.log(result([]));
       '\n',
     ),
     'packages/web/package.json': '{"name":"web"}',
+    'libs/ui/project.json': '{"name":"ui"}',
   });
   function hook(payload: unknown, env: Record<string, string> = {}) {
     const run = spawnSync(process.execPath, [HOOK], {
@@ -249,6 +250,9 @@ console.log(result([]));
     expect(hook(nested).stderr).toContain(
       `cwd=${fs.realpathSync(path.join(project, 'packages/web'))}`,
     );
+    // An Nx project marks its folder with project.json alone, as `check` from the root reads it.
+    const nx = { ...edit('x'), tool_input: { file_path: 'libs/ui/src/where.tsx' } };
+    expect(hook(nx).stderr).toContain(`cwd=${fs.realpathSync(path.join(project, 'libs/ui'))}`);
   });
 
   it('passes warnings on as context without blocking', () => {

@@ -1,6 +1,6 @@
 # Set up your agent
 
-The server speaks MCP over stdio. It finds the project from `--root`, a config file in the working directory, or the workspace roots the client reports, and otherwise uses the working directory.
+The server speaks MCP over stdio. It finds the project from `--root`, a config file in the working directory, or the workspace roots the client reports, and otherwise uses the working directory. Started at a [monorepo root](configuration.md#monorepo-roots), it serves every app and design-system package in it: the tools take the `path` of the file the agent is editing and answer for that file's project.
 
 Every client gets the same five tools, including `check_ui`, which the agent runs on its own output. Only Claude Code has a hook that checks each edit as it happens, so there use the [plugin](plugin.md) instead; with other agents, add the [CI check](ci.md) so what the agent skips still gets caught.
 

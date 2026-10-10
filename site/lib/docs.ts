@@ -39,7 +39,7 @@ export const DOCS_PAGES = [
     href: '/docs/troubleshooting',
     title: 'Troubleshooting',
     description:
-      'When inspect finds nothing, a monorepo root, components with 0 props, and min-release-age policies that block npx.',
+      'When inspect finds nothing, a monorepo root that misses a project, components with 0 props, and min-release-age policies that block npx.',
   },
   {
     href: '/docs/how-it-works',

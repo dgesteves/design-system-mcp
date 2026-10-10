@@ -799,6 +799,20 @@ describe('prefer-design-system-component', () => {
     );
   });
 
+  it('leaves elements kept from the user alone: hidden, aria-hidden, or off-screen and out of the tab order', () => {
+    // cal.com's react-select wrapper carries `required` on an invisible input.
+    const hidden = [
+      `<input tabIndex={-1} style={{ opacity: 0, height: 1 }} required />`,
+      `<input tabIndex="-1" className="sr-only" />`,
+      `<input aria-hidden="true" className="absolute" />`,
+      `<button hidden onClick={go}>Go</button>`,
+    ];
+    for (const code of hidden) expect(check(code, rule)).toEqual([]);
+    // Out of the tab order but visible (a roving tabindex), or invisible but focusable: still UI.
+    expect(check(`<button tabIndex={-1} className="px-3">Go</button>`, rule)).toHaveLength(1);
+    expect(check(`<input style={{ opacity: 0 }} />`, rule)).toHaveLength(1);
+  });
+
   it('maps by element name too, without a fix when the component may not take its attributes', () => {
     // The demo's Dialog wraps the Radix root, not a <dialog>: renaming the tag would break the code.
     const [dialog] = check(`<dialog open><p>Hi</p></dialog>`, rule);
@@ -1248,6 +1262,49 @@ Table.Body = Body`,
         `import { Table } from "./table"\n<Table><Table.Body /></Table>`,
         'components/ui/examples.tsx',
       ).diagnostics,
+    ).toEqual([]);
+  });
+
+  it('follows an import through barrels to the component declared there, or leaves it alone', async () => {
+    // cal.com's packages/features has @calcom/ui and @coss/ui, each with a Button.
+    const two = await load(
+      fixture({
+        'tsconfig.json': JSON.stringify({
+          compilerOptions: { jsx: 'react-jsx', paths: { '@a/*': ['./a/*'], '@b/*': ['./b/*'] } },
+        }),
+        'onsystem.config.json': '{ "components": ["a/**/*.tsx", "b/**/*.tsx"] }',
+        'a/button/Button.tsx': `export function Button(props: { variant?: "icon" | "primary" }) { return <button /> }`,
+        'a/button/index.ts': `export { Button } from "./Button"`,
+        'b/button.tsx': `export function Button(props: { variant?: "default" | "ghost" }) { return <button /> }`,
+        // dub's CardList: the inner function is a component file, the Object.assign in index.ts is not.
+        'b/card-list/card-list.tsx': `export function CardList(props: { children?: string }) { return <ul /> }`,
+        'b/card-list/card.tsx': `export function CardListCard(props: { children?: string }) { return <li /> }`,
+        'b/card-list/index.ts': `import { CardList as Root } from "./card-list"
+import { CardListCard } from "./card"
+const CardList = Object.assign(Root, { Card: CardListCard })
+export { CardList }`,
+      }),
+    );
+    const variants = (code: string) =>
+      two
+        .check(code, 'app/page.tsx')
+        .diagnostics.filter((d) => d.ruleId === 'no-unknown-variant')
+        .map((d) => d.message);
+    expect(variants(`import { Button } from "@a/button"\n<Button variant="icon" />`)).toEqual([]);
+    expect(variants(`import { Button } from "@a/button"\n<Button variant="ghost" />`)).toEqual([
+      '"ghost" is not a valid variant for <Button>. Allowed: icon, primary.',
+    ]);
+    expect(variants(`import { Button } from "@b/button"\n<Button variant="icon" />`)).toEqual([
+      '"icon" is not a valid variant for <Button>. Allowed: default, ghost.',
+    ]);
+    // The CardList apps import is the Object.assign one, which the model does not have: not ours.
+    expect(
+      two
+        .check(
+          `import { CardList } from "@b/card-list"\n<CardList><CardList.Card /></CardList>`,
+          'app/page.tsx',
+        )
+        .diagnostics.filter((d) => d.ruleId === rule),
     ).toEqual([]);
   });
 

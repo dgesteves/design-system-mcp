@@ -617,10 +617,17 @@ class PackageFinder {
   }
 }
 
-function isWorkspaceRoot(dir: string): boolean {
+/**
+ * A monorepo root: a pnpm-workspace.yaml, `workspaces` in package.json (npm, Yarn, Bun),
+ * a lerna.json with `packages`, or an nx.json. Turborepo runs on the package manager's
+ * workspaces, so its roots are among these.
+ */
+export function isWorkspaceRoot(dir: string): boolean {
   if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return true;
+  if (fs.existsSync(path.join(dir, 'nx.json'))) return true;
   const pkg = readJson(path.join(dir, 'package.json'));
-  return pkg !== undefined && pkg.workspaces !== undefined;
+  if (pkg !== undefined && pkg.workspaces !== undefined) return true;
+  return Array.isArray(readJson(path.join(dir, 'lerna.json'))?.packages);
 }
 
 /** Package name → directory for every package the workspace declares. */
@@ -636,26 +643,84 @@ function scanWorkspace(start: string): Map<string, string> {
   }
   if (!workspaceRoot) return packages;
 
-  const patterns = workspacePatterns(workspaceRoot).filter((p) => !p.startsWith('!'));
-  if (!patterns.length) return packages;
-  const manifests = globSync(
-    patterns.map((p) => `${toPosix(p).replace(/\/$/, '')}/package.json`),
-    { cwd: workspaceRoot, absolute: true, ignore: ['**/node_modules/**'] },
-  );
-  for (const manifest of manifests) {
-    const name = readJson(manifest)?.name;
-    if (typeof name === 'string' && !packages.has(name)) packages.set(name, path.dirname(manifest));
+  for (const dir of workspacePackageDirs(workspaceRoot)) {
+    const name = readJson(path.join(dir, 'package.json'))?.name;
+    if (typeof name === 'string' && !packages.has(name)) packages.set(name, dir);
   }
   return packages;
 }
 
-/** `packages` from pnpm-workspace.yaml, or `workspaces` from package.json (npm, Yarn, Bun). */
-function workspacePatterns(dir: string): string[] {
+/** Folders a workspace root's package globs list, without its `!` exclusions. */
+export interface WorkspacePatterns {
+  include: string[];
+  exclude: string[];
+  /** What declares them, for `inspect`: `pnpm-workspace.yaml`, `package.json workspaces`. */
+  source: string;
+}
+
+/**
+ * `packages` from pnpm-workspace.yaml, `workspaces` from package.json (npm, Yarn, Bun), or
+ * `packages` from lerna.json, in that order of precedence.
+ */
+export function workspacePatterns(dir: string): WorkspacePatterns {
+  const split = (list: string[], source: string): WorkspacePatterns => ({
+    include: list.filter((p) => !p.startsWith('!')).map((p) => toPosix(p).replace(/\/$/, '')),
+    exclude: list.filter((p) => p.startsWith('!')).map((p) => toPosix(p.slice(1))),
+    source,
+  });
   const yaml = path.join(dir, 'pnpm-workspace.yaml');
-  if (fs.existsSync(yaml)) return pnpmPackages(fs.readFileSync(yaml, 'utf8'));
+  if (fs.existsSync(yaml)) {
+    return split(pnpmPackages(fs.readFileSync(yaml, 'utf8')), 'pnpm-workspace.yaml');
+  }
   const workspaces = readJson(path.join(dir, 'package.json'))?.workspaces;
   const list = Array.isArray(workspaces) ? workspaces : asRecord(workspaces).packages;
-  return Array.isArray(list) ? list.filter((p): p is string => typeof p === 'string') : [];
+  if (Array.isArray(list)) {
+    return split(
+      list.filter((p): p is string => typeof p === 'string'),
+      'package.json workspaces',
+    );
+  }
+  const lerna = readJson(path.join(dir, 'lerna.json'))?.packages;
+  if (Array.isArray(lerna)) {
+    return split(
+      lerna.filter((p): p is string => typeof p === 'string'),
+      'lerna.json',
+    );
+  }
+  return { include: [], exclude: [], source: '' };
+}
+
+/** Folders never holding a workspace package of the project's own. */
+const NOT_PACKAGES = ['**/node_modules/**', '**/.git/**'];
+
+/**
+ * Every package folder of the workspace at `root`, absolute and sorted: the folders its
+ * package globs match that hold a package.json, and with an nx.json, every folder with an
+ * Nx project.json.
+ */
+export function workspacePackageDirs(root: string): string[] {
+  const { include, exclude } = workspacePatterns(root);
+  const ignore = [...NOT_PACKAGES, ...exclude];
+  const dirs = include.length
+    ? globSync(
+        include.map((p) => `${p}/package.json`),
+        { cwd: root, absolute: true, ignore },
+      ).map((manifest) => path.dirname(manifest))
+    : [];
+  if (fs.existsSync(path.join(root, 'nx.json'))) {
+    const projects = globSync('**/project.json', {
+      cwd: root,
+      absolute: true,
+      // Build output can hold copies of a project's files.
+      ignore: [...ignore, '**/dist/**'],
+    });
+    for (const project of projects) {
+      dirs.push(path.dirname(project));
+    }
+  }
+  return unique(dirs.map((d) => path.resolve(d)))
+    .filter((d) => d !== path.resolve(root))
+    .sort();
 }
 
 /**
