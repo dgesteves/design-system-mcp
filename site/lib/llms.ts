@@ -80,6 +80,7 @@ export function llmsFullTxt(): string {
     ['CI and baselines', '/docs/ci', docs.ci],
     ['Set up your agent', '/docs/clients', docs.clients],
     ['Configuration', '/docs/configuration', docs.configuration],
+    ['ESLint plugin', '/docs/eslint', docs.eslint],
     [
       'Rules',
       '/rules',

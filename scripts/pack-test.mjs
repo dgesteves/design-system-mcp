@@ -2,7 +2,8 @@
 // (the prepack and postpack hooks run, as on publish), installs the tarball into a new project
 // outside the repository, and runs what a user runs there: the installed `onsystem` bin
 // (`--version`, `inspect`, `check`), an MCP stdio handshake with the installed server in both
-// protocol eras, and the Claude Code hook, which picks up the project's own install.
+// protocol eras, the Claude Code hook, which picks up the project's own install, and the
+// ESLint plugin (`onsystem/eslint`) with its loader worker.
 // Run after `pnpm build`. Needs the npm registry for the package's dependencies.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,6 +11,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { Client as ModernClient } from '@modelcontextprotocol/client';
 import { StdioClientTransport as ModernStdioTransport } from '@modelcontextprotocol/client/stdio';
@@ -56,6 +58,8 @@ try {
     'schema.json',
     'dist/cli.js',
     'dist/index.js',
+    'dist/eslint.js',
+    'dist/eslint-worker.js',
   ]) {
     assert.ok(files.includes(file), `the tarball has ${file}`);
   }
@@ -175,6 +179,27 @@ try {
   assert.equal(hook.status, 2, `the hook blocks on errors\n${hook.stdout}\n${hook.stderr}`);
   assert.match(hook.stderr, /no-unknown-variant/);
   console.log('Claude Code hook: blocked the edit with the installed CLI');
+
+  // 6. The ESLint plugin from the installed package, its rules called as ESLint calls them
+  //    (ESLint itself is a peer the app brings), which starts the loader worker.
+  const pluginPath = createRequire(path.join(app, 'package.json')).resolve('onsystem/eslint');
+  const { default: plugin } = await import(pathToFileURL(pluginPath).href);
+  const page = path.join(app, 'app', 'page.tsx');
+  const sourceCode = { text: fs.readFileSync(page, 'utf8') };
+  const reported = [];
+  for (const [id, rule] of Object.entries(plugin.rules)) {
+    const context = {
+      cwd: app,
+      filename: page,
+      sourceCode,
+      settings: {},
+      report: () => reported.push(id),
+    };
+    rule.create(context)['Program:exit']({ type: 'Program' });
+  }
+  assert.deepEqual(reported.sort(), ['no-hardcoded-color', 'no-unknown-variant']);
+  assert.equal(plugin.configs.recommended.plugins.onsystem, plugin);
+  console.log(`ESLint plugin: ${reported.join(', ')}`);
 
   console.log('\npack test passed');
 } finally {

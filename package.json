@@ -9,6 +9,8 @@
     "agent-guardrails",
     "linter",
     "lint",
+    "eslint",
+    "eslint-plugin",
     "react",
     "shadcn",
     "cva",
@@ -36,6 +38,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./eslint": {
+      "types": "./dist/eslint.d.ts",
+      "default": "./dist/eslint.js"
     },
     "./schema.json": "./schema.json",
     "./package.json": "./package.json"
@@ -87,6 +93,14 @@
     "typescript": "~6.0.3",
     "zod": "^4.6.5"
   },
+  "peerDependencies": {
+    "eslint": ">=9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "eslint": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
@@ -100,6 +114,7 @@
     "ajv-formats": "^3.0.1",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-v9": "npm:eslint@9.39.5",
     "geist": "^1.7.2",
     "globals": "^17.13.0",
     "opentype.js": "^2.0.0",

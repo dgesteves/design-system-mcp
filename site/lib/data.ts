@@ -126,6 +126,7 @@ export interface Docs {
   ci: string;
   clients: string;
   configuration: string;
+  eslint: string;
   rules: string;
   tools: string;
   troubleshooting: string;

@@ -44,6 +44,7 @@ export const DOCS_FILES: Record<string, string> = {
   'ci.md': '/docs/ci',
   'clients.md': '/docs/clients',
   'configuration.md': '/docs/configuration',
+  'eslint.md': '/docs/eslint',
   'tools.md': '/docs/tools',
   'troubleshooting.md': '/docs/troubleshooting',
   'how-it-works.md': '/docs/how-it-works',
