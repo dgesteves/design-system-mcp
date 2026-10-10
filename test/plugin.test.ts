@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { randomUUID } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 
 import { fixture } from './helpers.js';
@@ -63,7 +65,9 @@ if (name === 'scoped.tsx') { console.log(result([d('error', 2), d('error', 8)]))
 if (name === 'warn.tsx') { console.log(result([d('warning', 4)])); process.exit(0); }
 if (name === 'where.tsx') { console.log(result([{ ...d('error', 1), message: 'cwd=' + process.cwd() }])); process.exit(1); }
 if (name === 'shape.tsx') { console.log(JSON.stringify({ results: [] })); process.exit(0); }
-if (name === 'broken.tsx') { console.error('Invalid config'); process.exit(2); }
+if (name === 'broken.tsx') { console.error('Invalid config in /app/design-system-mcp.config.json:'); process.exit(2); }
+if (name === 'policy.tsx') { console.error('npm error code ENOVERSIONS\\nnpm error No versions available for @dgesteves/design-system-mcp'); process.exit(1); }
+if (name === 'teapot.tsx') { console.error('npm error 418 I am a teapot: https://bot:s3cret@registry.acme.dev/pkg'); process.exit(1); }
 if (!process.argv.includes('--quiet-without-design-system')) process.exit(3);
 console.log(result([]));
 `;
@@ -150,10 +154,35 @@ console.log(result([]));
     });
   });
 
-  it('stays silent for clean files, other files, CLI failures and bad input', () => {
+  it('tells the user once when the CLI cannot run, and never blocks the edit', () => {
+    // documenso's min-release-age policy: npx exits 1 with npm's error.
+    const session = { session_id: randomUUID() };
+    const first = hook({ ...edit('policy.tsx'), ...session });
+    expect(first.code).toBe(0);
+    const notice =
+      'design-system-mcp could not check app/policy.tsx, so edits are not being checked against the design system: npm found no version of @dgesteves/design-system-mcp@^0.3.0 it may install (ENOVERSIONS), as with a min-release-age policy. Run `design-system-mcp check app/policy.tsx` to see why.';
+    expect(JSON.parse(first.stdout)).toEqual({ systemMessage: notice });
+    expect(first.stderr).toBe(`${notice}\n`);
+    // Once per session and project.
+    expect(hook({ ...edit('policy.tsx'), ...session })).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
+    // A broken config, in another session.
+    const config = hook({ ...edit('broken.tsx'), session_id: randomUUID() });
+    expect(config.code).toBe(0);
+    expect(config.stderr).toContain(': Invalid config in /app/design-system-mcp.config.json:');
+    expect(config.stderr).toContain('Fix the config, or run `design-system-mcp inspect`');
+    // Other npm errors pass on their first line, without credentials.
+    const teapot = hook({ ...edit('teapot.tsx'), session_id: randomUUID() });
+    expect(teapot.stderr).toContain('npm error 418 I am a teapot: https://registry.acme.dev/pkg.');
+    expect(teapot.stderr).not.toContain('s3cret');
+  });
+
+  it('stays silent for clean files, other files, unexpected output and bad input', () => {
     for (const payload of [
       edit('clean.tsx'),
-      edit('broken.tsx'),
       edit('shape.tsx'),
       edit('notes.md'),
       { ...edit('x.tsx'), tool_input: {} },
