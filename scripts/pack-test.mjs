@@ -19,7 +19,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const repo = path.resolve(import.meta.dirname, '..');
 const windows = process.platform === 'win32';
 const { version } = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
-assert.ok(fs.existsSync(path.join(repo, 'dist', 'cli.js')), 'dist/cli.js is missing: run pnpm build first');
+assert.ok(
+  fs.existsSync(path.join(repo, 'dist', 'cli.js')),
+  'dist/cli.js is missing: run pnpm build first',
+);
 
 /** Runs a command, through the shell on Windows, where npm and the bin shims are .cmd files. */
 function run(command, args, cwd, expected = [0]) {
@@ -46,11 +49,23 @@ try {
   const [info] = JSON.parse(packed.stdout.slice(packed.stdout.indexOf('[')));
   const tarball = path.join(work, info.filename);
   const files = info.files.map((f) => f.path);
-  for (const file of ['package.json', 'README.md', 'LICENSE', 'schema.json', 'dist/cli.js', 'dist/index.js']) {
+  for (const file of [
+    'package.json',
+    'README.md',
+    'LICENSE',
+    'schema.json',
+    'dist/cli.js',
+    'dist/index.js',
+  ]) {
     assert.ok(files.includes(file), `the tarball has ${file}`);
   }
-  assert.ok(!files.some((f) => f.startsWith('src/') || f.startsWith('test/')), 'no sources or tests');
-  console.log(`packed ${info.filename}: ${files.length} files, ${(info.size / 1024).toFixed(0)} kB`);
+  assert.ok(
+    !files.some((f) => f.startsWith('src/') || f.startsWith('test/')),
+    'no sources or tests',
+  );
+  console.log(
+    `packed ${info.filename}: ${files.length} files, ${(info.size / 1024).toFixed(0)} kB`,
+  );
 
   // 2. A shadcn/ui app with one component, a theme, and a page with two problems.
   const app = path.join(work, 'app');
@@ -90,7 +105,10 @@ try {
 
   const inspected = bin('inspect');
   assert.equal(inspected.status, 0, inspected.stderr);
-  assert.match(inspected.stdout, /detected components\.json \(ui: @\/components\/ui → components\/ui\)/);
+  assert.match(
+    inspected.stdout,
+    /detected components\.json \(ui: @\/components\/ui → components\/ui\)/,
+  );
   assert.match(inspected.stdout, /Components \(1 \+ 0 parts\)/);
   console.log('onsystem inspect: found Button through components.json');
 
@@ -105,7 +123,12 @@ try {
   // 4. The installed server over stdio, as an MCP client launches it.
   const cli = createRequire(path.join(app, 'package.json')).resolve('onsystem/package.json');
   const server = path.join(path.dirname(cli), 'dist', 'cli.js');
-  const launch = { command: process.execPath, args: [server, '--no-watch'], cwd: app, stderr: 'pipe' };
+  const launch = {
+    command: process.execPath,
+    args: [server, '--no-watch'],
+    cwd: app,
+    stderr: 'pipe',
+  };
   const legacy = new Client({ name: 'pack-test-2025', version: '1.0.0' });
   await legacy.connect(new StdioClientTransport(launch));
   assert.equal(legacy.getServerVersion()?.version, version);
@@ -140,11 +163,15 @@ try {
   const env = { ...process.env };
   delete env.ONSYSTEM_BIN;
   delete env.DESIGN_SYSTEM_MCP_BIN;
-  const hook = spawnSync(process.execPath, [path.join(repo, 'plugins/onsystem/hooks/check-ui.mjs')], {
-    input: payload,
-    encoding: 'utf8',
-    env,
-  });
+  const hook = spawnSync(
+    process.execPath,
+    [path.join(repo, 'plugins/onsystem/hooks/check-ui.mjs')],
+    {
+      input: payload,
+      encoding: 'utf8',
+      env,
+    },
+  );
   assert.equal(hook.status, 2, `the hook blocks on errors\n${hook.stdout}\n${hook.stderr}`);
   assert.match(hook.stderr, /no-unknown-variant/);
   console.log('Claude Code hook: blocked the edit with the installed CLI');
