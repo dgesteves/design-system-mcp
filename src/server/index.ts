@@ -32,7 +32,12 @@ When writing or changing UI in this project:
 4. Run check_ui on every snippet or file you write and fix all errors before you finish.
 In a monorepo served from its root, pass \`path\` (the file you are editing) to list_components, get_component, search_components and get_tokens, and \`path\` or \`filename\` to check_ui, so each answer comes from that file's own project.`;
 
-const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
+const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 /** What a client may cache: what never changes while the server runs, and what does. */
 const STATIC = { ttlMs: 3_600_000, cacheScope: 'private' } as const;

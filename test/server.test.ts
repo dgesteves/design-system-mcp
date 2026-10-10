@@ -48,7 +48,13 @@ describe('MCP server over the in-memory transport', () => {
     ]);
     for (const tool of tools) {
       expect(tool.description?.length).toBeGreaterThan(80);
-      expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+      // All four hints, explicitly: some clients and directories reject tools that leave one out.
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
       expect(tool.inputSchema.type).toBe('object');
       // The README says every tool has one.
       expect([tool.name, tool.outputSchema?.type]).toEqual([tool.name, 'object']);
