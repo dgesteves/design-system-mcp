@@ -275,6 +275,12 @@ export interface LoadConfigOptions {
   tokens?: string[] | undefined;
   docs?: string[] | undefined;
   includeDesignSystem?: boolean | undefined;
+  /**
+   * Read a JSON config only: a JavaScript or TypeScript config is an error rather than run.
+   * For a project the MCP server found from the path a tool call names, which a prompt can
+   * choose, unlike the folder the server was started in.
+   */
+  jsonConfigOnly?: boolean | undefined;
 }
 
 export class ConfigError extends Error {
@@ -300,6 +306,11 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
   let raw: unknown = {};
   if (configFile) {
     if (!fs.existsSync(configFile)) throw new ConfigError(`Config file not found: ${configFile}`);
+    if (options.jsonConfigOnly && !configFile.endsWith('.json')) {
+      throw new ConfigError(
+        `${configFile} was not run: the server runs a JavaScript or TypeScript config only in a project it was started in (its working directory, --root or the client's roots), not in one found from the path a tool call names. Start the server in the project, or use onsystem.config.json.`,
+      );
+    }
     raw = await readConfigFile(configFile);
   }
   const parsed = configSchema.safeParse(raw);

@@ -53,8 +53,10 @@ type Resolve = (target: string | undefined) => Promise<Served>;
  * plugin's folder and reports no roots), each request's project is found from the
  * absolute path it names (`findProjectRoot`): the nearest folder at or above it with a
  * project marker, or the monorepo root above that, served as if the server had been
- * started there. Each root found is loaded once and kept; a request without an absolute
- * path is answered from the one root found so far.
+ * started there, except that a config there is read only when it is JSON: a prompt can
+ * choose the path, so a JavaScript or TypeScript config is not run. Each root found is
+ * loaded once and kept; a request without an absolute path is answered from the one root
+ * found so far.
  */
 export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
   const { logger } = options;
@@ -76,9 +78,14 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
   };
   const closers: (() => void)[] = [];
 
-  /** The project at `root` (the working directory when undefined), or a monorepo root's projects. */
-  const load = async (root: string | undefined): Promise<Served> => {
-    const target = await loadTarget({ ...options, root });
+  /**
+   * The project at `root` (the working directory when undefined), or a monorepo root's
+   * projects. `jsonConfigOnly` for a root found from a tool call's path: its configs, and those
+   * of the projects in it, are read only when they are JSON, never run.
+   */
+  const load = async (root: string | undefined, jsonConfigOnly = false): Promise<Served> => {
+    const configOptions = { ...options, root, jsonConfigOnly };
+    const target = await loadTarget(configOptions);
     const { config, workspace } = target;
     // Once per project, as it loads: a reload of the config does not repeat them.
     for (const text of config.deprecations ?? []) logger.warn(text);
@@ -102,7 +109,7 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
       cache: options.cache,
       logger,
       // Keep CLI overrides when the config file is edited.
-      loadConfig: () => loadConfig({ ...options, root }),
+      loadConfig: () => loadConfig(configOptions),
     });
     host.onChange(notify);
     if (options.watch) host.watch();
@@ -140,13 +147,13 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
         const dir = findProjectRoot(target);
         if (!dir) {
           throw new ProjectNotFoundError(
-            `No project at or above ${target}: no folder from there up holds a package.json, components.json, project.json or onsystem config. Pass the absolute path of a file in your project.`,
+            `No project at or above ${target}: no folder from there up holds a package.json, components.json, project.json or onsystem config (the home folder and the filesystem root do not count). Pass the absolute path of a file in your project.`,
           );
         }
         let served = found.get(dir);
         if (!served) {
           logger.info(`using ${dir}, the project of ${target}`);
-          served = load(dir);
+          served = load(dir, true);
           served.catch((error: unknown) => {
             logger.error((error as Error).message);
           });

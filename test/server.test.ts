@@ -476,6 +476,14 @@ function chipProject(name: string) {
   });
 }
 
+/** A config written in code that leaves `ran.txt` next to itself when it is run. */
+const MARKER_CONFIG = [
+  "import fs from 'node:fs';",
+  "fs.writeFileSync(new URL('./ran.txt', import.meta.url), 'ran');",
+  'export default {};',
+  '',
+].join('\n');
+
 /** Serves from a folder outside any project, as a client that starts servers in the home or a plugin folder does. */
 async function serveOutside(transport: NonNullable<Parameters<typeof serveStdio>[0]['transport']>) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-outside-'));
@@ -582,6 +590,58 @@ describe('project from the absolute path a call names', () => {
     expect(text(which)).toContain(`files in 2 projects (${first}, ${second})`);
     await client.close();
     await served.close();
+  });
+
+  it('never runs a JavaScript config of a project found from a path, and reads a JSON one', async () => {
+    const project = chipProject('chips');
+    const config = path.join(project, 'onsystem.config.mjs');
+    fs.writeFileSync(config, MARKER_CONFIG);
+    const marker = path.join(project, 'ran.txt');
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const served = await serveOutside(serverTransport);
+    const client = new Client({ name: 'no-roots', version: '1.0.0' });
+    await client.connect(clientTransport);
+    const result = await client.callTool({
+      name: 'check_ui',
+      arguments: { path: path.join(project, 'app/page.tsx') },
+    });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain(`${config} was not run`);
+    expect(text(result)).toContain('or use onsystem.config.json');
+    expect(fs.existsSync(marker)).toBe(false);
+
+    // A JSON config is read: it turns the rule off.
+    const json = chipProject('json');
+    fs.writeFileSync(
+      path.join(json, 'onsystem.config.json'),
+      JSON.stringify({ rules: { 'no-unknown-variant': 'off' } }),
+    );
+    const checked = await client.callTool({
+      name: 'check_ui',
+      arguments: { path: path.join(json, 'app/page.tsx') },
+    });
+    expect(checked.structuredContent).toMatchObject({ ok: true, errorCount: 0 });
+    await client.close();
+    await served.close();
+
+    // Started in the project (--root), the server runs it as before.
+    const [rootClientTransport, rootServerTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd: fixture({}),
+      root: project,
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: rootServerTransport,
+    });
+    const rootClient = new Client({ name: 'c', version: '1.0.0' });
+    await rootClient.connect(rootClientTransport);
+    const listed = await rootClient.callTool({ name: 'list_components', arguments: {} });
+    expect(listed.isError).toBeFalsy();
+    expect(text(listed)).toContain('Chip');
+    expect(fs.existsSync(marker)).toBe(true);
+    await rootClient.close();
+    await server.close();
   });
 
   it('checks code under an absolute filename as that file, overrides included', async () => {

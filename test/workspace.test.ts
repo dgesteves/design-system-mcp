@@ -13,7 +13,7 @@ import { createServer } from '../src/server/index.js';
 import { WorkspaceProjects } from '../src/server/projects.js';
 import { serveStdio } from '../src/server/stdio.js';
 import { silentLogger } from '../src/util/log.js';
-import { loadTarget, PROJECT_MARKERS, projectDirOf } from '../src/workspace.js';
+import { findProjectRoot, loadTarget, PROJECT_MARKERS, projectDirOf } from '../src/workspace.js';
 import { fixture } from './helpers.js';
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
@@ -435,6 +435,76 @@ describe('MCP server at a workspace root', () => {
     expect(text(admin)).toContain('variant?: "default" | "ghost"');
     await stdioClient.close();
     await server.close();
+  });
+
+  it('never runs the JavaScript config of a project in a monorepo root found from a path', async () => {
+    const marker = [
+      "import fs from 'node:fs';",
+      "fs.writeFileSync(new URL('./ran.txt', import.meta.url), 'ran');",
+      'export default {};',
+      '',
+    ].join('\n');
+    const root = fixture({ ...MONOREPO, 'apps/web/onsystem.config.mjs': marker });
+    const config = path.join(root, 'apps/web/onsystem.config.mjs');
+    const ran = path.join(root, 'apps/web/ran.txt');
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd: fixture({}),
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const stdioClient = new Client({ name: 'no-roots', version: '1.0.0' });
+    await stdioClient.connect(clientTransport);
+    const result = await stdioClient.callTool({
+      name: 'check_ui',
+      arguments: { path: path.join(root, 'apps/web/app/page.tsx') },
+    });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain(`${config} was not run`);
+    expect(fs.existsSync(ran)).toBe(false);
+    await stdioClient.close();
+    await server.close();
+
+    // Started at the root, the server runs it as before.
+    const [rootClientTransport, rootServerTransport] = InMemoryTransport.createLinkedPair();
+    const atRoot = await serveStdio({
+      cwd: root,
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: rootServerTransport,
+    });
+    const rootClient = new Client({ name: 'c', version: '1.0.0' });
+    await rootClient.connect(rootClientTransport);
+    const checked = await rootClient.callTool({
+      name: 'check_ui',
+      arguments: { path: 'apps/web/app/page.tsx' },
+    });
+    expect(checked.isError).toBeFalsy();
+    expect(fs.existsSync(ran)).toBe(true);
+    await rootClient.close();
+    await atRoot.close();
+  });
+});
+
+describe('the project of a path a tool call names', () => {
+  it('is never the home folder', () => {
+    const home = fixture({ 'package.json': '{ "name": "stray" }', 'notes/a.tsx': '' });
+    expect(findProjectRoot(path.join(home, 'notes/a.tsx'), home)).toBeUndefined();
+    expect(findProjectRoot(home, home)).toBeUndefined();
+  });
+
+  it('is not a monorepo root in the home folder either', () => {
+    const home = fixture({
+      'package.json': json({ workspaces: ['code/*'] }),
+      'code/app/package.json': json({ name: 'app' }),
+      'code/app/page.tsx': '',
+    });
+    expect(findProjectRoot(path.join(home, 'code/app/page.tsx'), home)).toBe(
+      path.join(home, 'code/app'),
+    );
   });
 });
 
