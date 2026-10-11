@@ -261,7 +261,7 @@ describe('MCP server over the in-memory transport', () => {
       arguments: { code: '<p className="text-gray-500">Hi</p>' },
     });
     const notice =
-      'No design system found (no components or color tokens): only the accessibility rule ran. See https://design-system-mcp-demo.vercel.app/docs/configuration';
+      'No design system found (no components or color tokens): only the accessibility rule ran. See https://onsystem.vercel.app/docs/configuration';
     expect(text(result)).toBe(`snippet.tsx: no design-system problems found.\n\n${notice}`);
     expect(result.structuredContent).toMatchObject({ ok: true, notice });
     await plain.close();

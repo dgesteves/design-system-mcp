@@ -7,11 +7,11 @@ The [Agent Plugins 1.0](https://github.com/agentplugins/agent-plugins-spec) pack
 - **An MCP server,** `onsystem` (`mcp.json`), with five read-only tools: `list_components`, `get_component`, `search_components`, `get_tokens` and `check_ui`.
 - **A skill** (`skills/onsystem`) that tells the agent to look components and tokens up before writing UI and to fix every `check_ui` finding.
 
-There is no hook: the format has none. The [Claude Code plugin](../onsystem) checks each edit as it happens; with other agents, add the [CI check](https://design-system-mcp-demo.vercel.app/docs/ci).
+There is no hook: the format has none. The [Claude Code plugin](../onsystem) checks each edit as it happens; with other agents, add the [CI check](https://onsystem.vercel.app/docs/ci).
 
 ## What it runs
 
-`npx -y onsystem@<version>`, the npm package pinned to this plugin's version. The format starts the server in the plugin's folder, not your project, so the server finds the project through the workspace roots the client reports. If your client reports none, add the server with the [MCP config for your client](https://design-system-mcp-demo.vercel.app/docs/clients) instead.
+`npx -y onsystem@<version>`, the npm package pinned to this plugin's version. The format starts the server in the plugin's folder, not your project, so the server finds the project through the workspace roots the client reports. If your client reports none, add the server with the [MCP config for your client](https://onsystem.vercel.app/docs/clients) instead.
 
 ## What data it touches
 
@@ -25,6 +25,6 @@ GitHub Copilot CLI:
 copilot plugin install dgesteves/onsystem:plugins/onsystem-agent
 ```
 
-Other clients: [Set up your agent](https://design-system-mcp-demo.vercel.app/docs/clients#plugins-for-other-agents).
+Other clients: [Set up your agent](https://onsystem.vercel.app/docs/clients#plugins-for-other-agents).
 
 The skill here is a copy of [the Claude Code plugin's](../onsystem/skills/onsystem/SKILL.md), made by `scripts/sync-plugins.mjs`: edit that one.

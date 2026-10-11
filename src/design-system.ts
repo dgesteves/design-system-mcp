@@ -159,7 +159,7 @@ export class DesignSystem {
   }
 }
 
-const CONFIGURATION_DOCS = 'https://design-system-mcp-demo.vercel.app/docs/configuration';
+const CONFIGURATION_DOCS = 'https://onsystem.vercel.app/docs/configuration';
 
 /** `border-ring` → token `ring`, for color utilities a token's usage list does not spell out. */
 function matchUtility(base: string, tokens: Token[]): Token | undefined {

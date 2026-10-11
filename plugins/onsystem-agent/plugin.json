@@ -7,7 +7,7 @@
     "name": "Diogo Esteves",
     "url": "https://github.com/dgesteves"
   },
-  "homepage": "https://design-system-mcp-demo.vercel.app/docs/clients",
+  "homepage": "https://onsystem.vercel.app/docs/clients",
   "repository": "https://github.com/dgesteves/onsystem",
   "license": "MIT",
   "keywords": ["design-system", "shadcn", "react", "tailwindcss", "lint", "mcp"]

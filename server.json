@@ -7,15 +7,15 @@
     "url": "https://github.com/dgesteves/onsystem",
     "source": "github"
   },
-  "websiteUrl": "https://design-system-mcp-demo.vercel.app",
+  "websiteUrl": "https://onsystem.vercel.app",
   "icons": [
     {
-      "src": "https://design-system-mcp-demo.vercel.app/icon.svg",
+      "src": "https://onsystem.vercel.app/icon.svg",
       "mimeType": "image/svg+xml",
       "sizes": ["any"]
     },
     {
-      "src": "https://design-system-mcp-demo.vercel.app/apple-icon.png",
+      "src": "https://onsystem.vercel.app/apple-icon.png",
       "mimeType": "image/png",
       "sizes": ["180x180"]
     }

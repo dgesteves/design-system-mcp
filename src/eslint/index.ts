@@ -28,7 +28,7 @@ import { relativePath } from '../util/paths.js';
 import { NAME, VERSION } from '../version.js';
 import { loadSync } from './bridge.js';
 
-const RULES_PAGE = 'https://design-system-mcp-demo.vercel.app/rules';
+const RULES_PAGE = 'https://onsystem.vercel.app/rules';
 
 /** Design systems by project root, at the version the loader last reported. */
 const designSystems = new Map<string, { version: string; ds: DesignSystem }>();
