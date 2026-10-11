@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -171,7 +172,11 @@ function loadProjectConfig(
   rootConfigFile: string | undefined,
   options: LoadConfigOptions,
 ): Promise<ResolvedConfig> {
-  const shared = { cwd: options.cwd, includeDesignSystem: options.includeDesignSystem };
+  const shared = {
+    cwd: options.cwd,
+    includeDesignSystem: options.includeDesignSystem,
+    jsonConfigOnly: options.jsonConfigOnly,
+  };
   const own = [...CONFIG_FILES, ...LEGACY_CONFIG_FILES].some((name) =>
     fs.existsSync(path.join(dir, name)),
   );
@@ -183,10 +188,44 @@ function loadProjectConfig(
 export function projectDirOf(target: string, root: string): string {
   let dir = isDirectory(target) ? target : path.dirname(target);
   while (isInside(root, dir) && dir !== root) {
-    if (PROJECT_MARKERS.some((name) => fs.existsSync(path.join(dir, name)))) return dir;
+    if (hasProjectMarker(dir)) return dir;
     dir = path.dirname(dir);
   }
   return root;
+}
+
+/**
+ * The folder to serve `target` (an absolute file or folder, which need not exist yet) from,
+ * found by walking up from it: the nearest folder with a project marker, as the Claude Code
+ * hook finds a file's project, or the monorepo root above that folder when there is one, as
+ * a client that reports the repository as its workspace would have the server started.
+ * `loadTarget` there serves the root's own design system, or each project in it. The home
+ * folder and the filesystem root are never one. Undefined when no other folder up to the
+ * filesystem root has a project marker.
+ */
+export function findProjectRoot(target: string, home = os.homedir()): string | undefined {
+  // Never the home folder or the filesystem root: a stray ~/package.json is not a project,
+  // and serving it would scan everything under it.
+  const skipped = (dir: string) => dir === path.dirname(dir) || samePath(dir, home);
+  let dir = isDirectory(target) ? target : path.dirname(target);
+  while (skipped(dir) || !hasProjectMarker(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  for (let up = dir; up !== path.dirname(up); up = path.dirname(up)) {
+    if (!skipped(up) && isWorkspaceRoot(up)) return up;
+  }
+  return dir;
+}
+
+function samePath(a: string, b: string): boolean {
+  return path.relative(path.resolve(a), path.resolve(b)) === '';
+}
+
+/** Whether `dir` holds one of the `PROJECT_MARKERS`. */
+export function hasProjectMarker(dir: string): boolean {
+  return PROJECT_MARKERS.some((name) => fs.existsSync(path.join(dir, name)));
 }
 
 function packageName(dir: string): string | undefined {

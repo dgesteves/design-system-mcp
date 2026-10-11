@@ -1,6 +1,6 @@
 # Set up your agent
 
-The server speaks MCP over stdio, in both protocol eras: the 2026-07-28 revision (stateless, with `server/discover`) and the 2025 one (the `initialize` handshake), the era chosen by the client's first message. It finds the project from `--root`, a config file in the working directory, or the working directory itself when it holds a project (a `package.json` or `components.json`). MCP roots, which 2026-07-28 deprecates, are the fallback: when the working directory is none of those (Claude Desktop starts servers in `/`), a 2025-era client that reports roots has its first `file://` root used; otherwise it is the working directory. Started at a [monorepo root](configuration.md#monorepo-roots), it serves every app and design-system package in it: the tools take the `path` of the file the agent is editing and answer for that file's project.
+The server speaks MCP over stdio, in both protocol eras: the 2026-07-28 revision (stateless, with `server/discover`) and the 2025 one (the `initialize` handshake), the era chosen by the client's first message. It finds the project from `--root`, a config file in the working directory, or the working directory itself when it holds a project (a `package.json` or `components.json`). MCP roots, which 2026-07-28 deprecates, are the fallback: when the working directory is none of those (Claude Desktop starts servers in `/`), a 2025-era client that reports roots has its first `file://` root used. When none of these gives a project (a client that starts servers in your home or the plugin's folder and reports no roots), each tool call's project is found from the absolute path it names, `path` (or `filename`, for `check_ui` with `code`): the nearest folder at or above it with a `package.json`, `components.json` or config, or the monorepo root above that, but never your home folder or the filesystem root. A project found this way loads a JSON config (`onsystem.config.json`) only: the server runs a JavaScript or TypeScript config only in a project it was started in. Until a call names one, the tools return an error that asks for it; after that, a call without one answers from the project found, as long as only one has been. Started at a [monorepo root](configuration.md#monorepo-roots), it serves every app and design-system package in it: the tools take the `path` of the file the agent is editing and answer for that file's project.
 
 Every client gets the same five tools, including `check_ui`, which the agent runs on its own output. Only Claude Code has a hook that checks each edit as it happens, so there use the [plugin](plugin.md) instead; with other agents, add the [CI check](ci.md) so what the agent skips still gets caught.
 
@@ -30,7 +30,7 @@ The skill and the MCP server also come packaged for other agents, pinned to the 
 - **VS Code** (GitHub Copilot agent plugins): run **Chat: Install Plugin From Source** from the Command Palette and enter `dgesteves/onsystem`. VS Code reads the same marketplace as Claude Code and installs that plugin's server and skill. To use the Agent Plugins package instead, add a clone's `plugins/onsystem-agent` folder to the `chat.pluginLocations` setting.
 - **Cursor:** the Cursor plugin, in `plugins/onsystem-cursor`. Until it is listed in the Cursor Marketplace, copy that folder to `~/.cursor/plugins/local/onsystem` and run **Developer: Reload Window**.
 
-A client that loads the Agent Plugins format starts the server in the plugin's folder rather than in your project, so the server finds the project through the workspace roots the client reports, as VS Code and Cursor do. If a client reports none, the server finds no design system: add it with the client's MCP config below instead.
+A client that loads the Agent Plugins format starts the server in the plugin's folder rather than in your project, so the server finds the project through the workspace roots the client reports, as VS Code and Cursor do. If a client reports none, the server finds the project from the absolute path of the file the agent passes to the tools, and asks for one when a call has none. To have it found from the start, add the server with the client's MCP config below instead.
 
 ## Cursor and VS Code
 
@@ -73,7 +73,7 @@ One click installs it: [Install in Cursor](https://cursor.com/en/install-mcp?nam
 
 </details>
 
-A client that passes `${workspaceFolder}` through unexpanded gets a warning on stderr, and the server falls back to its working directory, or the roots the client reports when that holds no project.
+A client that passes `${workspaceFolder}` through unexpanded gets a warning on stderr, and the server falls back to its working directory, or the roots the client reports when that holds no project, or else the paths the tools are given.
 
 ## Other clients
 

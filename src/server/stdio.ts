@@ -13,8 +13,8 @@ import {
 } from '../config.js';
 import { DesignSystemHost } from '../design-system.js';
 import type { Logger } from '../util/log.js';
-import { loadTarget, PROJECT_MARKERS } from '../workspace.js';
-import { createServer } from './index.js';
+import { findProjectRoot, hasProjectMarker, loadTarget } from '../workspace.js';
+import { createServer, ProjectNotFoundError } from './index.js';
 import { WorkspaceProjects } from './projects.js';
 
 export interface ServeOptions extends LoadConfigOptions {
@@ -33,6 +33,9 @@ export interface ServerHandle {
 
 type Served = { host: DesignSystemHost } | { projects: WorkspaceProjects };
 
+/** What answers a request: `target` is the `path` or `filename` it names, if any. */
+type Resolve = (target: string | undefined) => Promise<Served>;
+
 /**
  * Starts the server (on stdio unless another transport is given), for clients on
  * either protocol era: a 2026-07-28 client (stateless, `server/discover`) and a
@@ -45,17 +48,22 @@ type Served = { host: DesignSystemHost } | { projects: WorkspaceProjects };
  * deprecates, are the fallback for a 2025-era client that starts servers somewhere
  * else (Claude Desktop starts them in `/`): its first `file://` root. At a monorepo
  * root with no design system of its own, every project in it is served.
+ *
+ * When none of those gives a project (a client that starts servers in the home or the
+ * plugin's folder and reports no roots), each request's project is found from the
+ * absolute path it names (`findProjectRoot`): the nearest folder at or above it with a
+ * project marker, or the monorepo root above that, served as if the server had been
+ * started there, except that a config there is read only when it is JSON: a prompt can
+ * choose the path, so a JavaScript or TypeScript config is not run. Each root found is
+ * loaded once and kept; a request without an absolute path is answered from the one root
+ * found so far.
  */
 export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
   const { logger } = options;
-  let resolveHost: (served: Served) => void = () => undefined;
-  let rejectHost: (error: unknown) => void = () => undefined;
-  const hostReady = new Promise<Served>((resolve, reject) => {
-    resolveHost = resolve;
-    rejectHost = reject;
+  let decide: (resolve: Resolve) => void = () => undefined;
+  const decided = new Promise<Resolve>((resolve) => {
+    decide = resolve;
   });
-  // Errors surface through tool results; do not crash on an unobserved rejection.
-  hostReady.catch(() => undefined);
 
   const instances = new Set<McpServer>();
   const notify = () => {
@@ -70,53 +78,98 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
   };
   const closers: (() => void)[] = [];
 
+  /**
+   * The project at `root` (the working directory when undefined), or a monorepo root's
+   * projects. `jsonConfigOnly` for a root found from a tool call's path: its configs, and those
+   * of the projects in it, are read only when they are JSON, never run.
+   */
+  const load = async (root: string | undefined, jsonConfigOnly = false): Promise<Served> => {
+    const configOptions = { ...options, root, jsonConfigOnly };
+    const target = await loadTarget(configOptions);
+    const { config, workspace } = target;
+    // Once per project, as it loads: a reload of the config does not repeat them.
+    for (const text of config.deprecations ?? []) logger.warn(text);
+    if (workspace) {
+      const projects = new WorkspaceProjects(workspace, {
+        cache: options.cache,
+        watch: options.watch,
+        logger,
+        onChange: notify,
+      });
+      logger.info(
+        `monorepo root: ${workspace.projects.length} of ${workspace.projects.length + workspace.others.length} workspace packages have a design system${workspace.projects.length ? ` (${workspace.projects.map((p) => p.dir).join(', ')})` : ''}`,
+      );
+      closers.push(() => {
+        projects.close();
+      });
+      return { projects };
+    }
+    if (config.detected) logger.info(`found the design system through ${config.detected}`);
+    const host = new DesignSystemHost(config, {
+      cache: options.cache,
+      logger,
+      // Keep CLI overrides when the config file is edited.
+      loadConfig: () => loadConfig(configOptions),
+    });
+    host.onChange(notify);
+    if (options.watch) host.watch();
+    host.get().catch((error: unknown) => {
+      logger.error((error as Error).message);
+    });
+    closers.push(() => {
+      host.close();
+    });
+    return { host };
+  };
+
   let started = false;
-  // A 2025-era client is being asked for its roots: requests wait for the answer.
-  let askingRoots = false;
-  const start = async (root: string | undefined) => {
+  /** One project for every request: the one at `root`, or the working directory. */
+  const serveOne = (root: string | undefined) => {
     if (started) return;
     started = true;
-    try {
-      const target = await loadTarget({ ...options, root });
-      const { config, workspace } = target;
-      // Once, at start: a reload of the config does not repeat them.
-      for (const text of config.deprecations ?? []) logger.warn(text);
-      if (workspace) {
-        const projects = new WorkspaceProjects(workspace, {
-          cache: options.cache,
-          watch: options.watch,
-          logger,
-          onChange: notify,
-        });
-        logger.info(
-          `monorepo root: ${workspace.projects.length} of ${workspace.projects.length + workspace.others.length} workspace packages have a design system${workspace.projects.length ? ` (${workspace.projects.map((p) => p.dir).join(', ')})` : ''}`,
-        );
-        closers.push(() => {
-          projects.close();
-        });
-        resolveHost({ projects });
-        return;
-      }
-      if (config.detected) logger.info(`found the design system through ${config.detected}`);
-      const host = new DesignSystemHost(config, {
-        cache: options.cache,
-        logger,
-        // Keep CLI overrides when the config file is edited.
-        loadConfig: () => loadConfig({ ...options, root }),
-      });
-      host.onChange(notify);
-      if (options.watch) host.watch();
-      host.get().catch((error: unknown) => {
-        logger.error((error as Error).message);
-      });
-      closers.push(() => {
-        host.close();
-      });
-      resolveHost({ host });
-    } catch (error) {
+    const served = load(root);
+    // Errors surface through tool results; log them once, and do not crash on an unobserved rejection.
+    served.catch((error: unknown) => {
       logger.error((error as Error).message);
-      rejectHost(error);
-    }
+    });
+    decide(() => served);
+  };
+  /** Each request's project, from the absolute path it names. */
+  const serveByPath = () => {
+    if (started) return;
+    started = true;
+    logger.info(
+      `${options.cwd} holds no project and the client reported no roots: finding each request's project from the absolute path it names`,
+    );
+    const found = new Map<string, Promise<Served>>();
+    decide(async (target) => {
+      if (target !== undefined && path.isAbsolute(target)) {
+        const dir = findProjectRoot(target);
+        if (!dir) {
+          throw new ProjectNotFoundError(
+            `No project at or above ${target}: no folder from there up holds a package.json, components.json, project.json or onsystem config (the home folder and the filesystem root do not count). Pass the absolute path of a file in your project.`,
+          );
+        }
+        let served = found.get(dir);
+        if (!served) {
+          logger.info(`using ${dir}, the project of ${target}`);
+          served = load(dir, true);
+          served.catch((error: unknown) => {
+            logger.error((error as Error).message);
+          });
+          found.set(dir, served);
+        }
+        return served;
+      }
+      // Without an absolute path: the project found so far, when there is just one.
+      const [only, ...others] = found.values();
+      if (only && !others.length) return only;
+      throw new ProjectNotFoundError(
+        only
+          ? `Requests have named files in ${found.size} projects (${[...found.keys()].join(', ')}). Pass \`path\` (for check_ui with \`code\`, \`filename\`) as the absolute path of the file you are editing, so the answer comes from its project.`
+          : `onsystem cannot tell which project to answer for: it was started in ${options.cwd}, which holds no project, and the client reported no workspace roots. Pass \`path\` (for check_ui with \`code\`, \`filename\`) as the absolute path of the file you are editing, and it answers from that file's project. Or start the server with --root <project folder>.`,
+      );
+    });
   };
 
   // The primary ways to the project, none of which needs the client.
@@ -126,24 +179,37 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
     [...CONFIG_FILES, ...LEGACY_CONFIG_FILES].some((file) =>
       fs.existsSync(path.join(options.cwd, file)),
     );
-  const cwdIsProject = PROJECT_MARKERS.some((file) => fs.existsSync(path.join(options.cwd, file)));
-  if (configured || cwdIsProject) void start(options.root);
+  if (configured || hasProjectMarker(options.cwd)) serveOne(options.root);
 
-  /** The working directory, when nothing else has said where the project is by the first request. */
-  const ready = async (): Promise<Served> => {
-    if (!started && !askingRoots) void start(undefined);
-    return hostReady;
+  /**
+   * When nothing else says where the project is: the working directory when flags
+   * (`--components`, `--tokens`, `--docs`) describe it, else each request's path.
+   */
+  const fallback = () => {
+    if (options.components?.length || options.tokens?.length || options.docs?.length) {
+      serveOne(undefined);
+    } else {
+      serveByPath();
+    }
+  };
+
+  // A 2025-era client is being asked for its roots: requests wait for the answer.
+  let askingRoots = false;
+  /** What answers requests, once decided; nothing has said where the project is by the first request. */
+  const resolve: Resolve = async (target) => {
+    if (!started && !askingRoots) fallback();
+    return (await decided)(target);
   };
 
   const factory = ({ era }: { era: 'legacy' | 'modern' }) => {
     const server = createServer({
-      getDesignSystem: async () => {
-        const served = await ready();
+      getDesignSystem: async (target) => {
+        const served = await resolve(target);
         if ('host' in served) return served.host.get();
         throw new Error('This server serves a workspace root: pass a path.');
       },
-      getProjects: async () => {
-        const served = await ready();
+      getProjects: async (target) => {
+        const served = await resolve(target);
         return 'projects' in served ? served.projects : undefined;
       },
     });
@@ -153,8 +219,12 @@ export function serveStdio(options: ServeOptions): Promise<ServerHandle> {
       server.server.oninitialized = () => {
         askingRoots = true;
         void clientRoot(server).then((root) => {
-          if (root && root !== options.cwd) logger.info(`using client root ${root}`);
-          return start(root);
+          if (!root) {
+            fallback();
+            return;
+          }
+          if (root !== options.cwd) logger.info(`using client root ${root}`);
+          serveOne(root);
         });
       };
     }
