@@ -31,7 +31,7 @@ import { formatDiagnostics, uncheckedNotice, type OutputFormat } from './lint/in
 import { serveStdio } from './server/stdio.js';
 import type { CheckResult, DesignSystemModel, Diagnostic } from './types.js';
 import { stderrLogger, silentLogger } from './util/log.js';
-import { matchesGlob, relativePath, toPosix } from './util/paths.js';
+import { isInside, matchesGlob, relativePath, toPosix } from './util/paths.js';
 import { plural, unique } from './util/strings.js';
 import { NAME, VERSION } from './version.js';
 import { loadTarget, type Project, type Workspace } from './workspace.js';
@@ -111,6 +111,8 @@ export interface Io {
   color: boolean;
   /** Asks a question in the terminal (`init`); undefined when there is none to ask in. */
   prompt?: ((question: string) => Promise<string>) | undefined;
+  /** Environment variables (GITHUB_WORKSPACE); the process's by default. */
+  env?: Record<string, string | undefined> | undefined;
 }
 
 const defaultIo: Io = {
@@ -401,7 +403,10 @@ async function check(
     format,
     {
       color: io.color,
-      uri: format === 'sarif' ? repositoryPath(io.cwd) : undefined,
+      uri:
+        format === 'sarif' || format === 'github'
+          ? repositoryPath(io.cwd, io.env ?? process.env)
+          : undefined,
       baselined: baseline ? baselined : undefined,
       notes,
       fixedHint: fixed
@@ -435,20 +440,32 @@ function printNoResults(format: OutputFormat, io: Io): void {
 
 /**
  * Maps a path relative to the working directory to one relative to the repository root, which
- * SARIF consumers such as GitHub code scanning resolve locations against, so `check` run from
- * `apps/web` still reports `apps/web/app/page.tsx`. Outside a repository, or without git, paths
- * stay relative to the working directory.
+ * GitHub resolves workflow command annotations (`--format github`) and code scanning locations
+ * (`--format sarif`) against, so `check` run from `apps/web` still reports
+ * `apps/web/app/page.tsx`. The root is GITHUB_WORKSPACE or the git top-level, whichever is the
+ * innermost folder holding the file: the git top-level outside Actions, GITHUB_WORKSPACE where
+ * git is missing or refuses the checkout, and the repository checked out in a folder of the
+ * workspace (`actions/checkout` with `path:`). A file under neither keeps its path relative to
+ * the working directory.
  */
-function repositoryPath(cwd: string): (file: string) => string {
+function repositoryPath(cwd: string, env: NonNullable<Io['env']>): (file: string) => string {
   const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
     cwd,
     encoding: 'utf8',
     windowsHide: true,
   });
   const top = result.status === 0 && typeof result.stdout === 'string' ? result.stdout.trim() : '';
-  if (!top) return toPosix;
-  const root = realPath(path.resolve(top));
-  return (file) => toPosix(path.relative(root, realPath(path.resolve(cwd, file))));
+  const roots = [top, env.GITHUB_WORKSPACE ?? '']
+    .filter(Boolean)
+    .map((dir) => realPath(path.resolve(cwd, dir)))
+    // The innermost first: where both hold the file, one is inside the other.
+    .sort((a, b) => b.length - a.length);
+  if (!roots.length) return toPosix;
+  return (file) => {
+    const absolute = realPath(path.resolve(cwd, file));
+    const root = roots.find((dir) => isInside(dir, absolute));
+    return root ? relativePath(root, absolute) : toPosix(file);
+  };
 }
 
 /** Splits the patterns into files named outright and globs (a folder: every TSX/JSX file under it). */

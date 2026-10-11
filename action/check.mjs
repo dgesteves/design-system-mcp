@@ -273,7 +273,9 @@ export function run(io) {
 
   // What changed, before the check: a failed fetch is said plainly rather than after the output.
   const base = onlyChanged ? baseOf(env) : undefined;
-  let top = realPath(git(['rev-parse', '--show-toplevel'], cwd).out || cwd);
+  // The repository root, which annotations are relative to: the git top-level, which the diff is
+  // relative to too, or the workspace where git is missing or refuses the checkout.
+  let top = realPath(git(['rev-parse', '--show-toplevel'], cwd).out || env.GITHUB_WORKSPACE || cwd);
   /** @type {ChangedLines | undefined} */
   let changed;
   if (base) {
