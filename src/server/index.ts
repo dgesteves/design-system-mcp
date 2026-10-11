@@ -188,18 +188,30 @@ const projectPath = z
   .max(MAX_PATH)
   .optional()
   .describe(
-    'In a monorepo served from its root: the file you are editing, or a project folder, relative to the root, to answer from that project. Without it, every project is listed together. Ignored in a single project.',
+    'In a monorepo served from its root: the file you are editing, or a project folder, relative to the root, to answer from that project. Without it, every project is listed together. Ignored in a single project. When the server was started outside your project, pass the file as an absolute path: the project is found from it.',
   );
 
 export interface CreateServerOptions {
-  /** Resolves the design system to serve. Called per request, so it can be swapped on reload. */
-  getDesignSystem: () => Promise<DesignSystem>;
+  /**
+   * Resolves the design system to serve. Called per request, so it can be swapped on reload.
+   * `target` is the `path` (or `filename`) the request names, if any, as given.
+   */
+  getDesignSystem: (target?: string) => Promise<DesignSystem>;
   /**
    * At a workspace root: its projects. When this resolves to a set, the tools take a `path`
    * to pick a project and serve every project together without one, and `getDesignSystem`
-   * is not called.
+   * is not called. `target` is the `path` (or `filename`) the request names, if any.
    */
-  getProjects?: () => Promise<ProjectSet | undefined>;
+  getProjects?: (target?: string) => Promise<ProjectSet | undefined>;
+}
+
+/**
+ * Thrown by `getDesignSystem` or `getProjects` when nothing says which project a request is
+ * about: the server was started outside any project, and the request names no absolute path.
+ * Tools return its message as an error result; listing resources returns none.
+ */
+export class ProjectNotFoundError extends Error {
+  override name = 'ProjectNotFoundError';
 }
 
 /** What a request is answered from: one design system, or a workspace root's projects. */
@@ -263,8 +275,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
 
   /** The design system for `target` at a workspace root, or the merged catalog without one. */
   const scope = async (target?: string): Promise<Scope> => {
-    const set = await getProjects?.();
-    if (!set) return { ds: await getDesignSystem() };
+    const set = await getProjects?.(target);
+    if (!set) return { ds: await getDesignSystem(target) };
     if (target !== undefined && target !== '') {
       const project = await set.forPath(target);
       return { ds: project.ds, project, root: set.root };
@@ -280,6 +292,15 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
     }
   };
   const isResult = (value: Scope | CallToolResult): value is CallToolResult => 'content' in value;
+  /** `scope` without a target, for listings: none yet, when no project is known. */
+  const listed = async (): Promise<Scope | undefined> => {
+    try {
+      return await scope();
+    } catch (error) {
+      if (error instanceof ProjectNotFoundError) return undefined;
+      throw error;
+    }
+  };
 
   server.registerTool(
     'list_components',
@@ -533,14 +554,14 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
           .max(MAX_PATH)
           .optional()
           .describe(
-            'Path of a file to check, relative to the project root (the monorepo root, when served from there).',
+            'Path of a file to check: relative to the project root (the monorepo root, when served from there), or absolute.',
           ),
         filename: z
           .string()
           .max(MAX_PATH)
           .optional()
           .describe(
-            'Name to report `code` under; a .jsx extension parses it as JSX. At a monorepo root, the path the code will be saved under, which picks the project whose design system checks it.',
+            'Name to report `code` under; a .jsx extension parses it as JSX. At a monorepo root, the path the code will be saved under, which picks the project whose design system checks it. When the server was started outside your project, pass it as an absolute path: the project is found from it.',
           ),
         limit: z
           .number()
@@ -586,11 +607,11 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
     async ({ code, path: filePath, filename, limit }): Promise<CallToolResult> => {
       if (code === undefined && !filePath) return errorResult('Pass either `code` or `path`.');
       // At a workspace root, the file's own project checks it.
-      const set = await getProjects?.();
       const routeBy = code === undefined ? filePath : (filename ?? undefined);
+      const set = await getProjects?.(routeBy);
       let ds: DesignSystem;
       if (!set) {
-        ds = await getDesignSystem();
+        ds = await getDesignSystem(routeBy);
       } else if (routeBy) {
         const found = await scoped(routeBy);
         if (isResult(found)) return found;
@@ -608,7 +629,11 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       let source = code;
       let file = filename ?? 'snippet.tsx';
       let shown = file;
-      if (set && filename) file = relativePath(ds.root, path.resolve(base, filename));
+      if (filename) {
+        // Checked under its path in the project, so `overrides` apply to an absolute `filename` too.
+        const absolute = path.resolve(base, filename);
+        if (set || isInside(ds.root, absolute)) file = relativePath(ds.root, absolute);
+      }
       if (source === undefined) {
         if (!filePath) return errorResult('Pass either `code` or `path`.');
         const absolute = path.resolve(base, filePath);
@@ -632,7 +657,7 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
         shown = relativePath(base, absolute);
       }
       const checked = ds.check(source, file);
-      const result = set ? { ...checked, file: shown } : checked;
+      const result = file === shown ? checked : { ...checked, file: shown };
       const capped = capDiagnostics(result, limit);
       // A clean result without components or color tokens, or with components the model
       // leaves out, says little.
@@ -659,7 +684,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
     'component',
     new ResourceTemplate('ds://components/{name}', {
       list: async () => {
-        const found = await scope();
+        const found = await listed();
+        if (!found) return { resources: [] };
         if ('catalog' in found) {
           return {
             resources: found.catalog.entries.map(({ component: c, ambiguous, projects }) => ({
@@ -684,7 +710,8 @@ export function createServer({ getDesignSystem, getProjects }: CreateServerOptio
       },
       complete: {
         name: async (value) => {
-          const found = await scope();
+          const found = await listed();
+          if (!found) return [];
           const lower = value.toLowerCase();
           const names =
             'catalog' in found

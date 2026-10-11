@@ -399,6 +399,43 @@ describe('MCP server at a workspace root', () => {
     await stdioClient.close();
     await server.close();
   });
+
+  it('serves the monorepo root of a path a call names, when started outside any project', async () => {
+    const root = fixture(MONOREPO);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      // An empty folder, and a client without roots: only the paths say where the project is.
+      cwd: fixture({}),
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const stdioClient = new Client({ name: 'no-roots', version: '1.0.0' });
+    await stdioClient.connect(clientTransport);
+    // A page of apps/web, checked by its project's design system as from the root.
+    const checked = await stdioClient.callTool({
+      name: 'check_ui',
+      arguments: { path: path.join(root, 'apps/web/app/page.tsx') },
+    });
+    expect(checked.structuredContent).toMatchObject({
+      file: 'apps/web/app/page.tsx',
+      errorCount: 1,
+    });
+    expect(text(checked)).toContain(
+      '"danger" is not a valid variant for <Button>. Allowed: default, outline.',
+    );
+    // Then without a path, every project together, as when started at the root.
+    const listed = await stdioClient.callTool({ name: 'list_components', arguments: {} });
+    expect(text(listed)).toContain('4 components from 2 packages, used by 3 projects.');
+    const admin = await stdioClient.callTool({
+      name: 'get_component',
+      arguments: { name: 'Button', path: path.join(root, 'apps/admin') },
+    });
+    expect(text(admin)).toContain('variant?: "default" | "ghost"');
+    await stdioClient.close();
+    await server.close();
+  });
 });
 
 describe('workspace projects load their design systems lazily', () => {

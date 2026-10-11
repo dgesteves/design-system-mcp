@@ -417,30 +417,6 @@ describe('project root from MCP client roots', () => {
     await server.close();
   });
 
-  it('uses the working directory for a 2026-07-28 client, which has no roots to offer', async () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-modern-'));
-    const [clientTransport, serverTransport] = ModernInMemoryTransport.createLinkedPair();
-    const server = await serveStdio({
-      cwd,
-      cache: false,
-      watch: false,
-      logger: silentLogger,
-      transport: serverTransport,
-    });
-    const client = new ModernClient(
-      { name: 'modern', version: '1.0.0' },
-      { versionNegotiation: { mode: { pin: '2026-07-28' } } },
-    );
-    await client.connect(clientTransport);
-    const result = await client.callTool({ name: 'list_components', arguments: {} });
-    expect(text(result)).toContain(
-      `No components found. Check the "components" globs in the config (root: ${cwd})`,
-    );
-    await client.close();
-    await server.close();
-    fs.rmSync(cwd, { recursive: true, force: true });
-  });
-
   it('finds a config under its old name in the working directory, says so once, and is named onsystem', async () => {
     const cwd = fixture({
       'components/ui/chip.tsx': 'export function Chip() { return <span /> }\n',
@@ -487,6 +463,202 @@ describe('project root from MCP client roots', () => {
     await client.close();
     await server.close();
     fs.rmSync(cwd, { recursive: true, force: true });
+  });
+});
+
+/** A project with one component, `Chip`, whose `tone` is neutral or accent. */
+function chipProject(name: string) {
+  return fixture({
+    'package.json': JSON.stringify({ name }),
+    'components/ui/chip.tsx':
+      'export function Chip(props: { tone?: "neutral" | "accent" }) { return <span /> }\n',
+    'app/page.tsx': 'export default () => <Chip tone="loud" />;\n',
+  });
+}
+
+/** Serves from a folder outside any project, as a client that starts servers in the home or a plugin folder does. */
+async function serveOutside(transport: NonNullable<Parameters<typeof serveStdio>[0]['transport']>) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-outside-'));
+  const infos: string[] = [];
+  const logger = { ...silentLogger, info: (message: string) => infos.push(message) };
+  const server = await serveStdio({ cwd, cache: false, watch: false, logger, transport });
+  return {
+    cwd,
+    infos,
+    close: async () => {
+      await server.close();
+      fs.rmSync(cwd, { recursive: true, force: true });
+    },
+  };
+}
+
+describe('project from the absolute path a call names', () => {
+  it('finds it when started outside any project by a client without roots', async () => {
+    const project = chipProject('chips');
+    const page = path.join(project, 'app/page.tsx');
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const served = await serveOutside(serverTransport);
+    // A 2025-era client that does not support roots.
+    const client = new Client({ name: 'no-roots', version: '1.0.0' });
+    await client.connect(clientTransport);
+
+    const checked = await client.callTool({ name: 'check_ui', arguments: { path: page } });
+    expect(checked.isError).toBeFalsy();
+    expect(checked.structuredContent).toMatchObject({ file: 'app/page.tsx', errorCount: 1 });
+    expect(text(checked)).toContain('"loud" is not a valid tone for <Chip>');
+
+    // Unsaved code under an absolute filename: checked as that file of the project.
+    const draft = await client.callTool({
+      name: 'check_ui',
+      arguments: { code: '<Chip tone="accent" />', filename: path.join(project, 'app/new.tsx') },
+    });
+    expect(draft.structuredContent).toMatchObject({
+      ok: true,
+      file: path.join(project, 'app/new.tsx'),
+    });
+
+    // Without a path: the one project found so far.
+    const chip = await client.callTool({ name: 'get_component', arguments: { name: 'Chip' } });
+    expect(chip.isError).toBeFalsy();
+    expect(text(chip)).toContain('tone?: "neutral" | "accent"');
+
+    // Loaded once, however many calls name it.
+    expect(served.infos.filter((line) => line.startsWith(`using ${project},`))).toHaveLength(1);
+    await client.close();
+    await served.close();
+  });
+
+  it('says which argument to pass when nothing names the project', async () => {
+    const first = chipProject('first');
+    const second = fixture({
+      'package.json': JSON.stringify({ name: 'second' }),
+      'components/ui/tag.tsx': 'export function Tag() { return <span /> }\n',
+    });
+    const [clientTransport, serverTransport] = ModernInMemoryTransport.createLinkedPair();
+    const served = await serveOutside(serverTransport);
+    // A 2026-07-28 client: no roots to offer.
+    const client = new ModernClient(
+      { name: 'modern', version: '1.0.0' },
+      { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+    );
+    await client.connect(clientTransport);
+
+    const none = await client.callTool({ name: 'list_components', arguments: {} });
+    expect(none.isError).toBe(true);
+    expect(text(none)).toContain(`it was started in ${served.cwd}, which holds no project`);
+    expect(text(none)).toContain('Pass `path`');
+    const relative = await client.callTool({
+      name: 'check_ui',
+      arguments: { path: 'app/page.tsx' },
+    });
+    expect(relative.isError).toBe(true);
+    expect(text(relative)).toContain('Pass `path`');
+    // Listing resources is not an error: there are none yet.
+    expect(
+      (await client.listResources()).resources.filter((r) => r.uri.startsWith('ds://components/')),
+    ).toEqual([]);
+
+    const nowhere = fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-nowhere-'));
+    const lost = await client.callTool({
+      name: 'list_components',
+      arguments: { path: path.join(nowhere, 'page.tsx') },
+    });
+    expect(lost.isError).toBe(true);
+    expect(text(lost)).toContain(`No project at or above ${path.join(nowhere, 'page.tsx')}`);
+    fs.rmSync(nowhere, { recursive: true, force: true });
+
+    const chips = await client.callTool({
+      name: 'list_components',
+      arguments: { path: path.join(first, 'app/page.tsx') },
+    });
+    expect(text(chips)).toContain('Chip');
+    const tags = await client.callTool({ name: 'list_components', arguments: { path: second } });
+    expect(text(tags)).toContain('Tag');
+    expect(text(tags)).not.toContain('Chip');
+
+    // Two projects found: a call without a path has to say which.
+    const which = await client.callTool({ name: 'get_component', arguments: { name: 'Chip' } });
+    expect(which.isError).toBe(true);
+    expect(text(which)).toContain(`files in 2 projects (${first}, ${second})`);
+    await client.close();
+    await served.close();
+  });
+
+  it('checks code under an absolute filename as that file, overrides included', async () => {
+    const project = chipProject('chips');
+    fs.writeFileSync(
+      path.join(project, 'onsystem.config.json'),
+      JSON.stringify({
+        overrides: [{ files: 'app/legacy/**', rules: { 'no-unknown-variant': 'off' } }],
+      }),
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd: project,
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const client = new Client({ name: 'c', version: '1.0.0' });
+    await client.connect(clientTransport);
+    const code = '<Chip tone="loud" />';
+    const legacy = path.join(project, 'app/legacy/old.tsx');
+    const result = await client.callTool({
+      name: 'check_ui',
+      arguments: { code, filename: legacy },
+    });
+    expect(result.structuredContent).toMatchObject({ ok: true, errorCount: 0, file: legacy });
+    const current = path.join(project, 'app/new.tsx');
+    const checked = await client.callTool({
+      name: 'check_ui',
+      arguments: { code, filename: current },
+    });
+    expect(checked.structuredContent).toMatchObject({ errorCount: 1, file: current });
+    await client.close();
+    await server.close();
+  });
+
+  it('keeps serving the working directory that --components describes', async () => {
+    // No package.json: only the flag says this folder is the project.
+    const cwd = fixture({ 'ui/chip.tsx': 'export function Chip() { return <span /> }\n' });
+    const [clientTransport, serverTransport] = ModernInMemoryTransport.createLinkedPair();
+    const server = await serveStdio({
+      cwd,
+      components: ['ui/*.tsx'],
+      cache: false,
+      watch: false,
+      logger: silentLogger,
+      transport: serverTransport,
+    });
+    const client = new ModernClient(
+      { name: 'modern', version: '1.0.0' },
+      { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+    );
+    await client.connect(clientTransport);
+    const result = await client.callTool({ name: 'list_components', arguments: {} });
+    expect(text(result)).toContain('Chip');
+    await client.close();
+    await server.close();
+  });
+
+  it('falls back to the paths when a client with roots reports no file:// root', async () => {
+    const project = chipProject('chips');
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const served = await serveOutside(serverTransport);
+    const client = new Client(
+      { name: 'roots-client', version: '1.0.0' },
+      { capabilities: { roots: {} } },
+    );
+    client.setRequestHandler(ListRootsRequestSchema, () => ({ roots: [] }));
+    await client.connect(clientTransport);
+    const result = await client.callTool({
+      name: 'get_component',
+      arguments: { name: 'Chip', path: path.join(project, 'app/page.tsx') },
+    });
+    expect(text(result)).toContain('tone?: "neutral" | "accent"');
+    await client.close();
+    await served.close();
   });
 });
 
