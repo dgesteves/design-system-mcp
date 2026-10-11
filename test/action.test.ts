@@ -360,6 +360,15 @@ describe('the GitHub Action', () => {
     expect(queue.outputs).toEqual({ errors: '1', warnings: '0', 'outside-diff': '1' });
   });
 
+  it('names files from GITHUB_WORKSPACE when there is no git repository', () => {
+    // A checkout without git (actions/checkout falls back to the REST API), on a push.
+    const root = fixture({ 'apps/web/app/page.tsx': PAGE });
+    const web = path.join(root, 'apps/web');
+    const result = action(web, { event: 'push' }, { GITHUB_WORKSPACE: root });
+    expect(result.stdout).toContain('::error file=apps/web/app/page.tsx,line=2,');
+    expect(result.summary).toContain('`apps/web/app/page.tsx:2`');
+  });
+
   it('fails on what fail-on names', () => {
     const { root, base } = repository();
     const web = path.join(root, 'apps/web');

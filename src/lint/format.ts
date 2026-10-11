@@ -29,7 +29,10 @@ export function formatDiagnostics(
     fixedHint?: string | undefined;
     /** What the run left out: `5 design-system files skipped`, `12 tests and stories left out`. */
     notes?: readonly string[] | undefined;
-    /** `sarif`: a result's file as a path relative to the repository root. */
+    /**
+     * `sarif` and `github`: a result's file as a path relative to the repository root, which
+     * code scanning and workflow commands resolve locations against.
+     */
     uri?: ((file: string) => string) | undefined;
   } = {},
 ): string {
@@ -37,13 +40,14 @@ export function formatDiagnostics(
   if (format === 'json') return JSON.stringify(results, null, 2);
   if (format === 'sarif') return formatSarif(results, options.uri);
   if (format === 'github') {
-    const lines = results.flatMap((result) =>
-      result.diagnostics.map((d) => {
+    const lines = results.flatMap((result) => {
+      const file = options.uri ? options.uri(result.file) : result.file;
+      return result.diagnostics.map((d) => {
         const level = d.severity === 'error' ? 'error' : 'warning';
-        const props = `file=${escapeProperty(result.file)},line=${d.line},col=${d.column},endLine=${d.endLine},endColumn=${d.endColumn},title=${escapeProperty(d.ruleId)}`;
+        const props = `file=${escapeProperty(file)},line=${d.line},col=${d.column},endLine=${d.endLine},endColumn=${d.endColumn},title=${escapeProperty(d.ruleId)}`;
         return `::${level} ${props}::${escapeData(d.message)}`;
-      }),
-    );
+      });
+    });
     if (fixedHint) lines.push(`::notice title=onsystem baseline::${escapeData(fixedHint)}`);
     return lines.join('\n');
   }

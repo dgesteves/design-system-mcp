@@ -8,10 +8,16 @@ import { main, type Io } from '../src/cli.js';
 import { VERSION } from '../src/version.js';
 import { DEMO_ROOT, fixture } from './helpers.js';
 
-async function run(args: string[], cwd = DEMO_ROOT) {
+async function run(args: string[], cwd = DEMO_ROOT, env?: Io['env']) {
   const out: string[] = [];
   const err: string[] = [];
-  const io: Io = { cwd, color: false, stdout: (t) => out.push(t), stderr: (t) => err.push(t) };
+  const io: Io = {
+    cwd,
+    color: false,
+    stdout: (t) => out.push(t),
+    stderr: (t) => err.push(t),
+    ...(env ? { env } : {}),
+  };
   const code = await main(args, io);
   return { code, stdout: out.join('\n'), stderr: err.join('\n') };
 }
@@ -66,15 +72,15 @@ describe('onsystem check', () => {
   });
 
   it('emits GitHub Actions annotations', async () => {
-    const { stdout } = await run([
-      'check',
-      'app/settings/danger-zone.tsx',
-      '--format',
-      'github',
-      '--no-cache',
-    ]);
+    const { stdout } = await run(
+      ['check', 'app/settings/danger-zone.tsx', '--format', 'github', '--no-cache'],
+      DEMO_ROOT,
+      {},
+    );
+    // Relative to the repository root, which GitHub resolves annotations against: the demo is
+    // a folder of this repository.
     expect(stdout.split('\n')[0]).toBe(
-      '::error file=app/settings/danger-zone.tsx,line=11,col=22,endLine=11,endColumn=38,title=no-hardcoded-color::Hardcoded color `border-[#ef4444]`. Nearest token destructive (ΔE 0.071) → `border-destructive`.',
+      '::error file=examples/shadcn-demo/app/settings/danger-zone.tsx,line=11,col=22,endLine=11,endColumn=38,title=no-hardcoded-color::Hardcoded color `border-[#ef4444]`. Nearest token destructive (ΔE 0.071) → `border-destructive`.',
     );
   });
 
@@ -110,6 +116,93 @@ describe('onsystem check', () => {
     expect((await run(['check', 'x.tsx', '--format', 'xml'])).code).toBe(2);
     expect((await run(['frobnicate'])).code).toBe(2);
     expect((await run(['--bogus'])).code).toBe(2);
+  });
+});
+
+/** An app in apps/web of `root`: one native <button> where the design system has <Button>. */
+function appIn(root: string) {
+  const web = path.join(root, 'apps/web');
+  fs.mkdirSync(path.join(web, 'components/ui'), { recursive: true });
+  fs.mkdirSync(path.join(web, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(web, 'package.json'), '{ "name": "web" }');
+  fs.writeFileSync(
+    path.join(web, 'components/ui/button.tsx'),
+    'export function Button(props: React.ComponentProps<"button">) { return <button {...props} /> }',
+  );
+  fs.writeFileSync(path.join(web, 'app/page.tsx'), 'export default () => <button>Go</button>;\n');
+  return web;
+}
+
+function gitInit(dir: string) {
+  const result = spawnSync('git', ['-c', 'init.defaultBranch=main', 'init', '-q'], { cwd: dir });
+  if (result.status !== 0) throw new Error(`git init failed in ${dir}`);
+}
+
+/** The file each finding is reported in, in the given format. */
+async function reportedFiles(format: 'github' | 'sarif', cwd: string, env: Io['env']) {
+  const { stdout } = await run(['check', 'app', '--format', format, '--no-cache'], cwd, env);
+  if (format === 'github') {
+    return [...stdout.matchAll(/^::error file=([^,]+),/gm)].map((m) => m[1]);
+  }
+  const log = JSON.parse(stdout) as {
+    runs: {
+      results: { locations: { physicalLocation: { artifactLocation: { uri: string } } }[] }[];
+    }[];
+  };
+  return (log.runs[0]?.results ?? []).map(
+    (r) => r.locations[0]?.physicalLocation.artifactLocation.uri,
+  );
+}
+
+describe.each(['github', 'sarif'] as const)(
+  'check --format %s from a folder of the repository',
+  (format) => {
+    it('names files from the git top-level, wherever check runs', async () => {
+      const root = fixture({});
+      gitInit(root);
+      const web = appIn(root);
+      expect(await reportedFiles(format, web, {})).toEqual(['apps/web/app/page.tsx']);
+    });
+
+    it('names files from GITHUB_WORKSPACE without git', async () => {
+      // No repository: a checkout without git, or a container where git refuses the folder.
+      const root = fixture({});
+      const web = appIn(root);
+      expect(await reportedFiles(format, web, { GITHUB_WORKSPACE: root })).toEqual([
+        'apps/web/app/page.tsx',
+      ]);
+      // Neither: relative to the working directory, as before.
+      expect(await reportedFiles(format, web, {})).toEqual(['app/page.tsx']);
+    });
+
+    it('names files from a repository checked out in a folder of the workspace', async () => {
+      // actions/checkout with `path: repo`: the repository root is GITHUB_WORKSPACE/repo.
+      const workspace = fixture({});
+      const repo = path.join(workspace, 'repo');
+      fs.mkdirSync(repo);
+      gitInit(repo);
+      const web = appIn(repo);
+      expect(await reportedFiles(format, web, { GITHUB_WORKSPACE: workspace })).toEqual([
+        'apps/web/app/page.tsx',
+      ]);
+    });
+
+    it('keeps paths relative to the working directory for files outside the repository', async () => {
+      const web = appIn(fixture({}));
+      expect(await reportedFiles(format, web, { GITHUB_WORKSPACE: fixture({}) })).toEqual([
+        'app/page.tsx',
+      ]);
+    });
+  },
+);
+
+describe('check --format pretty from a folder of the repository', () => {
+  it('keeps paths relative to the working directory', async () => {
+    const root = fixture({});
+    gitInit(root);
+    const web = appIn(root);
+    const { stdout } = await run(['check', 'app', '--no-cache'], web, { GITHUB_WORKSPACE: root });
+    expect(stdout.split('\n')[0]).toBe('app/page.tsx');
   });
 });
 
