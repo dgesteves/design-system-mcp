@@ -37,7 +37,7 @@ import { NAME, VERSION } from './version.js';
 import { loadTarget, type Project, type Workspace } from './workspace.js';
 import { detectProject, type DetectionStep } from './detect.js';
 
-const DOCS = 'https://design-system-mcp-demo.vercel.app/docs';
+const DOCS = 'https://onsystem.vercel.app/docs';
 
 const HELP = `${NAME} ${VERSION}
 

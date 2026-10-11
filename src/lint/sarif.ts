@@ -9,7 +9,7 @@ import { RULES } from './rules/index.js';
 const SCHEMA =
   'https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json';
 const REPO = 'https://github.com/dgesteves/onsystem';
-const RULES_PAGE = 'https://design-system-mcp-demo.vercel.app/rules';
+const RULES_PAGE = 'https://onsystem.vercel.app/rules';
 
 type Level = 'error' | 'warning';
 

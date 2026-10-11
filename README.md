@@ -2,26 +2,26 @@
 
 **Keeps coding agents on your design system:** it knows your real components, props, variants and tokens, catches the moment an agent invents one and has it fix it, and the same check gates your PRs. Local, zero config, works alongside [@shadcn/lint](https://github.com/shadcn-ui/lint).
 
-Built for design-system and platform teams with a React design-system package; a shadcn/ui app is the zero-config demo. Formerly `@dgesteves/design-system-mcp` ([what changed](https://design-system-mcp-demo.vercel.app/docs/migrating)).
+Built for design-system and platform teams with a React design-system package; a shadcn/ui app is the zero-config demo. Formerly `@dgesteves/design-system-mcp` ([what changed](https://onsystem.vercel.app/docs/migrating)).
 
 [![CI](https://img.shields.io/github/actions/workflow/status/dgesteves/onsystem/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0d0f12)](https://github.com/dgesteves/onsystem/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/onsystem?style=flat-square&labelColor=0d0f12&color=22d3ee)](https://www.npmjs.com/package/onsystem)
 [![License: MIT](https://img.shields.io/github/license/dgesteves/onsystem?style=flat-square&labelColor=0d0f12&color=22d3ee)](LICENSE)
 
-**Website and docs:** [design-system-mcp-demo.vercel.app](https://design-system-mcp-demo.vercel.app), with a [playground](https://design-system-mcp-demo.vercel.app/playground) that checks your own code.
+**Website and docs:** [onsystem.vercel.app](https://onsystem.vercel.app), with a [playground](https://onsystem.vercel.app/playground) that checks your own code.
 
 <!-- npm-readme:video -->
 
 https://github.com/user-attachments/assets/8ca1c640-94c2-4003-b59e-2b0d819c492d
 
-<sub>On the <a href="https://design-system-mcp-demo.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
+<sub>On the <a href="https://onsystem.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
 
 <!-- npm-readme:image
 <p align="center">
-  <a href="https://design-system-mcp-demo.vercel.app"><img src=".github/assets/demo.webp" width="100%" alt="On the website, an agent drafts a settings card, check_ui finds 11 problems with a fix each and the agent applies them. Then a real Claude Code session with the plugin, where Claude looks the components up before writing and check_ui passes. Last, the benchmark: clean components go from 6 to 10 out of 10 with Claude Haiku 4.5 and from 8 to 10 with Claude Opus 5."></a>
+  <a href="https://onsystem.vercel.app"><img src=".github/assets/demo.webp" width="100%" alt="On the website, an agent drafts a settings card, check_ui finds 11 problems with a fix each and the agent applies them. Then a real Claude Code session with the plugin, where Claude looks the components up before writing and check_ui passes. Last, the benchmark: clean components go from 6 to 10 out of 10 with Claude Haiku 4.5 and from 8 to 10 with Claude Opus 5."></a>
 </p>
 
-<sub>On the <a href="https://design-system-mcp-demo.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
+<sub>On the <a href="https://onsystem.vercel.app">website</a>, an agent drafts a settings card, <code>check_ui</code> finds 11 problems with a fix each, and the agent applies them. Then a real Claude Code session with the plugin: Claude looks the components up before writing, and <code>check_ui</code> passes. Last, the benchmark.</sub>
 -->
 
 ## The problem
@@ -43,11 +43,11 @@ onsystem reads your components, `cva` and `tv` variants, parts and tokens from s
 | `no-hardcoded-spacing`           | warn    | Arbitrary padding, margin and gap (`p-[13px]` → `p-3`)                          |
 | `no-hardcoded-radius`            | warn    | Arbitrary radius (`rounded-[7px]` → `rounded-sm`)                               |
 
-**How often it is wrong.** The [corpus](corpus) job runs `check` on 10 public repositories pinned by commit (Documenso, Dub, Cal.com, midday and others, the four monorepos also from their root: 21 runs, 4,731 findings) and compares the findings with hand labels. In a random sample of 126 findings, 5 are false positives (4.0%) and 55 are debatable; weighted by each run's and rule's share of all findings, about 1.0% are false positives. Shipped code rarely invents components, props or variants, so those three rules have 1 finding in the corpus and none in the sample; their precision comes from the test suite. The [rules reference](https://design-system-mcp-demo.vercel.app/rules) shows each rule on an example and how to [suppress a finding](https://design-system-mcp-demo.vercel.app/rules#suppressing-findings).
+**How often it is wrong.** The [corpus](corpus) job runs `check` on 10 public repositories pinned by commit (Documenso, Dub, Cal.com, midday and others, the four monorepos also from their root: 21 runs, 4,731 findings) and compares the findings with hand labels. In a random sample of 126 findings, 5 are false positives (4.0%) and 55 are debatable; weighted by each run's and rule's share of all findings, about 1.0% are false positives. Shipped code rarely invents components, props or variants, so those three rules have 1 finding in the corpus and none in the sample; their precision comes from the test suite. The [rules reference](https://onsystem.vercel.app/rules) shows each rule on an example and how to [suppress a finding](https://onsystem.vercel.app/rules#suppressing-findings).
 
 ## Quickstart
 
-Run it from the app's folder or from the monorepo root, with Node.js 20.19 or later. `npx onsystem inspect` shows what it found, and `--explain` why; at a [monorepo root](https://design-system-mcp-demo.vercel.app/docs/configuration#monorepo-roots), every app and design-system package, each file checked by its own project's design system. `npx onsystem init` writes the config from it and offers a baseline.
+Run it from the app's folder or from the monorepo root, with Node.js 20.19 or later. `npx onsystem inspect` shows what it found, and `--explain` why; at a [monorepo root](https://onsystem.vercel.app/docs/configuration#monorepo-roots), every app and design-system package, each file checked by its own project's design system. `npx onsystem init` writes the config from it and offers a baseline.
 
 **Claude Code.** The plugin brings the hook, the MCP server and a skill:
 
@@ -56,13 +56,13 @@ Run it from the app's folder or from the monorepo root, with Node.js 20.19 or la
 /plugin install onsystem@dgesteves
 ```
 
-After each Write or Edit of a `.tsx` or `.jsx` file, the hook runs `onsystem check` on it. Errors go back to Claude as a blocking error with the fix, so Claude corrects the file before it moves on; warnings go as a note. It stays quiet in projects without a design system. [What it runs and touches](https://design-system-mcp-demo.vercel.app/docs/plugin).
+After each Write or Edit of a `.tsx` or `.jsx` file, the hook runs `onsystem check` on it. Errors go back to Claude as a blocking error with the fix, so Claude corrects the file before it moves on; warnings go as a note. It stays quiet in projects without a design system. [What it runs and touches](https://onsystem.vercel.app/docs/plugin).
 
-**Cursor or VS Code.** [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=onsystem&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9uc3lzdGVtIiwiLS1yb290IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19) [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=onsystem&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22onsystem%22%5D%7D), or commit the [config](https://design-system-mcp-demo.vercel.app/docs/clients#cursor-and-vs-code). The agent gets the tools and runs `check_ui` on what it writes.
+**Cursor or VS Code.** [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_server-0d0f12?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=onsystem&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9uc3lzdGVtIiwiLS1yb290IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19) [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square)](https://insiders.vscode.dev/redirect/mcp/install?name=onsystem&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22onsystem%22%5D%7D), or commit the [config](https://onsystem.vercel.app/docs/clients#cursor-and-vs-code). The agent gets the tools and runs `check_ui` on what it writes.
 
-**Other agents.** `npx skills add dgesteves/onsystem` adds the skill to any agent with Agent Skills, and there are [plugins for Codex, GitHub Copilot CLI, VS Code and Cursor](https://design-system-mcp-demo.vercel.app/docs/clients#plugins-for-other-agents).
+**Other agents.** `npx skills add dgesteves/onsystem` adds the skill to any agent with Agent Skills, and there are [plugins for Codex, GitHub Copilot CLI, VS Code and Cursor](https://onsystem.vercel.app/docs/clients#plugins-for-other-agents).
 
-**Any MCP client.** Run `npx -y onsystem` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](https://design-system-mcp-demo.vercel.app/docs/clients#other-clients).
+**Any MCP client.** Run `npx -y onsystem` as a stdio server. There are [configs for Claude Desktop, Codex CLI, GitHub Copilot CLI, Windsurf, JetBrains IDEs, Zed, Gemini CLI and Grok Build](https://onsystem.vercel.app/docs/clients#other-clients).
 
 **CI.** Install it as a dev dependency, accept the findings the codebase already has once, and fail pull requests only on new ones:
 
@@ -75,9 +75,9 @@ npx onsystem check . --update-baseline   # writes onsystem.baseline.json: commit
 - run: npx onsystem check . --format github --require-design-system
 ```
 
-Findings show up as annotations on the pull request, and `--require-design-system` fails the job when the design system is no longer found. [CI and baselines](https://design-system-mcp-demo.vercel.app/docs/ci) has the whole workflow. The GitHub Action, `uses: dgesteves/onsystem@v0`, annotates only the lines a pull request changed: [make it a required check on agent pull requests](https://design-system-mcp-demo.vercel.app/docs/required-check).
+Findings show up as annotations on the pull request, and `--require-design-system` fails the job when the design system is no longer found. [CI and baselines](https://onsystem.vercel.app/docs/ci) has the whole workflow. The GitHub Action, `uses: dgesteves/onsystem@v0`, annotates only the lines a pull request changed: [make it a required check on agent pull requests](https://onsystem.vercel.app/docs/required-check).
 
-**ESLint.** The same rules for ESLint 9 and 10: add `onsystem.configs.recommended` from `onsystem/eslint` to `eslint.config.mjs` ([ESLint plugin](https://design-system-mcp-demo.vercel.app/docs/eslint), with @shadcn/lint).
+**ESLint.** The same rules for ESLint 9 and 10: add `onsystem.configs.recommended` from `onsystem/eslint` to `eslint.config.mjs` ([ESLint plugin](https://onsystem.vercel.app/docs/eslint), with @shadcn/lint).
 
 ## Works with @shadcn/lint
 
@@ -96,11 +96,11 @@ It is small: one repository, Claude models only, 40 runs (one per task, model an
 
 ## Docs
 
-On the [website](https://design-system-mcp-demo.vercel.app/docs), and as Markdown in [docs/](docs):
+On the [website](https://onsystem.vercel.app/docs), and as Markdown in [docs/](docs):
 
-- [Quickstart](https://design-system-mcp-demo.vercel.app/docs), [Claude Code plugin](https://design-system-mcp-demo.vercel.app/docs/plugin), [CI and baselines](https://design-system-mcp-demo.vercel.app/docs/ci) and [Set up your agent](https://design-system-mcp-demo.vercel.app/docs/clients), with the config for each client
-- [Configuration](https://design-system-mcp-demo.vercel.app/docs/configuration), [Rules](https://design-system-mcp-demo.vercel.app/rules), [MCP tools](https://design-system-mcp-demo.vercel.app/docs/tools) and [Troubleshooting](https://design-system-mcp-demo.vercel.app/docs/troubleshooting)
-- [How it works](https://design-system-mcp-demo.vercel.app/docs/how-it-works), [FAQ](https://design-system-mcp-demo.vercel.app/docs/faq) and [Migrating from design-system-mcp](https://design-system-mcp-demo.vercel.app/docs/migrating)
+- [Quickstart](https://onsystem.vercel.app/docs), [Claude Code plugin](https://onsystem.vercel.app/docs/plugin), [CI and baselines](https://onsystem.vercel.app/docs/ci) and [Set up your agent](https://onsystem.vercel.app/docs/clients), with the config for each client
+- [Configuration](https://onsystem.vercel.app/docs/configuration), [Rules](https://onsystem.vercel.app/rules), [MCP tools](https://onsystem.vercel.app/docs/tools) and [Troubleshooting](https://onsystem.vercel.app/docs/troubleshooting)
+- [How it works](https://onsystem.vercel.app/docs/how-it-works), [FAQ](https://onsystem.vercel.app/docs/faq) and [Migrating from design-system-mcp](https://onsystem.vercel.app/docs/migrating)
 
 [Contributing](CONTRIBUTING.md), [security](SECURITY.md) and the [changelog](CHANGELOG.md) are in the repository.
 

@@ -9,7 +9,7 @@ export const contentType = 'image/png';
 
 export default async function Image() {
   return new ImageResponse(
-    <HomeCard width={size.width} height={size.height} footer="design-system-mcp-demo.vercel.app" />,
+    <HomeCard width={size.width} height={size.height} footer="onsystem.vercel.app" />,
     { ...size, fonts: await ogFonts() },
   );
 }

@@ -75,7 +75,7 @@ Rename the server's key and the package in its entry. For example, in `.cursor/m
 }
 ```
 
-The key is part of each tool's name in most clients, so `mcp__design-system__check_ui` becomes `mcp__onsystem__check_ui`. Update any permission allowlists that name the old tools, and any line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` that mentions the design-system tools. The [setup guide](https://design-system-mcp-demo.vercel.app/docs/clients) has the entry for every client.
+The key is part of each tool's name in most clients, so `mcp__design-system__check_ui` becomes `mcp__onsystem__check_ui`. Update any permission allowlists that name the old tools, and any line in `CLAUDE.md`, `AGENTS.md` or `.cursor/rules` that mentions the design-system tools. The [setup guide](https://onsystem.vercel.app/docs/clients) has the entry for every client.
 
 ## Clean up
 

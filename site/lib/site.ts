@@ -1,6 +1,6 @@
 import { readme, tools } from '@/lib/data';
 
-export const SITE_URL = 'https://design-system-mcp-demo.vercel.app';
+export const SITE_URL = 'https://onsystem.vercel.app';
 export const REPO = 'https://github.com/dgesteves/onsystem';
 export const NPM = 'https://www.npmjs.com/package/onsystem';
 export const REGISTRY =
@@ -21,13 +21,13 @@ export function repoLink(file: string, kind: 'blob' | 'tree' = 'blob'): string {
 export const MORE = [
   {
     name: 'ondocs',
-    url: 'https://ask-my-site-demo.vercel.app',
+    url: 'https://ondocs.vercel.app',
     description:
       'Docs answerable by people and agents from one static index: a cited Ask box, an MCP server and llms.txt.',
   },
   {
     name: 'signoff-ui',
-    url: 'https://agent-ui-kit-demo.vercel.app',
+    url: 'https://signoff-ui.vercel.app',
     description: 'React components to review what your agent changed and approve what it may do.',
   },
 ];

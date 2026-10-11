@@ -7,11 +7,11 @@
     "name": "Diogo Esteves",
     "url": "https://github.com/dgesteves"
   },
-  "homepage": "https://design-system-mcp-demo.vercel.app/docs/plugin",
+  "homepage": "https://onsystem.vercel.app/docs/plugin",
   "repository": "https://github.com/dgesteves/onsystem",
   "license": "MIT",
   "keywords": ["design-system", "shadcn", "react", "tailwindcss", "lint", "mcp"],
   "icon": "./icon.svg",
-  "documentationUrl": "https://design-system-mcp-demo.vercel.app/docs/plugin",
+  "documentationUrl": "https://onsystem.vercel.app/docs/plugin",
   "supportUrl": "https://github.com/dgesteves/onsystem/issues"
 }

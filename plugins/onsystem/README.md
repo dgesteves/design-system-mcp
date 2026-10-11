@@ -35,7 +35,7 @@ This plugin used to be called `design-system`, and the package `@dgesteves/desig
 
 ## Links
 
-- [Docs](https://design-system-mcp-demo.vercel.app/docs/plugin)
+- [Docs](https://onsystem.vercel.app/docs/plugin)
 - [Source](https://github.com/dgesteves/onsystem)
 - [Issues](https://github.com/dgesteves/onsystem/issues)
 

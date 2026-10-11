@@ -7,7 +7,7 @@ The Cursor plugin of onsystem. It keeps Cursor's agent on your React design syst
 - **An MCP server,** `onsystem` (`mcp.json`), with five read-only tools: `list_components`, `get_component`, `search_components`, `get_tokens` and `check_ui`.
 - **A skill** (`skills/onsystem`) that tells the agent to look components and tokens up before writing UI and to fix every `check_ui` finding.
 
-The [Claude Code plugin](../onsystem) also checks each edit with a hook; in Cursor, add the [CI check](https://design-system-mcp-demo.vercel.app/docs/ci) so what the agent skips still gets caught.
+The [Claude Code plugin](../onsystem) also checks each edit with a hook; in Cursor, add the [CI check](https://onsystem.vercel.app/docs/ci) so what the agent skips still gets caught.
 
 ## What it runs
 

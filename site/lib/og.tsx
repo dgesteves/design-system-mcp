@@ -353,7 +353,7 @@ export function PageCard({
   aside: ReactNode;
 }) {
   return (
-    <Frame width={width} height={height} footer="design-system-mcp-demo.vercel.app">
+    <Frame width={width} height={height} footer="onsystem.vercel.app">
       <div style={{ display: 'flex', width: '100%', gap: 48, alignItems: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 22 }}>
           <Eyebrow>{eyebrow}</Eyebrow>

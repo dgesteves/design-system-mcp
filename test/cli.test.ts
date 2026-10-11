@@ -249,7 +249,7 @@ describe('onsystem without a design system', () => {
       'src/App.tsx': 'export const App = () => <button><svg /></button>',
     });
   const NOTICE =
-    'No design system found (no components or color tokens): only the accessibility rule ran. See https://design-system-mcp-demo.vercel.app/docs/configuration';
+    'No design system found (no components or color tokens): only the accessibility rule ran. See https://onsystem.vercel.app/docs/configuration';
 
   it('says that only the accessibility rule ran, in every format', async () => {
     const root = plain();

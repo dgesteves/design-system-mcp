@@ -1,6 +1,6 @@
 # Agent benchmark
 
-Does an agent write UI that fits the design system more often with onsystem than without it? This runs Claude Code on the same UI tasks twice, once as it ships and once with the [Claude Code plugin](https://design-system-mcp-demo.vercel.app/docs/plugin), and scores what it wrote with `onsystem check`.
+Does an agent write UI that fits the design system more often with onsystem than without it? This runs Claude Code on the same UI tasks twice, once as it ships and once with the [Claude Code plugin](https://onsystem.vercel.app/docs/plugin), and scores what it wrote with `onsystem check`.
 
 The runs below were made on 2026-10-08, before the rename, with `@dgesteves/design-system-mcp` 0.1 and its `design-system` plugin.
 
@@ -36,7 +36,7 @@ What the base runs got wrong:
 | share-dialog     | 1 × `prefer-design-system-component` (native `<label>`; the project has `Label`) | none                                                                  |
 | usage-banner     | 1 × `icon-button-accessible-name`                                                | none                                                                  |
 
-With the plugin, the agents called the design-system tools 5.6 (Haiku) and 7.3 (Opus) times per task on average: `search_components`, `get_component`, `get_tokens` and `check_ui`. The lint-on-edit hook never had to report an error back. Looking the design system up before writing was enough, so the hook acted as a safety net that was never needed in these runs. A [separate run](https://design-system-mcp-demo.vercel.app/docs/plugin), where Claude was asked to write hardcoded values on purpose, shows the hook catching them and Claude fixing them.
+With the plugin, the agents called the design-system tools 5.6 (Haiku) and 7.3 (Opus) times per task on average: `search_components`, `get_component`, `get_tokens` and `check_ui`. The lint-on-edit hook never had to report an error back. Looking the design system up before writing was enough, so the hook acted as a safety net that was never needed in these runs. A [separate run](https://onsystem.vercel.app/docs/plugin), where Claude was asked to write hardcoded values on purpose, shows the hook catching them and Claude fixing them.
 
 ## Reading it honestly
 
